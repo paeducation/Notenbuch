@@ -1,0 +1,1608 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1, user-scalable=no">
+<title>Notenbuch</title>
+<meta name="theme-color" content="#1D1D1F">
+<link rel="manifest" href="manifest.json">
+<link rel="apple-touch-icon" href="icon-192.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Notenbuch">
+<style>
+  :root{
+    --bg:#F0F0F3; --surface:#FFFFFF; --surface-soft:#F6F6F8;
+    --ink:#1D1D1F; --ink-soft:#7A7A80; --line:#E3E3E7;
+    --accent:#2F7DE1; --accent-soft:#E8F1FE;
+    --pass:#1F9254; --pass-soft:#E4F6EC;
+    --warn:#B7791F; --warn-soft:#FBF0DA;
+    --danger:#E5484D; --danger-soft:#FBE7E8;
+    --radius:12px;
+    --shadow:0 1px 2px rgba(0,0,0,.05), 0 4px 14px rgba(0,0,0,.06);
+  }
+  *{box-sizing:border-box;}
+  button, input, select, textarea{-webkit-appearance:none;appearance:none;}
+  html,body{margin:0;padding:0;background:var(--bg);color:var(--ink);
+    font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;-webkit-tap-highlight-color:transparent;}
+  body{padding-bottom:50px;}
+  h1,h2,h3{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;font-weight:700;margin:0;letter-spacing:-0.01em;}
+  .mono{font-family:ui-monospace,'SF Mono',Menlo,monospace;}
+
+  .titlebar{
+    display:flex;align-items:center;justify-content:center;gap:8px;
+    padding:9px 14px;background:linear-gradient(#FBFBFC,#F1F1F3);
+    border-bottom:1px solid var(--line);position:sticky;top:0;z-index:31;
+  }
+  .titlebar .dots{position:absolute;left:16px;display:flex;gap:6px;}
+  .titlebar .dot{width:11px;height:11px;border-radius:50%;}
+  .titlebar h1{font-size:0.95rem;color:var(--ink-soft);font-weight:600;}
+  .schoolyear-wrap{display:inline-flex;align-items:center;gap:6px;margin-left:6px;}
+  .schoolyear-label{font-size:0.78rem;color:var(--ink-soft);font-weight:600;background:#E5E5E7;padding:2px 7px;border-radius:6px;}
+  .schoolyear-input{border:1px solid var(--line);background:#fff;border-radius:6px;padding:3px 6px;width:96px;font-size:0.85rem;font-weight:700;color:var(--ink);}
+  .schoolyear-input:focus{outline:none;}
+  .icon-add-btn{width:36px;height:36px;min-width:36px;border-radius:50%;background:var(--accent);color:#fff;
+    font-size:1.5rem;font-weight:700;display:inline-flex;align-items:center;justify-content:center;padding:0;
+    line-height:1;border:none;box-shadow:var(--shadow);}
+  .icon-add-btn.labeled{width:auto;min-width:auto;height:auto;border-radius:20px;padding:9px 16px;gap:8px;
+    font-size:0.86rem;font-weight:700;}
+  .icon-add-btn.labeled span{font-size:0.86rem;}
+  .grp-head .colx{width:20px;height:20px;min-width:20px;border-radius:7px;background:rgba(255,255,255,0.95);
+    color:#1D1D1F;font-size:0.85rem;font-weight:800;display:inline-flex;align-items:center;justify-content:center;padding:0;}
+  .grp-head .colx.danger{color:var(--danger);}
+
+  header.app{
+    padding:12px 16px;border-bottom:1px solid var(--line);
+    background:var(--surface);position:sticky;top:38px;z-index:30;
+  }
+  .class-row{display:flex;gap:8px;align-items:center;}
+  select, input[type=text], input[type=number], input[type=date]{
+    font-family:inherit;font-size:0.92rem;padding:8px 12px;border:1px solid var(--line);
+    border-radius:9px;background:var(--surface-soft);color:var(--ink);
+  }
+  select:focus, input:focus{outline:2px solid var(--accent-soft);border-color:var(--accent);}
+  button{font-family:inherit;font-size:0.86rem;font-weight:600;padding:8px 14px;
+    border-radius:20px;border:1px solid var(--accent);background:var(--accent);color:#fff;
+    cursor:pointer;white-space:nowrap;transition:opacity .1s;}
+  button.ghost{background:var(--surface);color:var(--ink);border:1px solid var(--line);font-weight:600;box-shadow:var(--shadow);}
+  button.small{padding:6px 12px;font-size:0.78rem;}
+  button:active{opacity:0.7;}
+  button:disabled{opacity:0.35;cursor:default;}
+  .icon-btn{width:34px;height:34px;padding:0;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;font-size:0.95rem;}
+
+  .sem-row{display:inline-flex;gap:2px;margin-top:10px;background:var(--surface-soft);
+    border:1px solid var(--line);border-radius:10px;padding:3px;flex-wrap:wrap;}
+  .sem-tab{padding:6px 14px;border-radius:8px;border:none;background:transparent;color:var(--ink-soft);
+    font-weight:600;font-size:0.82rem;cursor:pointer;}
+  .sem-tab.active{background:var(--surface);color:var(--ink);box-shadow:var(--shadow);}
+
+  .toolbar{display:flex;gap:8px;align-items:center;overflow-x:auto;padding:10px 16px;
+    background:var(--surface);border-bottom:1px solid var(--line);position:sticky;top:192px;z-index:29;}
+  .weight-warn{font-size:0.76rem;color:var(--warn);background:var(--warn-soft);padding:4px 10px;
+    border-radius:20px;margin-left:auto;white-space:nowrap;font-weight:600;}
+  main{padding:16px;}
+  .empty{text-align:center;color:var(--ink-soft);padding:48px 16px;font-size:0.95rem;line-height:1.5;}
+  button.active-toggle{background:var(--accent);color:#fff;border-color:var(--accent);}
+  .compare-wrap{display:flex;flex-direction:column;gap:24px;}
+  .compare-col{width:100%;}
+  .compare-col h3{margin-bottom:8px;font-size:0.95rem;color:var(--ink-soft);}
+  .grid-wrap{overflow:auto;border:1px solid var(--line);border-radius:var(--radius);
+    background:var(--surface);max-width:100%;box-shadow:var(--shadow);}
+  table.grid{border-collapse:separate;border-spacing:0;font-size:0.84rem;min-width:100%;}
+  table.grid th, table.grid td{border-bottom:1px solid var(--line);border-right:1px solid var(--line);
+    padding:6px 8px;text-align:center;white-space:nowrap;}
+  table.grid th:last-child, table.grid td:last-child{border-right:none;}
+  table.grid thead th{background:var(--surface);font-weight:600;color:var(--ink);font-size:0.76rem;}
+  .grp-head{color:#fff;font-weight:700;font-size:0.68rem;
+    padding:4px 8px;text-transform:uppercase;letter-spacing:0.03em;}
+  .grp-head .grp-inner{display:flex;align-items:center;justify-content:center;gap:6px;}
+  .cat-head{background:var(--surface);}
+  .cat-head.total-head{background:var(--surface-soft);font-weight:700;}
+  .cat-head .colhead{display:flex;flex-direction:column;align-items:center;gap:1px;cursor:pointer;padding:2px 0;}
+  .cat-head .weight{font-weight:500;color:var(--ink-soft);font-size:0.66rem;}
+  .cat-mode{font-size:0.6rem;color:var(--ink-soft);}
+  th.name-col, td.name-col{background:var(--surface);text-align:left;font-weight:600;min-width:120px;}
+  th.endnote-col, td.endnote-col{background:var(--accent-soft);
+    border-left:2px solid var(--accent);border-right:2px solid var(--accent);
+    text-align:center;vertical-align:middle;}
+  .endnote-head{display:flex;flex-direction:column;align-items:center;justify-content:center;
+    height:100%;text-align:center;}
+  td.name-col{z-index:6;font-weight:500;}
+  td.endnote-col{z-index:6;}
+  td.total-col{background:var(--surface-soft);border-right:2px solid var(--ink-soft);}
+  .colx{border:none;background:rgba(255,255,255,0.3);color:#fff;font-size:0.7rem;width:18px;height:18px;
+    border-radius:50%;cursor:pointer;font-weight:700;line-height:1;}
+  .colx.dark{background:transparent;color:var(--ink-soft);width:auto;height:auto;border-radius:4px;padding:0 4px;}
+  .colx.dark:hover{color:var(--danger);}
+  .cell-stack{display:flex;flex-direction:column;align-items:center;gap:1px;cursor:pointer;padding:3px 2px;border-radius:8px;position:relative;}
+  .cell-stack:hover{background:var(--surface-soft);}
+  .reset-arrow{position:absolute;top:-6px;right:-6px;width:19px;height:19px;border-radius:50%;
+    background:var(--accent);color:#fff;font-size:0.72rem;font-weight:800;border:none;
+    display:flex;align-items:center;justify-content:center;cursor:pointer;line-height:1;padding:0;
+    box-shadow:0 1px 2px rgba(0,0,0,.25);z-index:2;}
+  .note-pill{display:inline-block;min-width:26px;text-align:center;padding:2px 7px;border-radius:14px;
+    font-weight:700;font-size:0.8rem;font-family:ui-monospace,'SF Mono',Menlo,monospace;}
+  .note-1,.note-2{background:var(--pass-soft);color:var(--pass);}
+  .note-3,.note-4{background:var(--warn-soft);color:var(--warn);}
+  .note-5,.note-6{background:var(--danger-soft);color:var(--danger);}
+  .note-dash{color:var(--ink-soft);font-family:ui-monospace,'SF Mono',Menlo,monospace;}
+  .avg-sub{font-size:0.64rem;color:var(--ink-soft);font-family:ui-monospace,'SF Mono',Menlo,monospace;}
+  .add-student-row td{background:var(--surface-soft);}
+  .add-student-row input{width:100%;min-width:130px;}
+  .name-cell-row{display:flex;align-items:center;gap:6px;justify-content:space-between;}
+  tr.student-selected td{background:var(--accent-soft)!important;}
+  .panel{margin-top:16px;background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);
+    padding:16px;box-shadow:var(--shadow);}
+  .form-title{font-size:0.76rem;color:var(--ink-soft);font-weight:700;margin-bottom:10px;
+    text-transform:uppercase;letter-spacing:0.04em;}
+  .row{display:flex;gap:8px;align-items:center;}
+  .row + .row{margin-top:8px;}
+  .grow{flex:1;min-width:0;}
+  .hint{font-size:0.8rem;color:var(--ink-soft);line-height:1.5;margin-top:8px;}
+  table.scale{width:100%;border-collapse:collapse;font-size:0.9rem;}
+  table.scale td{padding:6px 4px;border-bottom:1px solid var(--line);}
+  table.scale input[type=number]{padding:6px 6px;font-size:0.88rem;}
+  .status{position:fixed;bottom:0;left:0;right:0;text-align:center;font-size:0.74rem;color:var(--ink-soft);
+    padding:7px;background:var(--surface);border-top:1px solid var(--line);}
+  .overlay{position:fixed;inset:0;background:rgba(20,20,22,0.5);z-index:50;display:flex;align-items:flex-end;justify-content:center;
+    backdrop-filter:blur(2px);-webkit-backdrop-filter:blur(2px);}
+  @media(min-width:640px){.overlay{align-items:center;}}
+  .modal{background:var(--surface);border-radius:16px 16px 0 0;width:100%;max-width:420px;max-height:80vh;
+    overflow-y:auto;padding:20px;box-shadow:0 10px 40px rgba(0,0,0,.25);}
+  @media(min-width:640px){.modal{border-radius:16px;}}
+  .modal h3{font-size:1.05rem;margin-bottom:4px;}
+  .modal .sub{color:var(--ink-soft);font-size:0.82rem;margin-bottom:12px;}
+  .entry-row{display:flex;gap:8px;align-items:center;padding:7px 0;border-bottom:1px solid var(--line);}
+  .entry-row:last-child{border-bottom:none;}
+  .grade-picker{display:flex;flex-wrap:wrap;gap:5px;flex:1;}
+  .grade-chip{padding:5px 9px;border-radius:8px;border:1px solid var(--line);background:var(--surface-soft);
+    font-family:ui-monospace,'SF Mono',Menlo,monospace;font-size:0.8rem;font-weight:700;color:var(--ink);cursor:pointer;}
+  .grade-chip.selected{background:var(--accent);color:#fff;border-color:var(--accent);}
+  .dlg-choices{display:flex;flex-direction:column;gap:8px;margin-top:12px;}
+  .dlg-choice-btn{width:100%;text-align:left;background:var(--surface-soft);color:var(--ink);
+    border:1px solid var(--line);border-radius:10px;padding:12px 14px;font-size:0.92rem;font-weight:600;}
+  .dlg-choice-btn:active{background:var(--accent-soft);border-color:var(--accent);}
+  .modal-close{position:sticky;top:0;text-align:right;}
+</style>
+</head>
+<body>
+
+<div class="titlebar">
+  <div class="dots"><span class="dot" style="background:#FF5F57;"></span><span class="dot" style="background:#FEBC2E;"></span><span class="dot" style="background:#28C840;"></span></div>
+  <h1>Notenbuch</h1>
+  <span class="schoolyear-wrap"><span class="schoolyear-label">Schuljahr</span><input type="text" id="schoolYearInput" class="schoolyear-input" maxlength="9"></span>
+</div>
+
+<header class="app">
+  <div class="sem-row" id="classRow"></div>
+  <div class="sem-row" id="semRow"></div>
+</header>
+
+<div class="toolbar">
+  <button class="ghost small" id="addGroupBtn">+Notenkategorie</button>
+  <button class="ghost small" id="positionModeBtn">↕ Position</button>
+  <button class="ghost small" id="copyStructureBtn">⇄ Struktur übernehmen…</button>
+  <button class="ghost small" id="toggleScaleBtn">Notenschema</button>
+  <button class="ghost small" id="exportBtn">⬇ Backup</button>
+  <button class="ghost small" id="importBtn">⬆ Wiederherstellen</button>
+  <button class="ghost small" id="webdavBtn">☁ WebDAV</button>
+  <input type="file" id="csvImportFile" accept=".csv,text/csv" style="position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0;">
+  <button class="ghost small" id="resetAllBtn" style="color:var(--danger);">⟲ Zurücksetzen</button>
+  <button class="ghost small" id="incognitoBtn">👁 Inkognito</button>
+  <input type="file" id="importFile" accept=".json,application/json" style="position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0;">
+  <input type="text" id="searchStudent" placeholder="Schüler suchen…" style="max-width:150px;">
+  <span class="weight-warn" id="weightWarn"></span>
+</div>
+
+<main id="main"></main>
+<div id="scalePanel"></div>
+<div id="webdavPanel"></div>
+<div id="modalRoot"></div>
+<div class="status" id="status">Wird geladen …</div>
+
+<script>
+const STORAGE_KEY = 'classes';
+let state = { classes: [], activeClassId: null, scaleOpen: false, searchTerm: '', compareView: false, positionMode: false, webdavOpen: false, selectedStudentId: null, incognito: false };
+
+const NOTEN_TABLE = [
+  {min:95, note:'1+'}, {min:90, note:'1'}, {min:85, note:'1-'},
+  {min:80, note:'2+'}, {min:75, note:'2'}, {min:70, note:'2-'},
+  {min:65, note:'3+'}, {min:60, note:'3'}, {min:55, note:'3-'},
+  {min:50, note:'4+'}, {min:45, note:'4'}, {min:40, note:'4-'},
+  {min:33, note:'5+'}, {min:27, note:'5'}, {min:20, note:'5-'},
+  {min:0, note:'6'},
+];
+const PUNKTE_TABLE = [
+  {min:95, note:15}, {min:90, note:14}, {min:85, note:13}, {min:80, note:12},
+  {min:75, note:11}, {min:70, note:10}, {min:65, note:9}, {min:60, note:8},
+  {min:55, note:7}, {min:50, note:6}, {min:45, note:5}, {min:40, note:4},
+  {min:33, note:3}, {min:27, note:2}, {min:20, note:1}, {min:0, note:0},
+];
+const GROUP_COLORS = ['#5B87B8','#B0699A','#8B7BB0','#B18257','#5F9478','#B5716E','#A08A57'];
+function colorForGroupName(name){
+  const str = (name||'').trim().toLowerCase();
+  let hash = 0;
+  for(let i=0; i<str.length; i++){ hash = (hash * 31 + str.charCodeAt(i)) | 0; }
+  return GROUP_COLORS[Math.abs(hash) % GROUP_COLORS.length];
+}
+
+function uid(){ return Math.random().toString(36).slice(2,10); }
+function setStatus(msg, isError){
+  const el = document.getElementById('status');
+  el.textContent = msg; el.style.color = isError ? 'var(--pen)' : 'var(--ink-soft)';
+}
+
+// ---------- grade/value helpers ----------
+function tendencyOffset(t){ return t==='+' ? -0.3 : t==='-' ? 0.3 : 0; }
+function gradeStrToValue(str){
+  const m = String(str).match(/^([1-6])([+-]?)$/);
+  if(!m) return null;
+  return parseInt(m[1]) + tendencyOffset(m[2]);
+}
+function valueToGradeStr(value){
+  let best=null, bestd=Infinity;
+  for(let g=1; g<=6; g++){
+    const tends = g===6 ? [''] : ['+','','-'];
+    for(const t of tends){
+      const v = g + tendencyOffset(t);
+      const d = Math.abs(v-value);
+      if(d < bestd){ bestd = d; best = g+t; }
+    }
+  }
+  return best;
+}
+function baseGradeNum(gradeStr){ return parseInt(String(gradeStr)[0]); }
+function displayValue(cls, value){
+  return cls.gradingSystem === 'punkte' ? String(Math.round(value)) : valueToGradeStr(value);
+}
+function colorBucket(cls, value){
+  if(cls.gradingSystem === 'punkte'){
+    if(value >= 10) return 1;
+    if(value >= 4) return 3;
+    return 5;
+  }
+  return baseGradeNum(valueToGradeStr(value));
+}
+function notePill(cls, value, subLabel){
+  if(value === null || value === undefined || isNaN(value)) return '<span class="note-dash">–</span>';
+  const bucket = colorBucket(cls, value);
+  let html = `<span class="note-pill note-${bucket}">${displayValue(cls, value)}</span>`;
+  const sub = subLabel !== undefined ? subLabel : value.toFixed(2);
+  html += `<span class="avg-sub">${escapeHtml(sub)}</span>`;
+  return html;
+}
+function gradeForPercent(table, pct){
+  const sorted = [...table].sort((a,b)=>b.min-a.min);
+  for(const row of sorted){ if(pct >= row.min) return row.note; }
+  return sorted.length ? sorted[sorted.length-1].note : null;
+}
+function activeGradeTable(cls){ return cls.gradingSystem === 'punkte' ? cls.gradeTablePunkte : cls.gradeTableNoten; }
+function entryValue(cls, cat, entry){
+  if(cat.mode === 'points'){
+    const pts = parseFloat(entry.points), max = parseFloat(entry.maxPoints);
+    if(isNaN(pts) || isNaN(max) || max <= 0) return null;
+    const pct = (pts/max)*100;
+    if(cls.gradingSystem === 'punkte') return gradeForPercent(cls.gradeTablePunkte, pct);
+    const noteStr = gradeForPercent(cls.gradeTableNoten, pct);
+    return gradeStrToValue(noteStr);
+  } else {
+    if(cls.gradingSystem === 'punkte'){
+      const v = parseFloat(entry.grade);
+      return isNaN(v) ? null : v;
+    }
+    return gradeStrToValue(entry.grade);
+  }
+}
+function rebalanceEqualWeights(list){
+  const n = list.length;
+  if(n === 0) return;
+  const base = Math.floor(100/n);
+  list.forEach((item,i) => { item.weight = (i === n-1) ? (100 - base*(n-1)) : base; });
+}
+function moveItem(arr, id, dir){
+  const idx = arr.findIndex(x=>x.id===id);
+  const newIdx = idx+dir;
+  if(idx<0 || newIdx<0 || newIdx>=arr.length) return;
+  const tmp = arr[idx]; arr[idx] = arr[newIdx]; arr[newIdx] = tmp;
+}
+
+function isContainerCat(cat){ return !!(cat.containerOnly || (cat.children && cat.children.length)); }
+function categoryAvgAutoForStudent(cls, cat, studentId){
+  if(cat.children && cat.children.length){
+    let weighted = 0, weightSum = 0;
+    cat.children.forEach(child => {
+      const a = categoryAvgForStudent(cls, child, studentId);
+      if(a !== null){ weighted += a * (child.weight||0); weightSum += (child.weight||0); }
+    });
+    return weightSum ? weighted / weightSum : null;
+  }
+  const entry = cat.entries[studentId];
+  if(!entry) return null;
+  const v = entryValue(cls, cat, entry);
+  return (v===null || v===undefined || isNaN(v)) ? null : v;
+}
+function categoryAvgForStudent(cls, cat, studentId){
+  const auto = categoryAvgAutoForStudent(cls, cat, studentId);
+  const override = cat.overrides && cat.overrides[studentId];
+  if(override !== undefined && override !== null && override !== ''){
+    if(cls.gradingSystem === 'punkte'){
+      const v = parseFloat(override);
+      return isNaN(v) ? auto : v;
+    }
+    const v = gradeStrToValue(override);
+    return v === null ? auto : v;
+  }
+  return auto;
+}
+function groupGesamtAutoForStudent(cls, group, studentId){
+  let weighted = 0, weightSum = 0;
+  group.categories.forEach(cat => {
+    const a = categoryAvgForStudent(cls, cat, studentId);
+    if(a !== null){ weighted += a * (cat.weight||0); weightSum += (cat.weight||0); }
+  });
+  if(weightSum === 0) return null;
+  return weighted / weightSum;
+}
+function groupGesamtForStudent(cls, group, studentId){
+  const auto = groupGesamtAutoForStudent(cls, group, studentId);
+  const override = group.overrides && group.overrides[studentId];
+  if(override !== undefined && override !== null && override !== ''){
+    if(cls.gradingSystem === 'punkte'){
+      const v = parseFloat(override);
+      return isNaN(v) ? auto : v;
+    }
+    const v = gradeStrToValue(override);
+    return v === null ? auto : v;
+  }
+  return auto;
+}
+function semesterEndnoteAutoForStudent(cls, semester, studentId){
+  let weighted = 0, weightSum = 0;
+  semester.groups.forEach(g => {
+    const a = groupGesamtForStudent(cls, g, studentId);
+    if(a !== null){ weighted += a * (g.weight||0); weightSum += (g.weight||0); }
+  });
+  if(weightSum === 0) return null;
+  return weighted / weightSum;
+}
+function semesterEndnoteForStudent(cls, semester, studentId){
+  const override = semester.endnoteOverrides && semester.endnoteOverrides[studentId];
+  if(override !== undefined && override !== null && override !== ''){
+    if(cls.gradingSystem === 'punkte'){
+      const v = parseFloat(override);
+      return isNaN(v) ? semesterEndnoteAutoForStudent(cls, semester, studentId) : v;
+    }
+    const v = gradeStrToValue(override);
+    return v === null ? semesterEndnoteAutoForStudent(cls, semester, studentId) : v;
+  }
+  return semesterEndnoteAutoForStudent(cls, semester, studentId);
+}
+function catWeightSum(group){ return group.categories.reduce((s,c)=>s+(c.weight||0),0); }
+function groupWeightSum(semester){ return semester.groups.reduce((s,g)=>s+(g.weight||0),0); }
+
+// ---------- migration ----------
+function defaultOralCategories(){
+  return [
+    {id: uid(), name: 'SoMi 1', weight: 50, mode: 'grade', containerOnly: true, children: [], entries: {}},
+    {id: uid(), name: 'SoMi 2', weight: 50, mode: 'grade', containerOnly: true, children: [], entries: {}},
+  ];
+}
+function defaultGroups(){
+  return [
+    {id: uid(), name: 'Mündlich', color: GROUP_COLORS[0], weight: 50, locked: true, categories: defaultOralCategories()},
+    {id: uid(), name: 'Schriftlich', color: GROUP_COLORS[1], weight: 50, locked: true, categories: []},
+  ];
+}
+function ensureDefaultGroups(sem){
+  const names = sem.groups.map(g => (g.name||'').trim().toLowerCase());
+  const toAdd = [];
+  if(!names.includes('mündlich')) toAdd.push({id: uid(), name: 'Mündlich', color: GROUP_COLORS[0], weight: 50, locked: true, categories: defaultOralCategories()});
+  if(!names.includes('schriftlich')) toAdd.push({id: uid(), name: 'Schriftlich', color: GROUP_COLORS[1], weight: 50, locked: true, categories: []});
+  sem.groups = [...toAdd, ...sem.groups];
+}
+function ensureSemesterShape(sem, cls){
+  function fixCat(c){
+    if(!c.entries) c.entries = {};
+    Object.keys(c.entries).forEach(sid => {
+      if(Array.isArray(c.entries[sid])){
+        c.entries[sid] = c.entries[sid].length ? c.entries[sid][c.entries[sid].length-1] : undefined;
+        if(c.entries[sid] === undefined) delete c.entries[sid];
+      }
+    });
+    if(c.containerOnly === undefined && ['somi 1','somi 2'].includes((c.name||'').trim().toLowerCase())){
+      c.containerOnly = true;
+      if(!c.children) c.children = [];
+    }
+    if(c.children) c.children.forEach(fixCat);
+  }
+  sem.groups.forEach(g => {
+    if(g.weight === undefined) g.weight = Math.round(100/Math.max(sem.groups.length,1));
+    g.categories.forEach(fixCat);
+  });
+  if(!sem.studentIds) sem.studentIds = cls.students.map(s=>s.id);
+  if(!sem.endnoteOverrides) sem.endnoteOverrides = {};
+  ensureDefaultGroups(sem);
+}
+function migrateClass(cls){
+  if(!cls.gradingSystem) cls.gradingSystem = 'noten';
+  if(!cls.gradeTableNoten) cls.gradeTableNoten = NOTEN_TABLE.map(r=>({...r}));
+  if(typeof cls.gradeTableNoten[0].note === 'number') cls.gradeTableNoten = NOTEN_TABLE.map(r=>({...r}));
+  if(!cls.gradeTablePunkte) cls.gradeTablePunkte = PUNKTE_TABLE.map(r=>({...r}));
+  delete cls.gradeTable;
+  if(cls.semesters){
+    cls.semesters.forEach(sem => {
+      if(sem.name === '1. Halbjahr') sem.name = '1. HJ';
+      if(sem.name === '2. Halbjahr') sem.name = '2. HJ';
+      ensureSemesterShape(sem, cls);
+    });
+    if(!cls.activeSemesterId) cls.activeSemesterId = cls.semesters[0].id;
+    return;
+  }
+  let legacyGroups = cls.groups || [];
+  if((!legacyGroups.length) && (Array.isArray(cls.exams) && cls.exams.length)){
+    const w = Math.round(100/Math.max(cls.exams.length,1));
+    const cats = cls.exams.map(ex => {
+      const entries = {};
+      Object.keys(ex.scores||{}).forEach(sid => {
+        if(ex.scores[sid]!=='' && ex.scores[sid]!=null) entries[sid] = {points: ex.scores[sid], maxPoints: 100};
+      });
+      return {id: uid(), name: ex.title, weight: w, mode: 'points', maxPoints: 100, date: ex.date||'', entries};
+    });
+    legacyGroups.push({id: uid(), name: 'Klausuren', color: GROUP_COLORS[0], weight: 50, categories: cats});
+  }
+  if(Array.isArray(cls.oralCategories) && cls.oralCategories.length){
+    const w = Math.round(100/Math.max(cls.oralCategories.length,1));
+    const cats = cls.oralCategories.map(oc => {
+      const entries = {};
+      Object.keys(cls.oralScores||{}).forEach(sid => {
+        const val = cls.oralScores[sid][oc.id];
+        if(val !== undefined && val !== '') entries[sid] = {grade: String(val)};
+      });
+      return {id: uid(), name: oc.name, weight: w, mode: 'grade', entries};
+    });
+    legacyGroups.push({id: uid(), name: 'Mündlich', color: GROUP_COLORS[1], weight: 50, categories: cats});
+  }
+  legacyGroups.forEach(g => { if(g.weight===undefined) g.weight = Math.round(100/Math.max(legacyGroups.length,1)); });
+  const sem1 = {id: uid(), name: '1. HJ', groups: legacyGroups, studentIds: cls.students.map(s=>s.id)};
+  const sem2 = {id: uid(), name: '2. HJ', groups: [], studentIds: cls.students.map(s=>s.id)};
+  ensureDefaultGroups(sem1); ensureDefaultGroups(sem2);
+  cls.semesters = [sem1, sem2];
+  cls.activeSemesterId = sem1.id;
+  delete cls.exams; delete cls.oralCategories; delete cls.oralScores; delete cls.oralGrades; delete cls.groups;
+}
+
+async function loadState(){
+  try{
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if(raw){
+      const parsed = JSON.parse(raw);
+      state.classes = parsed.classes || [];
+      state.classes.forEach(migrateClass);
+      if(parsed.activeClassId && state.classes.some(c=>c.id===parsed.activeClassId)){
+        state.activeClassId = parsed.activeClassId;
+      }
+      if(parsed.schoolYear) state.schoolYear = parsed.schoolYear;
+    }
+  }catch(e){ state.classes = []; }
+  if(state.schoolYear === undefined) state.schoolYear = '';
+  if(state.classes.length && !state.activeClassId) state.activeClassId = state.classes[0].id;
+  setStatus('Zuletzt gespeichert: ' + new Date().toLocaleTimeString('de-DE'));
+}
+let saveTimer = null;
+function saveState(){
+  clearTimeout(saveTimer);
+  saveTimer = setTimeout(() => {
+    try{
+      localStorage.setItem(STORAGE_KEY, JSON.stringify({classes: state.classes, activeClassId: state.activeClassId, schoolYear: state.schoolYear}));
+      setStatus('Gespeichert · ' + new Date().toLocaleTimeString('de-DE'));
+    }catch(e){ setStatus('Speichern fehlgeschlagen – Speicher evtl. voll.', true); }
+  }, 250);
+}
+function exportBackup(){
+  try{
+    const data = JSON.stringify({classes: state.classes, exportedAt: new Date().toISOString()}, null, 2);
+    const blob = new Blob([data], {type: 'application/json'});
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    const stamp = new Date().toISOString().slice(0,10);
+    a.href = url; a.download = `notenbuch-backup-${stamp}.json`;
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    setStatus('Backup exportiert · ' + new Date().toLocaleTimeString('de-DE'));
+  }catch(e){ setStatus('Export fehlgeschlagen.', true); }
+}
+function importBackup(file){
+  const reader = new FileReader();
+  reader.onload = async () => {
+    try{
+      const parsed = JSON.parse(reader.result);
+      if(!Array.isArray(parsed.classes)) throw new Error('Ungültiges Format');
+      const ok = await showConfirm('Backup importieren?', `${parsed.classes.length} Lerngruppe(n) ersetzen die aktuellen Daten in diesem Browser.`, {confirmLabel:'Importieren', danger:true});
+      if(!ok) return;
+      state.classes = parsed.classes;
+      state.classes.forEach(migrateClass);
+      state.activeClassId = state.classes.length ? state.classes[0].id : null;
+      saveState(); render();
+      setStatus('Backup importiert · ' + new Date().toLocaleTimeString('de-DE'));
+    }catch(e){ await showAlert('Import fehlgeschlagen', 'Diese Datei konnte nicht gelesen werden. Ist es eine Notenbuch-Backup-Datei?'); }
+  };
+  reader.readAsText(file);
+}
+
+// ---------- CSV-Import (Name, Vorname, Klasse) ----------
+function parseCSV(text){
+  const lines = text.split(/\r\n|\n|\r/).filter(l => l.trim() !== '');
+  if(!lines.length) return {header: [], rows: []};
+  const delim = (lines[0].match(/;/g)||[]).length >= (lines[0].match(/,/g)||[]).length ? ';' : ',';
+  function splitLine(line){
+    const result = [];
+    let cur = '', inQuotes = false;
+    for(let i=0; i<line.length; i++){
+      const ch = line[i];
+      if(ch === '"'){
+        if(inQuotes && line[i+1] === '"'){ cur += '"'; i++; }
+        else inQuotes = !inQuotes;
+      } else if(ch === delim && !inQuotes){
+        result.push(cur); cur = '';
+      } else cur += ch;
+    }
+    result.push(cur);
+    return result.map(s => s.trim());
+  }
+  const header = splitLine(lines[0]).map(h => h.toLowerCase());
+  const rows = lines.slice(1).map(splitLine);
+  return {header, rows};
+}
+async function importCSV(file){
+  const text = await file.text();
+  const {rows} = parseCSV(text);
+  const klasseName = (file.name || 'Import').replace(/\.csv$/i, '').trim() || 'Import';
+  if(!rows.length){
+    await showAlert('CSV leer', 'Es wurden keine Datenzeilen gefunden (die erste Zeile wird als Überschrift ignoriert).');
+    return;
+  }
+
+  let targetCls = state.classes.find(c => c.name.trim().toLowerCase() === klasseName.toLowerCase());
+  const isNewClass = !targetCls;
+
+  const ok = await showConfirm('CSV importieren?',
+    `${rows.length} Schüler werden in die Lerngruppe "${klasseName}" importiert` +
+    (isNewClass ? ' (wird neu angelegt).' : ' (bereits vorhanden – Schüler werden ergänzt).'),
+    {confirmLabel:'Importieren'});
+  if(!ok) return;
+
+  if(isNewClass){
+    const sem1 = {id: uid(), name: '1. HJ', groups: defaultGroups(), studentIds: []};
+    const sem2 = {id: uid(), name: '2. HJ', groups: defaultGroups(), studentIds: []};
+    targetCls = {id: uid(), name: klasseName, students: [], semesters: [sem1, sem2], activeSemesterId: sem1.id,
+      gradingSystem: 'noten', gradeTableNoten: NOTEN_TABLE.map(r=>({...r})), gradeTablePunkte: PUNKTE_TABLE.map(r=>({...r}))};
+    state.classes.push(targetCls);
+  }
+
+  let addedCount = 0, skipped = 0;
+  rows.forEach(row => {
+    const nachname = (row[0] || '').trim();
+    const vorname = (row[1] || '').trim();
+    if(!nachname && !vorname) return;
+    const fullName = vorname ? `${nachname}, ${vorname}` : nachname;
+    const exists = targetCls.students.some(s => s.name.trim().toLowerCase() === fullName.toLowerCase());
+    if(exists){ skipped++; return; }
+    const student = {id: uid(), name: fullName};
+    targetCls.students.push(student);
+    targetCls.semesters.forEach(sm => { if(!sm.studentIds) sm.studentIds = []; sm.studentIds.push(student.id); });
+    addedCount++;
+  });
+
+  state.activeClassId = targetCls.id;
+  saveState(); render();
+  await showAlert('CSV importiert',
+    `${addedCount} Schüler zu "${klasseName}" hinzugefügt` +
+    (skipped ? `, ${skipped} bereits vorhanden übersprungen` : '') + '.'
+  );
+}
+
+// ---------- WebDAV (z.B. IServ, nur im Intranet erreichbar) ----------
+const WEBDAV_KEY = 'notenbuch-webdav-config';
+function loadWebdavConfig(){
+  try{
+    const raw = localStorage.getItem(WEBDAV_KEY);
+    return raw ? JSON.parse(raw) : {url:'', username:'', password:''};
+  }catch(e){ return {url:'', username:'', password:''}; }
+}
+function saveWebdavConfig(cfg){
+  try{ localStorage.setItem(WEBDAV_KEY, JSON.stringify(cfg)); }catch(e){}
+}
+function webdavAuthHeader(cfg){
+  return 'Basic ' + btoa(unescape(encodeURIComponent(cfg.username + ':' + cfg.password)));
+}
+async function webdavUpload(){
+  const cfg = loadWebdavConfig();
+  if(!cfg.url){ await showAlert('WebDAV nicht eingerichtet', 'Bitte zuerst Server-Adresse, Benutzername und Passwort eintragen.'); return; }
+  const el = document.getElementById('webdavStatus');
+  if(el) el.textContent = 'Sende…';
+  try{
+    const data = JSON.stringify({classes: state.classes, exportedAt: new Date().toISOString()}, null, 2);
+    const res = await fetch(cfg.url, {
+      method: 'PUT',
+      headers: { 'Authorization': webdavAuthHeader(cfg), 'Content-Type': 'application/json' },
+      body: data
+    });
+    if(res.ok || res.status === 201 || res.status === 204){
+      if(el) el.textContent = 'Erfolgreich hochgeladen · ' + new Date().toLocaleTimeString('de-DE');
+    } else {
+      if(el) el.textContent = `Fehler beim Hochladen (Status ${res.status}). Zugangsdaten und Pfad prüfen.`;
+    }
+  }catch(e){
+    if(el) el.textContent = 'Verbindung fehlgeschlagen – vermutlich nicht im Intranet, falsche Adresse, oder der Server blockiert Anfragen von dieser App (CORS).';
+  }
+}
+async function webdavDownload(){
+  const cfg = loadWebdavConfig();
+  if(!cfg.url){ await showAlert('WebDAV nicht eingerichtet', 'Bitte zuerst Server-Adresse, Benutzername und Passwort eintragen.'); return; }
+  const el = document.getElementById('webdavStatus');
+  if(el) el.textContent = 'Lade…';
+  try{
+    const res = await fetch(cfg.url, { method: 'GET', headers: { 'Authorization': webdavAuthHeader(cfg) } });
+    if(!res.ok) throw new Error('Status ' + res.status);
+    const parsed = await res.json();
+    if(!Array.isArray(parsed.classes)) throw new Error('Ungültiges Format');
+    const ok = await showConfirm('Von WebDAV laden?', `${parsed.classes.length} Lerngruppe(n) ersetzen die aktuellen Daten in diesem Browser.`, {confirmLabel:'Laden', danger:true});
+    if(!ok){ if(el) el.textContent = ''; return; }
+    state.classes = parsed.classes;
+    state.classes.forEach(migrateClass);
+    state.activeClassId = state.classes.length ? state.classes[0].id : null;
+    saveState(); render();
+    if(el) el.textContent = 'Erfolgreich geladen · ' + new Date().toLocaleTimeString('de-DE');
+  }catch(e){
+    if(el) el.textContent = 'Laden fehlgeschlagen – vermutlich nicht im Intranet, falsche Adresse/Zugangsdaten, keine Datei am Ziel, oder CORS-Blockade.';
+  }
+}
+function renderWebdavPanel(){
+  const panel = document.getElementById('webdavPanel');
+  if(!state.webdavOpen){ panel.innerHTML = ''; return; }
+  const cfg = loadWebdavConfig();
+  panel.innerHTML = `
+    <div class="panel">
+      <div class="form-title">WebDAV-Speicherort (z.B. IServ, nur im Schulnetz erreichbar)</div>
+      <div class="stack" style="display:flex;flex-direction:column;gap:8px;">
+        <input type="text" id="webdavUrl" placeholder="https://meine-schule.iserv.de/iserv/webdav/Notenbuch/backup.json" value="${escapeHtml(cfg.url)}">
+        <input type="text" id="webdavUser" placeholder="Benutzername" value="${escapeHtml(cfg.username)}">
+        <input type="password" id="webdavPass" placeholder="Passwort" value="${escapeHtml(cfg.password)}">
+        <div class="row">
+          <button class="ghost small" id="webdavSaveCfg">Zugangsdaten speichern</button>
+          <button class="small" id="webdavUploadBtn">Jetzt hochladen</button>
+          <button class="ghost small" id="webdavDownloadBtn">Jetzt laden</button>
+        </div>
+        <div class="hint" id="webdavStatus"></div>
+        <div class="hint">Die Datei muss am Zielpfad bereits existieren dürfen (je nach Server) oder per PUT neu angelegt werden können. Zugangsdaten liegen unverschlüsselt im Browser-Speicher dieses Geräts – nur auf vertrauenswürdigen Geräten nutzen. Diese Funktion funktioniert nur, wenn der WebDAV-Server Anfragen von dieser App zulässt (CORS) und du dich im selben Netzwerk befindest.</div>
+      </div>
+    </div>
+  `;
+  document.getElementById('webdavSaveCfg').onclick = () => {
+    const newCfg = {
+      url: document.getElementById('webdavUrl').value.trim(),
+      username: document.getElementById('webdavUser').value.trim(),
+      password: document.getElementById('webdavPass').value
+    };
+    saveWebdavConfig(newCfg);
+    document.getElementById('webdavStatus').textContent = 'Zugangsdaten gespeichert.';
+  };
+  document.getElementById('webdavUploadBtn').onclick = webdavUpload;
+  document.getElementById('webdavDownloadBtn').onclick = webdavDownload;
+}
+function getActiveClass(){ return state.classes.find(c => c.id === state.activeClassId) || null; }
+function getActiveSemester(cls){ return cls.semesters.find(s=>s.id===cls.activeSemesterId) || cls.semesters[0]; }
+function escapeHtml(str){ return String(str).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+
+// ---------- custom dialog engine (replaces native prompt/confirm/alert) ----------
+function showDialog(opts){
+  const { title, message='', type='alert', defaultValue='', placeholder='', inputType='text',
+          options=[], confirmLabel='OK', cancelLabel='Abbrechen', danger=false } = opts;
+  return new Promise((resolve) => {
+    const root = document.getElementById('modalRoot');
+    let body = '';
+    if(message) body += `<div class="sub">${escapeHtml(message)}</div>`;
+    if(type === 'prompt'){
+      body += `<div style="margin-top:12px;"><input type="${inputType}" id="dlgInput" style="width:100%;" value="${escapeHtml(String(defaultValue))}" placeholder="${escapeHtml(placeholder)}"></div>`;
+    }
+    if(type === 'choice'){
+      body += `<div class="dlg-choices">${options.map((o,i) => `<button type="button" class="dlg-choice-btn" data-choice-idx="${i}">${escapeHtml(o.label)}</button>`).join('')}</div>`;
+    }
+    let footer = '';
+    if(type === 'alert') footer = `<div class="row" style="margin-top:16px;justify-content:flex-end;"><button id="dlgOk">${escapeHtml(confirmLabel)}</button></div>`;
+    else if(type === 'confirm') footer = `<div class="row" style="margin-top:16px;justify-content:flex-end;gap:8px;"><button class="ghost" id="dlgCancel">${escapeHtml(cancelLabel)}</button><button class="${danger?'pen':''}" id="dlgOk">${escapeHtml(confirmLabel)}</button></div>`;
+    else if(type === 'prompt') footer = `<div class="row" style="margin-top:16px;justify-content:flex-end;gap:8px;"><button class="ghost" id="dlgCancel">${escapeHtml(cancelLabel)}</button><button id="dlgOk">${escapeHtml(confirmLabel)}</button></div>`;
+    else if(type === 'choice') footer = `<div class="row" style="margin-top:14px;"><button class="ghost small" id="dlgCancel">${escapeHtml(cancelLabel)}</button></div>`;
+
+    root.innerHTML = `<div class="overlay" id="dlgOverlay"><div class="modal"><h3>${escapeHtml(title)}</h3>${body}${footer}</div></div>`;
+    const finish = (val) => { root.innerHTML = ''; resolve(val); };
+    document.getElementById('dlgOverlay').addEventListener('click', (e) => { if(e.target.id==='dlgOverlay') finish(type==='confirm'?false:null); });
+    const cancelBtn = document.getElementById('dlgCancel');
+    if(cancelBtn) cancelBtn.onclick = () => finish(type==='confirm'?false:null);
+    const okBtn = document.getElementById('dlgOk');
+    if(okBtn) okBtn.onclick = () => {
+      if(type === 'prompt') finish(document.getElementById('dlgInput').value);
+      else if(type === 'confirm') finish(true);
+      else finish(true);
+    };
+    if(type === 'prompt'){
+      const inp = document.getElementById('dlgInput');
+      setTimeout(() => { inp.focus(); inp.select(); }, 30);
+      inp.addEventListener('keydown', (e) => { if(e.key==='Enter') okBtn.click(); });
+    }
+    if(type === 'choice'){
+      root.querySelectorAll('[data-choice-idx]').forEach(btn => {
+        btn.onclick = () => finish(options[+btn.dataset.choiceIdx].value);
+      });
+    }
+  });
+}
+function showAlert(title, message){ return showDialog({title, message, type:'alert'}); }
+function showConfirm(title, message, opts={}){ return showDialog({title, message, type:'confirm', ...opts}); }
+function showPrompt(title, message, defaultValue='', opts={}){ return showDialog({title, message, type:'prompt', defaultValue, ...opts}); }
+function showChoice(title, message, options){ return showDialog({title, message, type:'choice', options}); }
+
+function formatDate(iso){
+  if(!iso) return '';
+  const parts = String(iso).split('-');
+  if(parts.length !== 3) return iso;
+  return `${parts[2]}.${parts[1]}.${parts[0]}`;
+}
+
+// ---------- rendering ----------
+function renderAddLerngruppeModal(){
+  const root = document.getElementById('modalRoot');
+  root.innerHTML = `
+    <div class="overlay" id="overlay">
+      <div class="modal">
+        <div class="modal-close"><button class="ghost small" id="closeAddModal">Abbrechen</button></div>
+        <h3>Lerngruppe hinzufügen</h3>
+        <div class="sub">Name eingeben oder per CSV importieren</div>
+        <div style="margin-top:14px;">
+          <input type="text" id="newLerngruppeName" placeholder="Name, z.B. 9b" style="width:100%;">
+          <div class="row" style="margin-top:10px;justify-content:flex-end;">
+            <button id="createLerngruppeBtn">Anlegen</button>
+          </div>
+        </div>
+        <div class="divider" style="height:1px;background:var(--line);margin:16px 0;"></div>
+        <div class="form-title">Oder per CSV importieren</div>
+        <div class="hint">Spalten Nachname, Vorname (erste Zeile wird als Überschrift ignoriert). Der Dateiname ohne ".csv" wird zum Namen der Lerngruppe.</div>
+        <div class="row" style="margin-top:8px;">
+          <button class="ghost small" id="csvFromAddModalBtn">CSV-Datei wählen</button>
+        </div>
+      </div>
+    </div>
+  `;
+  document.getElementById('overlay').addEventListener('click', (e) => { if(e.target.id==='overlay') root.innerHTML=''; });
+  document.getElementById('closeAddModal').onclick = () => { root.innerHTML=''; };
+  const nameInput = document.getElementById('newLerngruppeName');
+  setTimeout(() => { nameInput.focus(); }, 30);
+  const doCreate = () => {
+    const name = nameInput.value.trim();
+    if(!name) return;
+    const sem1 = {id: uid(), name: '1. HJ', groups: defaultGroups(), studentIds: []};
+    const sem2 = {id: uid(), name: '2. HJ', groups: defaultGroups(), studentIds: []};
+    const cls = {id: uid(), name, students: [], semesters: [sem1, sem2], activeSemesterId: sem1.id,
+      gradingSystem: 'noten', gradeTableNoten: NOTEN_TABLE.map(r=>({...r})), gradeTablePunkte: PUNKTE_TABLE.map(r=>({...r}))};
+    state.classes.push(cls); state.activeClassId = cls.id;
+    saveState();
+    root.innerHTML = '';
+    render();
+  };
+  document.getElementById('createLerngruppeBtn').onclick = doCreate;
+  nameInput.addEventListener('keydown', (e) => { if(e.key==='Enter') doCreate(); });
+  document.getElementById('csvFromAddModalBtn').onclick = () => {
+    root.innerHTML = '';
+    document.getElementById('csvImportFile').click();
+  };
+}
+function renderClassRow(){
+  const row = document.getElementById('classRow');
+  row.innerHTML = state.classes.map(c => `
+    <button class="sem-tab ${c.id===state.activeClassId?'active':''}" data-class="${c.id}">${escapeHtml(c.name)}</button>
+  `).join('') + `<button class="icon-add-btn labeled" id="addClassIconBtn" title="Lerngruppe hinzufügen"><span>Lerngruppe hinzufügen</span> +</button>` +
+    (state.classes.length ? `<button class="ghost small" id="renameClassBtn">✎</button><button class="ghost small" id="deleteClassBtn">✕</button>` : '');
+  row.querySelectorAll('[data-class]').forEach(btn=>{
+    btn.onclick = () => { state.activeClassId = btn.dataset.class; saveState(); render(); };
+  });
+  document.getElementById('addClassIconBtn').onclick = () => { renderAddLerngruppeModal(); };
+  const renameBtn = document.getElementById('renameClassBtn');
+  if(renameBtn){
+    renameBtn.onclick = async () => {
+      const cls = getActiveClass(); if(!cls) return;
+      const name = await showPrompt('Lerngruppe umbenennen', '', cls.name, {confirmLabel:'Speichern'});
+      if(name && name.trim()){ cls.name = name.trim(); saveState(); render(); }
+    };
+  }
+  const deleteBtn = document.getElementById('deleteClassBtn');
+  if(deleteBtn){
+    deleteBtn.onclick = async () => {
+      const cls = getActiveClass(); if(!cls) return;
+      const ok = await showConfirm('Lerngruppe löschen', `"${cls.name}" wirklich löschen? Alle Daten dieser Lerngruppe gehen verloren.`, {confirmLabel:'Löschen', danger:true});
+      if(!ok) return;
+      state.classes = state.classes.filter(c=>c.id!==cls.id);
+      state.activeClassId = state.classes.length ? state.classes[0].id : null;
+      saveState(); render();
+    };
+  }
+}
+function renderSemRow(cls){
+  const row = document.getElementById('semRow');
+  if(!cls){ row.innerHTML=''; return; }
+  row.innerHTML = cls.semesters.map(s => `
+    <button class="sem-tab ${(!state.compareView && s.id===cls.activeSemesterId)?'active':''}" data-sem="${s.id}">${escapeHtml(s.name)}</button>
+  `).join('') + `<button class="sem-tab ${state.compareView?'active':''}" id="compareTab" title="Beide Halbjahre nebeneinander">1|2</button>
+    <button class="ghost small" id="renameSemBtn">✎</button>`;
+  row.querySelectorAll('[data-sem]').forEach(btn=>{
+    btn.onclick = () => { cls.activeSemesterId = btn.dataset.sem; state.compareView = false; saveState(); render(); };
+  });
+  document.getElementById('compareTab').onclick = () => { state.compareView = true; render(); };
+  document.getElementById('renameSemBtn').onclick = async () => {
+    const sem = getActiveSemester(cls);
+    const name = await showPrompt('Halbjahr umbenennen', '', sem.name, {confirmLabel:'Speichern'});
+    if(name && name.trim()){ sem.name = name.trim(); saveState(); render(); }
+  };
+}
+function render(){
+  renderClassRow();
+  const cls = getActiveClass();
+  renderSemRow(cls);
+  const main = document.getElementById('main');
+  const prevWraps = Array.from(main.querySelectorAll('.grid-wrap'));
+  const prevScrolls = prevWraps.map(w => w.scrollLeft);
+  document.getElementById('addGroupBtn').disabled = !cls;
+  document.getElementById('toggleScaleBtn').disabled = !cls;
+  document.getElementById('positionModeBtn').disabled = !cls;
+  document.getElementById('positionModeBtn').classList.toggle('active-toggle', state.positionMode);
+  document.getElementById('incognitoBtn').disabled = !cls;
+  document.getElementById('incognitoBtn').classList.toggle('active-toggle', state.incognito);
+  document.getElementById('copyStructureBtn').disabled = !cls || cls.semesters.length < 2;
+  const warn = document.getElementById('weightWarn');
+  if(cls){
+    const sem = getActiveSemester(cls);
+    const gw = groupWeightSum(sem);
+    const catIssues = sem.groups.filter(g => g.categories.length && catWeightSum(g) !== 100);
+    let msgs = [];
+    if(sem.groups.length && gw !== 100) msgs.push(`Gruppen: ${gw}%`);
+    catIssues.forEach(g => msgs.push(`${g.name}: ${catWeightSum(g)}%`));
+    warn.textContent = msgs.length ? 'Gewichtung ≠ 100% — ' + msgs.join(' · ') : '';
+  } else warn.textContent = '';
+  if(!cls){ main.innerHTML = `<div class="empty">Lege oben eine Lerngruppe an, um loszulegen.</div>`; document.getElementById('scalePanel').innerHTML=''; return; }
+  if(state.compareView && cls.semesters.length >= 2){
+    renderCompareGrid(main, cls);
+  } else {
+    renderGrid(main, cls, getActiveSemester(cls));
+  }
+  renderScalePanel(cls);
+  const newWraps = Array.from(main.querySelectorAll('.grid-wrap'));
+  newWraps.forEach((w,i) => { if(prevScrolls[i] !== undefined) w.scrollLeft = prevScrolls[i]; });
+}
+
+function renderCompareGrid(main, cls){
+  main.innerHTML = `<div class="compare-wrap">
+    ${cls.semesters.map(sem => `
+      <div class="compare-col">
+        <h3>${escapeHtml(sem.name)}</h3>
+        <div id="cmp-${sem.id}"></div>
+      </div>
+    `).join('')}
+  </div>`;
+  cls.semesters.forEach(sem => {
+    renderGrid(document.getElementById('cmp-' + sem.id), cls, sem);
+  });
+}
+
+function findCategoryContext(sem, groupId, catId){
+  const g = sem.groups.find(x=>x.id===groupId);
+  if(!g) return null;
+  function search(list, parentCat){
+    for(const c of list){
+      if(c.id === catId) return {group:g, cat:c, parentCat, list};
+      if(c.children && c.children.length){
+        const found = search(c.children, c);
+        if(found) return found;
+      }
+    }
+    return null;
+  }
+  return search(g.categories, null);
+}
+function getSemesterStudents(cls, sem){
+  if(!sem.studentIds) return cls.students.slice();
+  return cls.students.filter(s => sem.studentIds.includes(s.id));
+}
+function catWidth(cat){
+  return (cat.children && cat.children.length) ? cat.children.reduce((s,c)=>s+catWidth(c),0) + 1 : 1;
+}
+function catDepth(cat){
+  return (cat.children && cat.children.length) ? 1 + Math.max(...cat.children.map(catDepth)) : 1;
+}
+function maxCatDepth(groups){
+  let d = 1;
+  groups.forEach(g => g.categories.forEach(c => { d = Math.max(d, catDepth(c)); }));
+  return d;
+}
+
+function renderGrid(main, cls, sem){
+  sem = sem || getActiveSemester(cls);
+  const groups = sem.groups;
+  const maxDepth = maxCatDepth(groups);
+  const topRowspan = maxDepth + 1;
+
+  let groupHeadRow = `<tr><th class="name-col" rowspan="${topRowspan}">Schüler</th><th class="endnote-col" rowspan="${topRowspan}"><div class="endnote-head">Endnote<br><span class="weight">${sem.name}</span></div></th>`;
+  groups.forEach(g => {
+    const span = g.categories.reduce((s,c)=>s+catWidth(c), 0) + 1;
+    groupHeadRow += `<th class="grp-head" colspan="${span}" style="background:${colorForGroupName(g.name)};">
+      <div class="grp-inner">
+        ${state.positionMode ? `<button class="colx" data-move-group="${g.id}" data-dir="-1">‹</button>` : ''}
+        <span data-rename-group="${g.id}" style="cursor:pointer;">${escapeHtml(g.name)} <span style="font-weight:400;opacity:0.85;">${g.weight}%</span></span>
+        <button class="colx" data-add-cat="${g.id}">+</button>
+        ${g.locked ? '' : `<button class="colx danger" data-del-group="${g.id}">✕</button>`}
+        ${state.positionMode ? `<button class="colx" data-move-group="${g.id}" data-dir="1">›</button>` : ''}
+      </div>
+    </th>`;
+  });
+  groupHeadRow += `</tr>`;
+
+  function catHeaderCell(cat, g, colspan, rowspan){
+    return `<th class="cat-head" ${rowspan>1?`rowspan="${rowspan}"`:''} colspan="${colspan}">
+      <div class="colhead">
+        <span data-edit-cat="${cat.id}" data-group="${g.id}">${escapeHtml(cat.name)}</span>
+        <span class="weight">${cat.weight}%${isContainerCat(cat) ? '' : ' · '+(cat.mode==='points'?'Punkte':'Note')}</span>
+        ${(cat.date && !isContainerCat(cat)) ? `<span class="weight">${formatDate(cat.date)}</span>` : ''}
+        <div class="row" style="gap:2px;">
+          ${state.positionMode ? `<button class="colx dark" data-move-cat="${cat.id}" data-group="${g.id}" data-dir="-1">‹</button>` : ''}
+          <button class="colx dark" data-add-near-cat="${cat.id}" data-group="${g.id}">+</button>
+          <button class="colx dark" data-del-cat="${cat.id}" data-group="${g.id}">✕</button>
+          ${state.positionMode ? `<button class="colx dark" data-move-cat="${cat.id}" data-group="${g.id}" data-dir="1">›</button>` : ''}
+        </div>
+      </div>
+    </th>`;
+  }
+  // Build one row-string per depth level (0..maxDepth-1) for a category subtree, recursively.
+  function buildCatRows(cat, g, depth){
+    const rowsNeeded = maxDepth - depth;
+    const rows = new Array(rowsNeeded).fill('');
+    const hasKids = cat.children && cat.children.length;
+    rows[0] = catHeaderCell(cat, g, catWidth(cat), hasKids ? 1 : rowsNeeded);
+    if(hasKids){
+      const gesamtCell = `<th class="cat-head total-head">Gesamt ${escapeHtml(cat.name)}</th>`;
+      const childRowSets = cat.children.map(child => buildCatRows(child, g, depth+1));
+      for(let r=0; r<rowsNeeded-1; r++){
+        let content = (r===0 ? gesamtCell : '');
+        childRowSets.forEach(set => { content += set[r] || ''; });
+        rows[r+1] = content;
+      }
+    }
+    return rows;
+  }
+
+  const catRowStrings = new Array(maxDepth).fill('');
+  groups.forEach(g => {
+    const groupRowSets = [`<th class="cat-head total-head" ${maxDepth>1?`rowspan="${maxDepth}"`:''}>Gesamt ${escapeHtml(g.name)}</th>`];
+    for(let r=0; r<maxDepth; r++){
+      catRowStrings[r] += (r===0 ? groupRowSets[0] : '');
+    }
+    g.categories.forEach(cat => {
+      const rowSet = buildCatRows(cat, g, 0);
+      for(let r=0; r<maxDepth; r++){ catRowStrings[r] += rowSet[r] || ''; }
+    });
+  });
+  const catHeaderRows = catRowStrings.map(r => `<tr>${r}</tr>`).join('');
+
+  let body = '';
+  const colCount = 2 + groups.reduce((s,g)=>s+g.categories.reduce((s2,c)=>s2+catWidth(c),0)+1,0);
+  const term = state.searchTerm.trim().toLowerCase();
+  const semStudents = getSemesterStudents(cls, sem);
+  let visibleStudents = term ? semStudents.filter(s=>s.name.toLowerCase().includes(term)) : semStudents;
+  if(state.incognito){
+    visibleStudents = state.selectedStudentId ? visibleStudents.filter(s=>s.id===state.selectedStudentId) : [];
+  }
+  if(!semStudents.length){
+    body = `<tr><td class="name-col" colspan="${colCount}" style="color:var(--ink-soft);text-align:left;">Noch keine Schüler in ${escapeHtml(sem.name)} – unten hinzufügen.</td></tr>`;
+  } else if(state.incognito && !state.selectedStudentId){
+    body = `<tr><td class="name-col" colspan="${colCount}" style="color:var(--ink-soft);text-align:left;">Inkognito aktiv – erst einen Schülernamen antippen, um dessen Daten allein zu zeigen.</td></tr>`;
+  } else if(!visibleStudents.length){
+    body = `<tr><td class="name-col" colspan="${colCount}" style="color:var(--ink-soft);text-align:left;">Keine Treffer für "${escapeHtml(state.searchTerm)}".</td></tr>`;
+  } else {
+    function overrideMark(cat, g, s){
+      const ov = cat.overrides && cat.overrides[s.id];
+      return (ov !== undefined && ov !== null && ov !== '') ? `<button class="reset-arrow" data-reset-cat="${cat.id}" data-group="${g.id}" data-student="${s.id}" title="Automatische Berechnung wiederherstellen">🧮</button>` : '';
+    }
+    function catCell(cat, g, s){
+      const hasKids = cat.children && cat.children.length;
+      const a = categoryAvgForStudent(cls, cat, s.id);
+      if(hasKids){
+        let html = `<td class="total-col"><div class="cell-stack" data-open-entries data-cat="${cat.id}" data-group="${g.id}" data-student="${s.id}">${notePill(cls, a)}${overrideMark(cat, g, s)}</div></td>`;
+        cat.children.forEach(child => { html += catCell(child, g, s); });
+        return html;
+      }
+      let subLabel;
+      if(cat.mode === 'points' && !isContainerCat(cat)){
+        const entry = cat.entries[s.id];
+        if(entry) subLabel = `${entry.points ?? '?'}/${entry.maxPoints ?? '?'}`;
+      }
+      return `<td><div class="cell-stack" data-open-entries data-cat="${cat.id}" data-group="${g.id}" data-student="${s.id}">${notePill(cls, a, subLabel)}${overrideMark(cat, g, s)}</div></td>`;
+    }
+    visibleStudents.forEach(s => {
+      const end = semesterEndnoteForStudent(cls, sem, s.id);
+      const overridden = sem.endnoteOverrides && sem.endnoteOverrides[s.id] !== undefined && sem.endnoteOverrides[s.id] !== '';
+      const isSelected = state.selectedStudentId === s.id;
+      let row = `<tr class="${isSelected?'student-selected':''}"><td class="name-col"><div class="name-cell-row"><span data-select-student="${s.id}" style="cursor:pointer;">${escapeHtml(s.name)}</span><button class="colx dark" data-del-student="${s.id}" title="Aus ${escapeHtml(sem.name)} entfernen">✕</button></div></td>`;
+      row += `<td class="endnote-col"><div class="cell-stack" data-open-endnote="${s.id}">${notePill(cls, end)}${overridden ? `<button class="reset-arrow" data-reset-endnote="${s.id}" title="Automatische Berechnung wiederherstellen">🧮</button>` : ''}</div></td>`;
+      groups.forEach(g => {
+        const gt = groupGesamtForStudent(cls, g, s.id);
+        const gOv = g.overrides && g.overrides[s.id];
+        const gOverridden = gOv !== undefined && gOv !== null && gOv !== '';
+        row += `<td class="total-col"><div class="cell-stack" data-open-group="${g.id}" data-student="${s.id}">${notePill(cls, gt)}${gOverridden ? `<button class="reset-arrow" data-reset-group="${g.id}" data-student="${s.id}" title="Automatische Berechnung wiederherstellen">🧮</button>` : ''}</div></td>`;
+        g.categories.forEach(cat => { row += catCell(cat, g, s); });
+      });
+      body += row + `</tr>`;
+    });
+  }
+
+  const addRow = `<tr class="add-student-row"><td class="name-col"><input type="text" id="newStudentName" placeholder="Nachname, Vorname"></td>
+    <td colspan="${colCount-1}" style="text-align:left;"><button class="small" id="addStudentBtn">Hinzufügen</button></td></tr>`;
+
+  main.innerHTML = `<div class="grid-wrap"><table class="grid"><thead>${groupHeadRow}${catHeaderRows}</thead><tbody>${body}${addRow}</tbody></table></div>`;
+
+  main.querySelectorAll('[data-select-student]').forEach(el=>{
+    el.onclick = () => {
+      const id = el.dataset.selectStudent;
+      state.selectedStudentId = (state.selectedStudentId === id) ? null : id;
+      render();
+    };
+  });
+  main.querySelectorAll('[data-del-student]').forEach(btn=>{
+    btn.onclick = () => {
+      const id = btn.dataset.delStudent;
+      sem.studentIds = sem.studentIds.filter(sid => sid !== id);
+      const stillEnrolled = cls.semesters.some(sm => sm.studentIds && sm.studentIds.includes(id));
+      if(!stillEnrolled){
+        cls.students = cls.students.filter(s=>s.id!==id);
+        function purge(c){ delete c.entries[id]; if(c.overrides) delete c.overrides[id]; if(c.children) c.children.forEach(purge); }
+        cls.semesters.forEach(sm => {
+          sm.groups.forEach(g => {
+            if(g.overrides) delete g.overrides[id];
+            g.categories.forEach(purge);
+          });
+          if(sm.endnoteOverrides) delete sm.endnoteOverrides[id];
+        });
+      }
+      saveState(); render();
+    };
+  });
+  main.querySelectorAll('[data-del-group]').forEach(btn=>{
+    btn.onclick = async () => {
+      const g = sem.groups.find(x=>x.id===btn.dataset.delGroup);
+      if(g && g.locked) return;
+      const ok = await showConfirm('Gruppe löschen', 'Diese Gruppe inkl. aller Kategorien und Noten löschen?', {confirmLabel:'Löschen', danger:true});
+      if(!ok) return;
+      sem.groups = sem.groups.filter(g=>g.id!==btn.dataset.delGroup);
+      saveState(); render();
+    };
+  });
+  main.querySelectorAll('[data-move-group]').forEach(btn=>{
+    btn.onclick = () => { moveItem(sem.groups, btn.dataset.moveGroup, parseInt(btn.dataset.dir)); saveState(); render(); };
+  });
+  main.querySelectorAll('[data-move-cat]').forEach(btn=>{
+    btn.onclick = () => {
+      const ctx = findCategoryContext(sem, btn.dataset.group, btn.dataset.moveCat);
+      if(!ctx) return;
+      moveItem(ctx.list, btn.dataset.moveCat, parseInt(btn.dataset.dir));
+      saveState(); render();
+    };
+  });
+  main.querySelectorAll('[data-rename-group]').forEach(el=>{
+    el.onclick = async () => {
+      const g = sem.groups.find(x=>x.id===el.dataset.renameGroup);
+      const name = await showPrompt('Gruppe bearbeiten', 'Name der Gruppe', g.name, {confirmLabel:'Weiter'});
+      if(name===null || !name.trim()) return;
+      const weightStr = await showPrompt('Gewichtung', 'Gewichtung dieser Gruppe in % (für die Endnote des Halbjahrs)', g.weight, {inputType:'number', confirmLabel:'Speichern'});
+      if(weightStr===null) return;
+      g.name = name.trim(); g.weight = parseFloat(weightStr) || 0;
+      saveState(); render();
+    };
+  });
+  main.querySelectorAll('[data-add-cat]').forEach(btn=>{ btn.onclick = () => addCategory(cls, sem, btn.dataset.addCat); });
+  main.querySelectorAll('[data-add-near-cat]').forEach(btn=>{ btn.onclick = () => addCategoryNear(cls, sem, btn.dataset.group, btn.dataset.addNearCat); });
+  main.querySelectorAll('[data-del-cat]').forEach(btn=>{
+    btn.onclick = async () => {
+      const ok = await showConfirm('Kategorie löschen', 'Diese Kategorie inkl. aller Noten löschen?', {confirmLabel:'Löschen', danger:true});
+      if(!ok) return;
+      const ctx = findCategoryContext(sem, btn.dataset.group, btn.dataset.delCat);
+      if(!ctx) return;
+      const idx = ctx.list.findIndex(c=>c.id===btn.dataset.delCat);
+      if(idx > -1) ctx.list.splice(idx, 1);
+      if(ctx.parentCat) rebalanceEqualWeights(ctx.list);
+      saveState(); render();
+    };
+  });
+  main.querySelectorAll('[data-edit-cat]').forEach(el=>{ el.onclick = () => editCategory(cls, sem, el.dataset.group, el.dataset.editCat); });
+  main.querySelectorAll('[data-open-entries]').forEach(el=>{ el.onclick = () => openEntriesModal(cls, sem, el.dataset.group, el.dataset.cat, el.dataset.student); });
+  main.querySelectorAll('[data-open-endnote]').forEach(el=>{ el.onclick = () => openEndnoteModal(cls, sem, el.dataset.openEndnote); });
+  main.querySelectorAll('[data-open-group]').forEach(el=>{ el.onclick = () => openGroupOverrideModal(cls, sem, el.dataset.openGroup, el.dataset.student); });
+  main.querySelectorAll('[data-reset-endnote]').forEach(btn=>{
+    btn.onclick = (e) => {
+      e.stopPropagation();
+      if(sem.endnoteOverrides) delete sem.endnoteOverrides[btn.dataset.resetEndnote];
+      saveState(); render();
+    };
+  });
+  main.querySelectorAll('[data-reset-group]').forEach(btn=>{
+    btn.onclick = (e) => {
+      e.stopPropagation();
+      const g = sem.groups.find(x=>x.id===btn.dataset.resetGroup);
+      if(g && g.overrides) delete g.overrides[btn.dataset.student];
+      saveState(); render();
+    };
+  });
+  main.querySelectorAll('[data-reset-cat]').forEach(btn=>{
+    btn.onclick = (e) => {
+      e.stopPropagation();
+      const ctx = findCategoryContext(sem, btn.dataset.group, btn.dataset.resetCat);
+      if(ctx && ctx.cat.overrides) delete ctx.cat.overrides[btn.dataset.student];
+      saveState(); render();
+    };
+  });
+  const addBtn = document.getElementById('addStudentBtn');
+  if(addBtn){
+    addBtn.onclick = () => {
+      const input = document.getElementById('newStudentName');
+      const name = input.value.trim();
+      if(!name) return;
+      const student = {id: uid(), name};
+      cls.students.push(student);
+      const semIdx = cls.semesters.findIndex(s=>s.id===sem.id);
+      cls.semesters.forEach((sm, i) => {
+        if(i === semIdx || (semIdx === 0 && i > semIdx)) sm.studentIds.push(student.id);
+      });
+      saveState(); render();
+    };
+    document.getElementById('newStudentName').addEventListener('keydown', e=>{ if(e.key==='Enter') addBtn.click(); });
+  }
+}
+
+async function promptNewCategory(defaultWeight, autoWeight){
+  const name = await showPrompt('Kategorie hinzufügen', 'Name der Kategorie', '', {placeholder:'z.B. Klausur 1 oder Referat', confirmLabel:'Weiter'});
+  if(name===null || !name.trim()) return null;
+  let weight;
+  if(autoWeight){
+    weight = parseFloat(defaultWeight) || 0;
+  } else {
+    const weightStr = await showPrompt('Gewichtung', 'Gewichtung in %', defaultWeight, {inputType:'number', confirmLabel:'Weiter'});
+    if(weightStr===null) return null;
+    weight = parseFloat(weightStr) || 0;
+  }
+  const mode = await showChoice('Eingabeart', 'Wie soll die Note in dieser Kategorie erfasst werden?', [
+    {label: 'Klausurpunkte (Note wird automatisch berechnet)', value: 'points'},
+    {label: 'Note direkt eintragen (mit Tendenz)', value: 'grade'},
+  ]);
+  if(mode === null) return null;
+  let maxPoints;
+  if(mode === 'points'){
+    const maxStr = await showPrompt('Maximalpunktzahl', 'Übliche maximale Punktzahl einer Klausur in dieser Kategorie', '60', {inputType:'number', confirmLabel:'Weiter'});
+    if(maxStr===null) return null;
+    maxPoints = parseFloat(maxStr) || 100;
+  }
+  const dateStr = await showPrompt('Datum', 'Datum dieser Kategorie (z.B. Schreibdatum der Klausur)', new Date().toISOString().slice(0,10), {inputType:'date', confirmLabel:'Anlegen'});
+  if(dateStr===null) return null;
+  return {id: uid(), name: name.trim(), weight, mode, maxPoints, date: dateStr || '', entries: {}};
+}
+async function addCategory(cls, sem, groupId){
+  const g = sem.groups.find(x=>x.id===groupId);
+  const defaultWeight = (g.name||'').trim().toLowerCase()==='schriftlich' ? '50' : '10';
+  const newCat = await promptNewCategory(defaultWeight);
+  if(!newCat) return;
+  g.categories.push(newCat);
+  saveState(); render();
+}
+async function addCategoryNear(cls, sem, groupId, catId){
+  const ctx = findCategoryContext(sem, groupId, catId);
+  if(!ctx) return;
+  const { group: g, cat: clickedCat, parentCat, list } = ctx;
+  const defaultWeight = (g.name||'').trim().toLowerCase()==='schriftlich' ? '50' : '10';
+
+  const choice = await showChoice('Neue Kategorie hinzufügen', '', [
+    {label: 'Daneben – Position selbst wählen', value: 'neben'},
+    {label: `Darunter – als Unterkategorie von "${clickedCat.name}"`, value: 'unter'},
+  ]);
+  if(choice === null) return;
+
+  if(choice === 'unter'){
+    if(!clickedCat.children) clickedCat.children = [];
+    const suggested = String(Math.round(100/(clickedCat.children.length+1)));
+    const newChild = await promptNewCategory(suggested, true);
+    if(!newChild) return;
+    clickedCat.children.push(newChild);
+    rebalanceEqualWeights(clickedCat.children);
+    saveState(); render();
+    return;
+  }
+
+  // 'neben' – sibling within the same list (top-level categories, or the same set of sub-categories)
+  if(!list.length){
+    const newCat = await promptNewCategory(defaultWeight, !!parentCat);
+    if(!newCat) return;
+    list.push(newCat);
+    if(parentCat) rebalanceEqualWeights(list);
+    saveState(); render();
+    return;
+  }
+  const idx = await showChoice('Kategorie einfügen', 'Neben welcher bestehenden Kategorie soll die neue rechts eingefügt werden?',
+    list.map((c,i) => ({label: c.name, value: i}))
+  );
+  if(idx === null) return;
+  const newCat = await promptNewCategory(defaultWeight, !!parentCat);
+  if(!newCat) return;
+  list.splice(idx+1, 0, newCat);
+  if(parentCat) rebalanceEqualWeights(list);
+  saveState(); render();
+}
+async function editCategory(cls, sem, groupId, catId){
+  const ctx = findCategoryContext(sem, groupId, catId);
+  if(!ctx) return;
+  const { group: g, cat } = ctx;
+  const isContainer = isContainerCat(cat);
+  const name = await showPrompt('Kategorie bearbeiten', 'Name der Kategorie', cat.name, {confirmLabel:'Weiter'});
+  if(name===null) return;
+  const weightStr = await showPrompt('Gewichtung', `Gewichtung in % (innerhalb von "${g.name}")`, cat.weight, {inputType:'number', confirmLabel: (isContainer||cat.mode==='points') ? 'Weiter' : 'Speichern'});
+  if(weightStr===null) return;
+  cat.name = name.trim() || cat.name;
+  cat.weight = parseFloat(weightStr) || 0;
+  if(isContainer){ saveState(); render(); return; }
+  if(cat.mode === 'points'){
+    const maxStr = await showPrompt('Maximalpunktzahl', 'Übliche maximale Punktzahl einer Klausur in dieser Kategorie', cat.maxPoints ?? 60, {inputType:'number', confirmLabel:'Weiter'});
+    if(maxStr !== null) cat.maxPoints = parseFloat(maxStr) || cat.maxPoints;
+  }
+  const dateStr = await showPrompt('Datum', 'Datum dieser Kategorie, leer lassen zum Entfernen', cat.date || '', {inputType:'date', confirmLabel:'Speichern'});
+  if(dateStr !== null) cat.date = dateStr;
+  saveState(); render();
+}
+
+// ---------- entries modal ----------
+function openEntriesModal(cls, sem, groupId, catId, studentId){
+  const ctx = findCategoryContext(sem, groupId, catId);
+  if(!ctx) return;
+  const student = cls.students.find(s=>s.id===studentId);
+  if(isContainerCat(ctx.cat)){
+    renderCategoryOverrideModal(cls, ctx.cat, student);
+    return;
+  }
+  renderModal(cls, ctx.cat, student);
+}
+function renderCategoryOverrideModal(cls, cat, student){
+  const root = document.getElementById('modalRoot');
+  const auto = categoryAvgAutoForStudent(cls, cat, student.id);
+  const overrideRaw = cat.overrides && cat.overrides[student.id];
+  const isOverridden = overrideRaw !== undefined && overrideRaw !== null && overrideRaw !== '';
+  const currentSelected = isOverridden ? overrideRaw : (auto===null ? '' : displayValue(cls, auto));
+  root.innerHTML = `
+    <div class="overlay" id="overlay">
+      <div class="modal">
+        <div class="modal-close"><button class="ghost small" id="closeModal">Fertig</button></div>
+        <h3>${escapeHtml(cat.name)}</h3>
+        <div class="sub">${escapeHtml(student.name)} · Sammelkategorie</div>
+        <div class="hint" style="margin-top:8px;">Automatisch berechneter Vorschlag${cat.children && cat.children.length ? '' : ' (noch keine Unterkategorien)'}: ${auto===null ? 'keine Daten' : displayValue(cls, auto)}</div>
+        <div style="margin-top:14px;">${gradeChipsHtml(cls, String(currentSelected))}</div>
+        ${isOverridden ? `<div class="row" style="margin-top:14px;"><button class="ghost small" id="resetCatOverrideBtn">Vorschlag automatisch übernehmen</button></div>` : ''}
+      </div>
+    </div>
+  `;
+  document.getElementById('overlay').addEventListener('click', (e)=>{ if(e.target.id==='overlay'){ root.innerHTML=''; render(); } });
+  document.getElementById('closeModal').onclick = () => { root.innerHTML=''; render(); };
+  root.querySelectorAll('[data-chip-value]').forEach(btn=>{
+    btn.onclick = () => {
+      cat.overrides = cat.overrides || {};
+      cat.overrides[student.id] = btn.dataset.chipValue;
+      saveState();
+      root.innerHTML = ''; render();
+    };
+  });
+  const resetBtn = document.getElementById('resetCatOverrideBtn');
+  if(resetBtn){
+    resetBtn.onclick = () => {
+      delete cat.overrides[student.id];
+      saveState();
+      root.innerHTML = ''; render();
+    };
+  }
+}
+function openGroupOverrideModal(cls, sem, groupId, studentId){
+  const g = sem.groups.find(x=>x.id===groupId);
+  const student = cls.students.find(s=>s.id===studentId);
+  if(!g || !student) return;
+  renderGroupOverrideModal(cls, g, student);
+}
+function renderGroupOverrideModal(cls, group, student){
+  const root = document.getElementById('modalRoot');
+  const auto = groupGesamtAutoForStudent(cls, group, student.id);
+  const overrideRaw = group.overrides && group.overrides[student.id];
+  const isOverridden = overrideRaw !== undefined && overrideRaw !== null && overrideRaw !== '';
+  const currentSelected = isOverridden ? overrideRaw : (auto===null ? '' : displayValue(cls, auto));
+  root.innerHTML = `
+    <div class="overlay" id="overlay">
+      <div class="modal">
+        <div class="modal-close"><button class="ghost small" id="closeModal">Fertig</button></div>
+        <h3>Gesamt ${escapeHtml(group.name)}</h3>
+        <div class="sub">${escapeHtml(student.name)}</div>
+        <div class="hint" style="margin-top:8px;">Automatisch berechneter Vorschlag: ${auto===null ? 'keine Daten' : displayValue(cls, auto)}</div>
+        <div style="margin-top:14px;">${gradeChipsHtml(cls, String(currentSelected))}</div>
+        ${isOverridden ? `<div class="row" style="margin-top:14px;"><button class="ghost small" id="resetGroupOverrideBtn">Vorschlag automatisch übernehmen</button></div>` : ''}
+      </div>
+    </div>
+  `;
+  document.getElementById('overlay').addEventListener('click', (e)=>{ if(e.target.id==='overlay'){ root.innerHTML=''; render(); } });
+  document.getElementById('closeModal').onclick = () => { root.innerHTML=''; render(); };
+  root.querySelectorAll('[data-chip-value]').forEach(btn=>{
+    btn.onclick = () => {
+      group.overrides = group.overrides || {};
+      group.overrides[student.id] = btn.dataset.chipValue;
+      saveState();
+      root.innerHTML = ''; render();
+    };
+  });
+  const resetBtn = document.getElementById('resetGroupOverrideBtn');
+  if(resetBtn){
+    resetBtn.onclick = () => {
+      delete group.overrides[student.id];
+      saveState();
+      root.innerHTML = ''; render();
+    };
+  }
+}
+function openEndnoteModal(cls, sem, studentId){
+  const student = cls.students.find(s=>s.id===studentId);
+  renderEndnoteModal(cls, sem, student);
+}
+function renderEndnoteModal(cls, sem, student){
+  const root = document.getElementById('modalRoot');
+  const auto = semesterEndnoteAutoForStudent(cls, sem, student.id);
+  const overrideRaw = sem.endnoteOverrides && sem.endnoteOverrides[student.id];
+  const isOverridden = overrideRaw !== undefined && overrideRaw !== null && overrideRaw !== '';
+  const currentSelected = isOverridden ? overrideRaw : (auto===null ? '' : displayValue(cls, auto));
+  root.innerHTML = `
+    <div class="overlay" id="overlay">
+      <div class="modal">
+        <div class="modal-close"><button class="ghost small" id="closeModal">Fertig</button></div>
+        <h3>Endnote</h3>
+        <div class="sub">${escapeHtml(student.name)} · ${escapeHtml(sem.name)}</div>
+        <div class="hint" style="margin-top:8px;">Automatisch berechneter Vorschlag: ${auto===null ? 'keine Daten' : displayValue(cls, auto)}</div>
+        <div style="margin-top:14px;">${gradeChipsHtml(cls, String(currentSelected))}</div>
+        ${isOverridden ? `<div class="row" style="margin-top:14px;"><button class="ghost small" id="resetEndnoteBtn">Vorschlag automatisch übernehmen</button></div>` : ''}
+      </div>
+    </div>
+  `;
+  document.getElementById('overlay').addEventListener('click', (e)=>{ if(e.target.id==='overlay'){ root.innerHTML=''; render(); } });
+  document.getElementById('closeModal').onclick = () => { root.innerHTML=''; render(); };
+  root.querySelectorAll('[data-chip-value]').forEach(btn=>{
+    btn.onclick = () => {
+      sem.endnoteOverrides = sem.endnoteOverrides || {};
+      sem.endnoteOverrides[student.id] = btn.dataset.chipValue;
+      saveState();
+      root.innerHTML = ''; render();
+    };
+  });
+  const resetBtn = document.getElementById('resetEndnoteBtn');
+  if(resetBtn){
+    resetBtn.onclick = () => {
+      delete sem.endnoteOverrides[student.id];
+      saveState();
+      root.innerHTML = ''; render();
+    };
+  }
+}
+function tendencyOptionsHtml(selected){
+  const opts = [];
+  for(let gd=1; gd<=6; gd++){
+    const tends = gd===6 ? [''] : ['+','','-'];
+    tends.forEach(t => { const v = gd+t; opts.push(`<option value="${v}" ${String(selected)===v?'selected':''}>${v}</option>`); });
+  }
+  return opts.join('');
+}
+function gradeValuesList(cls){
+  if(cls.gradingSystem === 'punkte') return Array.from({length:16}, (_,i) => String(15-i));
+  const vals = [];
+  for(let gd=1; gd<=6; gd++){
+    const tends = gd===6 ? [''] : ['+','','-'];
+    tends.forEach(t => vals.push(String(gd)+t));
+  }
+  return vals;
+}
+function gradeChipsHtml(cls, selected){
+  const vals = gradeValuesList(cls);
+  return `<div class="grade-picker">${vals.map(v => `<button type="button" class="grade-chip ${String(selected)===v?'selected':''}" data-chip-value="${v}">${v}</button>`).join('')}</div>`;
+}
+function renderModal(cls, cat, student){
+  const root = document.getElementById('modalRoot');
+  const entry = cat.entries[student.id];
+  const unit = cls.gradingSystem === 'punkte' ? 'Notenpunkte (0-15)' : 'Note mit Tendenz';
+  root.innerHTML = `
+    <div class="overlay" id="overlay">
+      <div class="modal">
+        <div class="modal-close"><button class="ghost small" id="closeModal">Fertig</button></div>
+        <h3>${escapeHtml(cat.name)}</h3>
+        <div class="sub">${escapeHtml(student.name)} · ${cat.mode==='points'?'Klausurpunkte (automatisch berechnet)':unit}${cat.date ? ' · '+formatDate(cat.date) : ''}</div>
+        <div style="margin-top:14px;">
+          ${cat.mode==='points'
+            ? `<div class="row">
+                 <input type="number" class="mono" style="width:70px;" id="entryPoints" placeholder="Pkt." value="${entry?.points??''}">
+                 <span style="color:var(--ink-soft);">/</span>
+                 <input type="number" class="mono" style="width:70px;" id="entryMax" placeholder="Max." value="${entry?.maxPoints ?? cat.maxPoints ?? ''}">
+               </div>`
+            : gradeChipsHtml(cls, entry?.grade)}
+        </div>
+        ${entry ? `<div class="row" style="margin-top:14px;"><button class="ghost small" id="clearEntryBtn">Eintrag löschen</button></div>` : ''}
+      </div>
+    </div>
+  `;
+  document.getElementById('overlay').addEventListener('click', (e)=>{ if(e.target.id==='overlay'){ root.innerHTML=''; render(); } });
+  document.getElementById('closeModal').onclick = () => { root.innerHTML=''; render(); };
+  const savePoints = () => {
+    const pts = document.getElementById('entryPoints').value;
+    const max = document.getElementById('entryMax').value;
+    if(pts==='' && max===''){ delete cat.entries[student.id]; saveState(); return; }
+    cat.entries[student.id] = {points: pts===''?'':parseFloat(pts), maxPoints: max===''?'':parseFloat(max)};
+    if(max!=='') cat.maxPoints = parseFloat(max);
+    saveState();
+  };
+  const ptsInput = document.getElementById('entryPoints');
+  const maxInput = document.getElementById('entryMax');
+  if(ptsInput){ ptsInput.addEventListener('input', savePoints); maxInput.addEventListener('input', savePoints); }
+  root.querySelectorAll('[data-chip-value]').forEach(btn=>{
+    btn.onclick = () => {
+      cat.entries[student.id] = {grade: btn.dataset.chipValue};
+      saveState();
+      root.innerHTML = ''; render();
+    };
+  });
+  const clearBtn = document.getElementById('clearEntryBtn');
+  if(clearBtn){
+    clearBtn.onclick = () => { delete cat.entries[student.id]; saveState(); renderModal(cls, cat, student); };
+  }
+}
+
+// ---------- scale panel ----------
+function renderScalePanel(cls){
+  const panel = document.getElementById('scalePanel');
+  if(!state.scaleOpen){ panel.innerHTML=''; return; }
+  const isPunkte = cls.gradingSystem === 'punkte';
+  const table = activeGradeTable(cls);
+  panel.innerHTML = `
+    <div class="panel">
+      <div class="form-title">Notensystem für "${escapeHtml(cls.name)}"</div>
+      <div class="sem-row" style="margin-top:0;">
+        <button class="sem-tab ${!isPunkte?'active':''}" id="sysNotenBtn">Noten (1–6)</button>
+        <button class="sem-tab ${isPunkte?'active':''}" id="sysPunkteBtn">Notenpunkte (0–15, Oberstufe)</button>
+      </div>
+      <div class="hint" style="margin-top:10px;margin-bottom:10px;">Gilt klassenweit: bestimmt sowohl, wie direkte Noten-Eingaben aussehen (1-6 mit Tendenz bzw. 0-15 Punkte), als auch, wie Klausurpunkte automatisch in eine Note umgerechnet werden.</div>
+      <div class="form-title">Umrechnungstabelle (Prozent der Klausurpunkte → ${isPunkte?'Notenpunkte':'Note'})</div>
+      <table class="scale"><tbody id="scaleRows">
+        ${[...table].sort((a,b)=>b.min-a.min).map((row,i)=>`
+          <tr>
+            <td>ab <input type="number" class="mono" style="width:68px;" data-scale-min="${i}" value="${row.min}"> %</td>
+            <td>${isPunkte
+              ? `Notenpunkte <input type="number" class="mono" style="width:60px;" data-scale-note="${i}" value="${row.note}" min="0" max="15">`
+              : `Note <select data-scale-note="${i}">${tendencyOptionsHtml(row.note)}</select>`}</td>
+            <td style="text-align:right;"><button class="colx dark" data-scale-del="${i}">✕</button></td>
+          </tr>`).join('')}
+      </tbody></table>
+      <div class="row" style="margin-top:10px;">
+        <button class="ghost small" id="addRowBtn">+ Zeile</button>
+        <button class="ghost small" id="resetScaleBtn">Auf Vorlage zurücksetzen</button>
+      </div>
+      <div class="hint">Nur für Kategorien im Modus "Punkte" wirkt die Tabelle direkt. Kategorien im Modus "Note" tragt ihr die Note/Punktzahl selbst ein, passend zum oben gewählten System.</div>
+    </div>
+  `;
+  document.getElementById('sysNotenBtn').onclick = () => { cls.gradingSystem = 'noten'; saveState(); render(); };
+  document.getElementById('sysPunkteBtn').onclick = () => { cls.gradingSystem = 'punkte'; saveState(); render(); };
+  document.getElementById('addRowBtn').onclick = () => { table.push({min:0, note: isPunkte?0:'6'}); saveState(); renderScalePanel(cls); };
+  document.getElementById('resetScaleBtn').onclick = () => {
+    if(isPunkte) cls.gradeTablePunkte = PUNKTE_TABLE.map(r=>({...r}));
+    else cls.gradeTableNoten = NOTEN_TABLE.map(r=>({...r}));
+    saveState(); render();
+  };
+  panel.querySelectorAll('[data-scale-min]').forEach(inp=>{
+    inp.addEventListener('change', () => { table[+inp.dataset.scaleMin].min = parseFloat(inp.value)||0; saveState(); render(); });
+  });
+  panel.querySelectorAll('[data-scale-note]').forEach(inp=>{
+    inp.addEventListener('change', () => { table[+inp.dataset.scaleNote].note = isPunkte ? (parseInt(inp.value)||0) : inp.value; saveState(); render(); });
+  });
+  panel.querySelectorAll('[data-scale-del]').forEach(btn=>{
+    btn.onclick = () => { table.splice(+btn.dataset.scaleDel,1); saveState(); renderScalePanel(cls); };
+  });
+}
+
+// ---------- global wiring ----------
+document.getElementById('addGroupBtn').onclick = async () => {
+  const cls = getActiveClass(); if(!cls) return;
+  const sem = getActiveSemester(cls);
+  const name = await showPrompt('Neue Gruppe', 'Name der Gruppe', '', {placeholder:'z.B. Praxis', confirmLabel:'Weiter'});
+  if(name===null || !name.trim()) return;
+  const weightStr = await showPrompt('Gewichtung', `Gewichtung dieser Gruppe in % (für die Endnote von "${sem.name}")`, '50', {inputType:'number', confirmLabel:'Anlegen'});
+  if(weightStr===null) return;
+  const weight = parseFloat(weightStr) || 0;
+  const color = GROUP_COLORS[sem.groups.length % GROUP_COLORS.length];
+  sem.groups.push({id: uid(), name: name.trim(), color, weight, categories: []});
+  saveState(); render();
+};
+function cloneCategoryStructure(c){
+  return {id: uid(), name: c.name, weight: c.weight, mode: c.mode, maxPoints: c.maxPoints, date: c.date, entries: {},
+    children: c.children ? c.children.map(cloneCategoryStructure) : undefined};
+}
+function cloneGroupsStructure(groups){
+  return groups.map(g => ({
+    id: uid(), name: g.name, color: g.color, weight: g.weight, locked: g.locked || false,
+    categories: g.categories.map(cloneCategoryStructure)
+  }));
+}
+document.getElementById('copyStructureBtn').onclick = async () => {
+  const cls = getActiveClass(); if(!cls) return;
+  const target = getActiveSemester(cls);
+  const others = cls.semesters.filter(s => s.id !== target.id);
+  if(!others.length){ await showAlert('Nicht möglich', 'Es gibt kein anderes Halbjahr, aus dem übernommen werden kann.'); return; }
+  let source;
+  if(others.length === 1){
+    source = others[0];
+  } else {
+    source = await showChoice('Struktur übernehmen', 'Aus welchem Halbjahr die Struktur holen?', others.map(s => ({label: s.name, value: s})));
+    if(source === null) return;
+  }
+  const ok = await showConfirm('Struktur übernehmen?', `Kategorienbaum aus "${source.name}" nach "${target.name}" übernehmen? Gruppen und Kategorien in "${target.name}" werden dabei ersetzt (Noteneinträge dort gehen verloren). Es werden nur Namen/Gewichtungen/Modus kopiert, keine Noten – "${source.name}" bleibt unverändert.`, {confirmLabel:'Übernehmen', danger:true});
+  if(!ok) return;
+  target.groups = cloneGroupsStructure(source.groups);
+  saveState(); render();
+};
+document.getElementById('toggleScaleBtn').onclick = () => { state.scaleOpen = !state.scaleOpen; render(); };
+document.getElementById('positionModeBtn').onclick = () => { state.positionMode = !state.positionMode; render(); };
+document.getElementById('exportBtn').onclick = exportBackup;
+document.getElementById('importBtn').onclick = () => document.getElementById('importFile').click();
+document.getElementById('webdavBtn').onclick = () => { state.webdavOpen = !state.webdavOpen; renderWebdavPanel(); };
+document.getElementById('resetAllBtn').onclick = async () => {
+  const typed = await showPrompt(
+    'Alles zurücksetzen',
+    'Das löscht ALLE Lerngruppen, Noten und Einstellungen unwiderruflich aus diesem Browser. Zum Bestätigen "RESET" eintippen:',
+    '',
+    {placeholder:'RESET', confirmLabel:'Löschen'}
+  );
+  if(typed !== 'RESET') return;
+  try{ localStorage.removeItem(STORAGE_KEY); }catch(e){}
+  state.classes = [];
+  state.activeClassId = null;
+  state.schoolYear = '';
+  document.getElementById('schoolYearInput').value = '';
+  saveState();
+  render();
+  setStatus('Zurückgesetzt · ' + new Date().toLocaleTimeString('de-DE'));
+};
+document.getElementById('incognitoBtn').onclick = () => { state.incognito = !state.incognito; render(); };
+document.getElementById('importFile').addEventListener('change', (e) => {
+  const file = e.target.files[0];
+  if(file) importBackup(file);
+  e.target.value = '';
+});
+document.getElementById('csvImportFile').addEventListener('change', (e) => {
+  const file = e.target.files[0];
+  if(file) importCSV(file);
+  e.target.value = '';
+});
+document.getElementById('searchStudent').addEventListener('input', (e) => {
+  state.searchTerm = e.target.value;
+  const cls = getActiveClass();
+  if(cls) renderGrid(document.getElementById('main'), cls);
+});
+
+document.getElementById('schoolYearInput').addEventListener('input', (e) => { state.schoolYear = e.target.value; saveState(); });
+
+(async () => {
+  setStatus('Wird geladen …');
+  await loadState();
+  document.getElementById('schoolYearInput').value = state.schoolYear;
+  render();
+})();
+if('serviceWorker' in navigator){
+  window.addEventListener('load', () => { navigator.serviceWorker.register('sw.js').catch(()=>{}); });
+}
+</script>
+</body>
+</html>
