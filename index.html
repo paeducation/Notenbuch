@@ -22,7 +22,7 @@
     --shadow:0 1px 2px rgba(0,0,0,.05), 0 4px 14px rgba(0,0,0,.06);
   }
   *{box-sizing:border-box;}
-  button, input, select, textarea{-webkit-appearance:none;appearance:none;}
+  button, input:not([type=checkbox]):not([type=radio]), select, textarea{-webkit-appearance:none;appearance:none;}
   html,body{margin:0;padding:0;background:var(--bg);color:var(--ink);
     font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;-webkit-tap-highlight-color:transparent;}
   body{padding-bottom:50px;}
@@ -162,7 +162,29 @@
   .dlg-choice-btn{width:100%;text-align:left;background:var(--surface-soft);color:var(--ink);
     border:1px solid var(--line);border-radius:10px;padding:12px 14px;font-size:0.92rem;font-weight:600;}
   .dlg-choice-btn:active{background:var(--accent-soft);border-color:var(--accent);}
+  .switch{position:relative;display:inline-block;width:42px;height:24px;flex-shrink:0;}
+  .switch input{opacity:0;width:0;height:0;}
+  .switch .slider{position:absolute;inset:0;background:var(--line);transition:.2s;border-radius:24px;cursor:pointer;}
+  .switch .slider:before{position:absolute;content:"";height:18px;width:18px;left:3px;bottom:3px;
+    background:#fff;transition:.2s;border-radius:50%;box-shadow:0 1px 2px rgba(0,0,0,.25);}
+  .switch input:checked + .slider{background:var(--accent);}
+  .switch input:checked + .slider:before{transform:translateX(18px);}
+  .switch.sm{width:34px;height:20px;}
+  .status-dot{display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--danger);margin-left:2px;}
+  .status-dot.on{background:var(--pass);}
+  .switch.sm .slider:before{height:14px;width:14px;}
+  .switch.sm input:checked + .slider:before{transform:translateX(14px);}
   .modal-close{position:sticky;top:0;text-align:right;}
+  @page{size:A4 portrait;margin:10mm;}
+  @media print{
+    .titlebar, header.app, .toolbar, #scalePanel, #webdavPanel, #modalRoot, .status{display:none!important;}
+    body{padding-bottom:0!important;background:#fff!important;}
+    main{padding:0!important;}
+    .grid-wrap{max-height:none!important;overflow:visible!important;box-shadow:none!important;border:none!important;}
+    table.grid{font-size:10px!important;}
+    .colx, .reset-arrow, [data-del-student], .add-student-row{display:none!important;}
+    .compare-wrap{gap:12px!important;}
+  }
 </style>
 </head>
 <body>
@@ -185,10 +207,13 @@
   <button class="ghost small" id="toggleScaleBtn">Notenschema</button>
   <button class="ghost small" id="exportBtn">⬇ Backup</button>
   <button class="ghost small" id="importBtn">⬆ Wiederherstellen</button>
-  <button class="ghost small" id="webdavBtn">☁ WebDAV</button>
+  <span class="row" style="gap:6px;padding:0;">
+    <button class="ghost small" id="autobackupLabel">⚙ Autobackup <span id="autobackupDot" class="status-dot"></span></button>
+  </span>
   <input type="file" id="csvImportFile" accept=".csv,text/csv" style="position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0;">
   <button class="ghost small" id="resetAllBtn" style="color:var(--danger);">⟲ Zurücksetzen</button>
   <button class="ghost small" id="incognitoBtn">👁 Inkognito</button>
+  <button class="ghost small" id="printBtn">🖨 Drucken</button>
   <input type="file" id="importFile" accept=".json,application/json" style="position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0;">
   <input type="text" id="searchStudent" placeholder="Schüler suchen…" style="max-width:150px;">
   <span class="weight-warn" id="weightWarn"></span>
@@ -387,17 +412,23 @@ function defaultOralCategories(){
     {id: uid(), name: 'SoMi 2', weight: 50, mode: 'grade', containerOnly: true, children: [], entries: {}},
   ];
 }
+function defaultWrittenCategories(){
+  return [
+    {id: uid(), name: 'KL1', weight: 50, mode: 'points', maxPoints: 100, date: '', entries: {}},
+    {id: uid(), name: 'KL2', weight: 50, mode: 'points', maxPoints: 100, date: '', entries: {}},
+  ];
+}
 function defaultGroups(){
   return [
     {id: uid(), name: 'Mündlich', color: GROUP_COLORS[0], weight: 50, locked: true, categories: defaultOralCategories()},
-    {id: uid(), name: 'Schriftlich', color: GROUP_COLORS[1], weight: 50, locked: true, categories: []},
+    {id: uid(), name: 'Schriftlich', color: GROUP_COLORS[1], weight: 50, locked: true, categories: defaultWrittenCategories()},
   ];
 }
 function ensureDefaultGroups(sem){
   const names = sem.groups.map(g => (g.name||'').trim().toLowerCase());
   const toAdd = [];
   if(!names.includes('mündlich')) toAdd.push({id: uid(), name: 'Mündlich', color: GROUP_COLORS[0], weight: 50, locked: true, categories: defaultOralCategories()});
-  if(!names.includes('schriftlich')) toAdd.push({id: uid(), name: 'Schriftlich', color: GROUP_COLORS[1], weight: 50, locked: true, categories: []});
+  if(!names.includes('schriftlich')) toAdd.push({id: uid(), name: 'Schriftlich', color: GROUP_COLORS[1], weight: 50, locked: true, categories: defaultWrittenCategories()});
   sem.groups = [...toAdd, ...sem.groups];
 }
 function ensureSemesterShape(sem, cls){
@@ -638,10 +669,12 @@ async function importCSV(file){
 // ---------- WebDAV (z.B. IServ, nur im Intranet erreichbar) ----------
 const WEBDAV_KEY = 'notenbuch-webdav-config';
 function loadWebdavConfig(){
+  const defaults = {url:'', username:'', password:'', autobackupSeconds:0, webdavAutoEnabled:false};
   try{
     const raw = localStorage.getItem(WEBDAV_KEY);
-    return raw ? JSON.parse(raw) : {url:'', username:'', password:''};
-  }catch(e){ return {url:'', username:'', password:''}; }
+    const cfg = raw ? JSON.parse(raw) : {};
+    return {...defaults, ...cfg};
+  }catch(e){ return defaults; }
 }
 function saveWebdavConfig(cfg){
   try{ localStorage.setItem(WEBDAV_KEY, JSON.stringify(cfg)); }catch(e){}
@@ -649,9 +682,23 @@ function saveWebdavConfig(cfg){
 function webdavAuthHeader(cfg){
   return 'Basic ' + btoa(unescape(encodeURIComponent(cfg.username + ':' + cfg.password)));
 }
-async function webdavUpload(){
+let autobackupTimer = null;
+function stopAutobackup(){ if(autobackupTimer){ clearInterval(autobackupTimer); autobackupTimer = null; } }
+async function runAutobackupTick(){
   const cfg = loadWebdavConfig();
-  if(!cfg.url){ await showAlert('WebDAV nicht eingerichtet', 'Bitte zuerst Server-Adresse, Benutzername und Passwort eintragen.'); return; }
+  if(cfg.webdavAutoEnabled && cfg.url) webdavUpload(true);
+}
+function startAutobackup(seconds){
+  stopAutobackup();
+  autobackupTimer = setInterval(runAutobackupTick, seconds * 1000);
+}
+function initAutobackupFromConfig(){
+  const cfg = loadWebdavConfig();
+  if(cfg.autobackupSeconds > 0 && cfg.webdavAutoEnabled) startAutobackup(cfg.autobackupSeconds);
+}
+async function webdavUpload(silent){
+  const cfg = loadWebdavConfig();
+  if(!cfg.url){ if(!silent) await showAlert('WebDAV nicht eingerichtet', 'Bitte zuerst Server-Adresse, Benutzername und Passwort eintragen.'); return; }
   const el = document.getElementById('webdavStatus');
   if(el) el.textContent = 'Sende…';
   try{
@@ -691,14 +738,35 @@ async function webdavDownload(){
     if(el) el.textContent = 'Laden fehlgeschlagen – vermutlich nicht im Intranet, falsche Adresse/Zugangsdaten, keine Datei am Ziel, oder CORS-Blockade.';
   }
 }
+function frequencyOptionsHtml(selectedSeconds){
+  const options = [
+    [0,'Aus'],
+    [30,'30 Sekunden'], [60,'1 Minute'], [120,'2 Minuten'], [180,'3 Minuten'], [240,'4 Minuten'],
+    [300,'5 Minuten'], [360,'6 Minuten'], [420,'7 Minuten'], [480,'8 Minuten'], [540,'9 Minuten'],
+    [600,'10 Minuten'], [1200,'20 Minuten'], [1800,'30 Minuten'],
+  ];
+  return options.map(([v,label]) => `<option value="${v}" ${v===selectedSeconds?'selected':''}>${label}</option>`).join('');
+}
 function renderWebdavPanel(){
   const panel = document.getElementById('webdavPanel');
   if(!state.webdavOpen){ panel.innerHTML = ''; return; }
   const cfg = loadWebdavConfig();
+  const isActive = cfg.autobackupSeconds > 0 && cfg.webdavAutoEnabled;
   panel.innerHTML = `
     <div class="panel">
-      <div class="form-title">WebDAV-Speicherort (z.B. IServ, nur im Schulnetz erreichbar)</div>
+      <div class="form-title">Autobackup${isActive ? ' – aktiv' : ' – aus'}</div>
       <div class="stack" style="display:flex;flex-direction:column;gap:8px;">
+        <div class="row">
+          <span style="white-space:nowrap;">Alle</span>
+          <select id="autobackupFreq" style="flex:1;">${frequencyOptionsHtml(cfg.autobackupSeconds)}</select>
+        </div>
+        <div class="hint">Die lokale Speicherung in diesem Browser läuft ohnehin immer automatisch bei jeder Eingabe. Hier legst du zusätzlich fest, ob (und wie oft) automatisch auf WebDAV gesichert wird.</div>
+
+        <div class="divider" style="height:1px;background:var(--line);margin:6px 0;"></div>
+        <label class="row" style="gap:8px;cursor:pointer;">
+          <input type="checkbox" id="webdavAutoCheck" ${cfg.webdavAutoEnabled ? 'checked' : ''} style="width:18px;height:18px;">
+          <span class="form-title" style="margin:0;">☁ WebDAV aktiv (z.B. IServ, nur im Schulnetz erreichbar)</span>
+        </label>
         <input type="text" id="webdavUrl" placeholder="https://meine-schule.iserv.de/iserv/webdav/Notenbuch/backup.json" value="${escapeHtml(cfg.url)}">
         <input type="text" id="webdavUser" placeholder="Benutzername" value="${escapeHtml(cfg.username)}">
         <input type="password" id="webdavPass" placeholder="Passwort" value="${escapeHtml(cfg.password)}">
@@ -708,21 +776,44 @@ function renderWebdavPanel(){
           <button class="ghost small" id="webdavDownloadBtn">Jetzt laden</button>
         </div>
         <div class="hint" id="webdavStatus"></div>
-        <div class="hint">Die Datei muss am Zielpfad bereits existieren dürfen (je nach Server) oder per PUT neu angelegt werden können. Zugangsdaten liegen unverschlüsselt im Browser-Speicher dieses Geräts – nur auf vertrauenswürdigen Geräten nutzen. Diese Funktion funktioniert nur, wenn der WebDAV-Server Anfragen von dieser App zulässt (CORS) und du dich im selben Netzwerk befindest.</div>
+        <div class="hint">Zugangsdaten liegen unverschlüsselt im Browser-Speicher dieses Geräts. Funktioniert nur, wenn der Server Anfragen von dieser App zulässt (CORS) und du im selben Netzwerk bist.</div>
       </div>
     </div>
   `;
+  const syncAndMaybeStart = () => {
+    const c = loadWebdavConfig();
+    const active = c.autobackupSeconds > 0 && c.webdavAutoEnabled;
+    updateAutobackupDot();
+    if(active) startAutobackup(c.autobackupSeconds); else stopAutobackup();
+  };
   document.getElementById('webdavSaveCfg').onclick = () => {
+    const current = loadWebdavConfig();
     const newCfg = {
+      ...current,
       url: document.getElementById('webdavUrl').value.trim(),
       username: document.getElementById('webdavUser').value.trim(),
       password: document.getElementById('webdavPass').value
     };
     saveWebdavConfig(newCfg);
     document.getElementById('webdavStatus').textContent = 'Zugangsdaten gespeichert.';
+    syncAndMaybeStart();
   };
-  document.getElementById('webdavUploadBtn').onclick = webdavUpload;
+  document.getElementById('webdavUploadBtn').onclick = () => webdavUpload();
   document.getElementById('webdavDownloadBtn').onclick = webdavDownload;
+  document.getElementById('autobackupFreq').onchange = (e) => {
+    const current = loadWebdavConfig();
+    current.autobackupSeconds = parseInt(e.target.value) || 0;
+    saveWebdavConfig(current);
+    syncAndMaybeStart();
+    renderWebdavPanel();
+  };
+  document.getElementById('webdavAutoCheck').onchange = (e) => {
+    const current = loadWebdavConfig();
+    current.webdavAutoEnabled = e.target.checked;
+    saveWebdavConfig(current);
+    syncAndMaybeStart();
+    renderWebdavPanel();
+  };
 }
 function getActiveClass(){ return state.classes.find(c => c.id === state.activeClassId) || null; }
 function getActiveSemester(cls){ return cls.semesters.find(s=>s.id===cls.activeSemesterId) || cls.semesters[0]; }
@@ -981,13 +1072,12 @@ function renderGrid(main, cls, sem){
   function catHeaderCell(cat, g, colspan, rowspan){
     return `<th class="cat-head" ${rowspan>1?`rowspan="${rowspan}"`:''} colspan="${colspan}">
       <div class="colhead">
-        <span data-edit-cat="${cat.id}" data-group="${g.id}">${escapeHtml(cat.name)}</span>
+        <span data-edit-cat="${cat.id}" data-group="${g.id}" title="Antippen: umbenennen · Halten: duplizieren/löschen">${escapeHtml(cat.name)}</span>
         <span class="weight">${cat.weight}%${isContainerCat(cat) ? '' : ' · '+(cat.mode==='points'?'Punkte':'Note')}</span>
         ${(cat.date && !isContainerCat(cat)) ? `<span class="weight">${formatDate(cat.date)}</span>` : ''}
         <div class="row" style="gap:2px;">
           ${state.positionMode ? `<button class="colx dark" data-move-cat="${cat.id}" data-group="${g.id}" data-dir="-1">‹</button>` : ''}
           <button class="colx dark" data-add-near-cat="${cat.id}" data-group="${g.id}">+</button>
-          <button class="colx dark" data-del-cat="${cat.id}" data-group="${g.id}">✕</button>
           ${state.positionMode ? `<button class="colx dark" data-move-cat="${cat.id}" data-group="${g.id}" data-dir="1">›</button>` : ''}
         </div>
       </div>
@@ -1140,19 +1230,27 @@ function renderGrid(main, cls, sem){
   });
   main.querySelectorAll('[data-add-cat]').forEach(btn=>{ btn.onclick = () => addCategory(cls, sem, btn.dataset.addCat); });
   main.querySelectorAll('[data-add-near-cat]').forEach(btn=>{ btn.onclick = () => addCategoryNear(cls, sem, btn.dataset.group, btn.dataset.addNearCat); });
-  main.querySelectorAll('[data-del-cat]').forEach(btn=>{
-    btn.onclick = async () => {
-      const ok = await showConfirm('Kategorie löschen', 'Diese Kategorie inkl. aller Noten löschen?', {confirmLabel:'Löschen', danger:true});
-      if(!ok) return;
-      const ctx = findCategoryContext(sem, btn.dataset.group, btn.dataset.delCat);
-      if(!ctx) return;
-      const idx = ctx.list.findIndex(c=>c.id===btn.dataset.delCat);
-      if(idx > -1) ctx.list.splice(idx, 1);
-      if(ctx.parentCat) rebalanceEqualWeights(ctx.list);
-      saveState(); render();
+  main.querySelectorAll('[data-edit-cat]').forEach(el=>{
+    let pressTimer = null, longPressed = false, startX = 0, startY = 0;
+    const clear = () => { clearTimeout(pressTimer); };
+    el.addEventListener('pointerdown', (e) => {
+      longPressed = false;
+      startX = e.clientX; startY = e.clientY;
+      pressTimer = setTimeout(() => {
+        longPressed = true;
+        openCategoryLongPressMenu(cls, sem, el.dataset.group, el.dataset.editCat);
+      }, 500);
+    });
+    el.addEventListener('pointermove', (e) => {
+      if(Math.abs(e.clientX-startX) > 8 || Math.abs(e.clientY-startY) > 8) clear();
+    });
+    el.addEventListener('pointerup', clear);
+    el.addEventListener('pointercancel', clear);
+    el.onclick = () => {
+      if(longPressed){ longPressed = false; return; }
+      editCategory(cls, sem, el.dataset.group, el.dataset.editCat);
     };
   });
-  main.querySelectorAll('[data-edit-cat]').forEach(el=>{ el.onclick = () => editCategory(cls, sem, el.dataset.group, el.dataset.editCat); });
   main.querySelectorAll('[data-open-entries]').forEach(el=>{ el.onclick = () => openEntriesModal(cls, sem, el.dataset.group, el.dataset.cat, el.dataset.student); });
   main.querySelectorAll('[data-open-endnote]').forEach(el=>{ el.onclick = () => openEndnoteModal(cls, sem, el.dataset.openEndnote); });
   main.querySelectorAll('[data-open-group]').forEach(el=>{ el.onclick = () => openGroupOverrideModal(cls, sem, el.dataset.openGroup, el.dataset.student); });
@@ -1215,7 +1313,7 @@ async function promptNewCategory(defaultWeight, autoWeight){
   if(mode === null) return null;
   let maxPoints;
   if(mode === 'points'){
-    const maxStr = await showPrompt('Maximalpunktzahl', 'Übliche maximale Punktzahl einer Klausur in dieser Kategorie', '60', {inputType:'number', confirmLabel:'Weiter'});
+    const maxStr = await showPrompt('Maximalpunktzahl', 'Übliche maximale Punktzahl einer Klausur in dieser Kategorie', '100', {inputType:'number', confirmLabel:'Weiter'});
     if(maxStr===null) return null;
     maxPoints = parseFloat(maxStr) || 100;
   }
@@ -1272,6 +1370,36 @@ async function addCategoryNear(cls, sem, groupId, catId){
   list.splice(idx+1, 0, newCat);
   if(parentCat) rebalanceEqualWeights(list);
   saveState(); render();
+}
+function cloneCategoryForDuplicate(cat){
+  return {
+    id: uid(), name: cat.name + ' Kopie', weight: cat.weight, mode: cat.mode, maxPoints: cat.maxPoints,
+    date: cat.date, containerOnly: cat.containerOnly || false, entries: {}, overrides: {},
+    children: cat.children ? cat.children.map(cloneCategoryForDuplicate) : undefined
+  };
+}
+async function openCategoryLongPressMenu(cls, sem, groupId, catId){
+  const ctx = findCategoryContext(sem, groupId, catId);
+  if(!ctx) return;
+  const choice = await showChoice(ctx.cat.name, 'Was möchtest du tun?', [
+    {label: 'Duplizieren', value: 'dup'},
+    {label: 'Löschen', value: 'del'},
+  ]);
+  if(choice === null) return;
+  if(choice === 'dup'){
+    const copy = cloneCategoryForDuplicate(ctx.cat);
+    const idx = ctx.list.findIndex(c=>c.id===catId);
+    ctx.list.splice(idx+1, 0, copy);
+    if(ctx.parentCat) rebalanceEqualWeights(ctx.list);
+    saveState(); render();
+  } else if(choice === 'del'){
+    const ok = await showConfirm('Kategorie löschen', 'Diese Kategorie inkl. aller Noten löschen?', {confirmLabel:'Löschen', danger:true});
+    if(!ok) return;
+    const idx = ctx.list.findIndex(c=>c.id===catId);
+    if(idx > -1) ctx.list.splice(idx, 1);
+    if(ctx.parentCat) rebalanceEqualWeights(ctx.list);
+    saveState(); render();
+  }
 }
 async function editCategory(cls, sem, groupId, catId){
   const ctx = findCategoryContext(sem, groupId, catId);
@@ -1591,7 +1719,13 @@ document.getElementById('toggleScaleBtn').onclick = () => { state.scaleOpen = !s
 document.getElementById('positionModeBtn').onclick = () => { state.positionMode = !state.positionMode; render(); };
 document.getElementById('exportBtn').onclick = exportBackup;
 document.getElementById('importBtn').onclick = () => document.getElementById('importFile').click();
-document.getElementById('webdavBtn').onclick = () => { state.webdavOpen = !state.webdavOpen; renderWebdavPanel(); };
+function updateAutobackupDot(){
+  const dot = document.getElementById('autobackupDot');
+  if(!dot) return;
+  const c = loadWebdavConfig();
+  dot.classList.toggle('on', c.autobackupSeconds > 0 && c.webdavAutoEnabled);
+}
+document.getElementById('autobackupLabel').onclick = () => { state.webdavOpen = !state.webdavOpen; renderWebdavPanel(); };
 document.getElementById('resetAllBtn').onclick = async () => {
   const typed = await showPrompt(
     'Alles zurücksetzen',
@@ -1610,6 +1744,62 @@ document.getElementById('resetAllBtn').onclick = async () => {
   setStatus('Zurückgesetzt · ' + new Date().toLocaleTimeString('de-DE'));
 };
 document.getElementById('incognitoBtn').onclick = () => { state.incognito = !state.incognito; render(); };
+function scaleTablesForPrint(){
+  document.querySelectorAll('.grid-wrap').forEach(wrap => {
+    wrap.style.transform = '';
+    wrap.style.width = '';
+    const table = wrap.querySelector('table.grid');
+    if(!table) return;
+    const naturalWidth = table.scrollWidth;
+    const naturalHeight = table.scrollHeight;
+    const targetPx = 718; // ~190mm nutzbare Breite bei A4 hochkant, 10mm Rand
+    let outer = wrap.parentElement.classList.contains('print-scale-outer') ? wrap.parentElement : null;
+    if(naturalWidth > targetPx){
+      const scale = targetPx / naturalWidth;
+      wrap.style.width = naturalWidth + 'px';
+      wrap.style.maxWidth = 'none';
+      wrap.style.transformOrigin = 'top left';
+      wrap.style.transform = `scale(${scale})`;
+      if(!outer){
+        outer = document.createElement('div');
+        outer.className = 'print-scale-outer';
+        wrap.parentNode.insertBefore(outer, wrap);
+        outer.appendChild(wrap);
+      }
+      outer.style.width = Math.ceil(naturalWidth * scale) + 'px';
+      outer.style.height = Math.ceil(naturalHeight * scale) + 'px';
+      outer.style.overflow = 'hidden';
+    } else if(outer){
+      outer.style.width = ''; outer.style.height = ''; outer.style.overflow = '';
+    }
+  });
+}
+function resetPrintScale(){
+  document.querySelectorAll('.grid-wrap').forEach(wrap => {
+    wrap.style.transform = '';
+    wrap.style.width = '';
+    wrap.style.maxWidth = '';
+  });
+  document.querySelectorAll('.print-scale-outer').forEach(outer => {
+    const parent = outer.parentNode;
+    while(outer.firstChild) parent.insertBefore(outer.firstChild, outer);
+    parent.removeChild(outer);
+  });
+}
+window.addEventListener('afterprint', resetPrintScale);
+document.getElementById('printBtn').onclick = async () => {
+  const choice = await showChoice('Drucken', '', [
+    {label: 'Direkt drucken', value: 'direct'},
+    {label: 'Als PDF speichern', value: 'pdf'},
+  ]);
+  if(choice === null) return;
+  if(choice === 'pdf'){
+    await showAlert('Als PDF speichern', 'Im nächsten Fenster als Ziel/Drucker "Als PDF sichern" (bzw. "Auf iPad sichern" o.ä.) auswählen statt eines echten Druckers.');
+  }
+  scaleTablesForPrint();
+  window.print();
+  setTimeout(resetPrintScale, 1000);
+};
 document.getElementById('importFile').addEventListener('change', (e) => {
   const file = e.target.files[0];
   if(file) importBackup(file);
@@ -1633,6 +1823,8 @@ document.getElementById('schoolYearInput').addEventListener('input', (e) => { st
   await loadState();
   document.getElementById('schoolYearInput').value = state.schoolYear;
   render();
+  initAutobackupFromConfig();
+  updateAutobackupDot();
 })();
 if('serviceWorker' in navigator){
   window.addEventListener('load', () => { navigator.serviceWorker.register('sw.js').catch(()=>{}); });
