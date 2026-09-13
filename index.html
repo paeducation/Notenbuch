@@ -511,19 +511,53 @@ function exportBackup(){
     setStatus('Backup exportiert · ' + new Date().toLocaleTimeString('de-DE'));
   }catch(e){ setStatus('Export fehlgeschlagen.', true); }
 }
+function stripCategoryToStructure(c){
+  return {
+    id: uid(), name: c.name, weight: c.weight, mode: c.mode, maxPoints: c.maxPoints,
+    date: '', containerOnly: c.containerOnly || false, entries: {}, overrides: {},
+    children: c.children ? c.children.map(stripCategoryToStructure) : undefined
+  };
+}
+function stripGroupToStructure(g){
+  return {
+    id: uid(), name: g.name, color: g.color, weight: g.weight, locked: g.locked || false,
+    overrides: {}, categories: (g.categories || []).map(stripCategoryToStructure)
+  };
+}
+function stripSemesterToStructure(sem){
+  return {
+    id: uid(), name: sem.name, studentIds: [], endnoteOverrides: {},
+    groups: (sem.groups || []).map(stripGroupToStructure)
+  };
+}
+function stripClassesToStructure(classes){
+  return classes.map(cls => {
+    const semesters = (cls.semesters || []).map(stripSemesterToStructure);
+    return {
+      id: uid(), name: cls.name, students: [],
+      gradingSystem: cls.gradingSystem, gradeTableNoten: cls.gradeTableNoten, gradeTablePunkte: cls.gradeTablePunkte,
+      semesters, activeSemesterId: semesters.length ? semesters[0].id : null
+    };
+  });
+}
 function importBackup(file){
   const reader = new FileReader();
   reader.onload = async () => {
     try{
       const parsed = JSON.parse(reader.result);
       if(!Array.isArray(parsed.classes)) throw new Error('Ungültiges Format');
-      const ok = await showConfirm('Backup importieren?', `${parsed.classes.length} Lerngruppe(n) ersetzen die aktuellen Daten in diesem Browser.`, {confirmLabel:'Importieren', danger:true});
+      const mode = await showChoice('Backup wiederherstellen', `${parsed.classes.length} Lerngruppe(n) gefunden. Was soll übernommen werden?`, [
+        {label: 'Struktur und Inhalte – alles genau wie gesichert', value: 'full'},
+        {label: 'Nur Struktur – Kategorien & Gewichtungen, ohne Schüler und Noten (z.B. für ein neues Schuljahr)', value: 'structure'},
+      ]);
+      if(mode === null) return;
+      const ok = await showConfirm('Wirklich ersetzen?', 'Die aktuellen Daten in diesem Browser werden dabei ersetzt.', {confirmLabel:'Fortfahren', danger:true});
       if(!ok) return;
-      state.classes = parsed.classes;
+      state.classes = mode === 'structure' ? stripClassesToStructure(parsed.classes) : parsed.classes;
       state.classes.forEach(migrateClass);
       state.activeClassId = state.classes.length ? state.classes[0].id : null;
       saveState(); render();
-      setStatus('Backup importiert · ' + new Date().toLocaleTimeString('de-DE'));
+      setStatus((mode==='structure' ? 'Struktur importiert' : 'Backup importiert') + ' · ' + new Date().toLocaleTimeString('de-DE'));
     }catch(e){ await showAlert('Import fehlgeschlagen', 'Diese Datei konnte nicht gelesen werden. Ist es eine Notenbuch-Backup-Datei?'); }
   };
   reader.readAsText(file);
