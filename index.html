@@ -56,11 +56,11 @@
     background:var(--surface);position:sticky;top:38px;z-index:30;
   }
   .class-row{display:flex;gap:8px;align-items:center;}
-  select, input[type=text], input[type=number], input[type=date]{
+  select, input[type=text], input[type=number], input[type=date], textarea{
     font-family:inherit;font-size:0.92rem;padding:8px 12px;border:1px solid var(--line);
     border-radius:9px;background:var(--surface-soft);color:var(--ink);
   }
-  select:focus, input:focus{outline:2px solid var(--accent-soft);border-color:var(--accent);}
+  select:focus, input:focus, textarea:focus{outline:2px solid var(--accent-soft);border-color:var(--accent);}
   button{font-family:inherit;font-size:0.86rem;font-weight:600;padding:8px 14px;
     border-radius:20px;border:1px solid var(--accent);background:var(--accent);color:#fff;
     cursor:pointer;white-space:nowrap;transition:opacity .1s;}
@@ -207,12 +207,14 @@
   <button class="ghost small" id="toggleScaleBtn">Notenschema</button>
   <button class="ghost small" id="exportBtn">⬇ Backup</button>
   <button class="ghost small" id="importBtn">⬆ Wiederherstellen</button>
+  <button class="ghost small" id="notennachweisBtn">📋 Notennachweis</button>
   <span class="row" style="gap:6px;padding:0;">
     <button class="ghost small" id="autobackupLabel">⚙ Autobackup <span id="autobackupDot" class="status-dot"></span></button>
   </span>
   <input type="file" id="csvImportFile" accept=".csv,text/csv" style="position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0;">
   <button class="ghost small" id="resetAllBtn" style="color:var(--danger);">⟲ Zurücksetzen</button>
   <button class="ghost small" id="incognitoBtn">👁 Inkognito</button>
+  <button class="ghost small" id="ubNotesBtn" disabled>UB Notizen</button>
   <button class="ghost small" id="printBtn">🖨 Drucken</button>
   <input type="file" id="importFile" accept=".json,application/json" style="position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0;">
   <input type="text" id="searchStudent" placeholder="Schüler suchen…" style="max-width:150px;">
@@ -296,12 +298,20 @@ function notePill(cls, value, subLabel){
   html += `<span class="avg-sub">${escapeHtml(sub)}</span>`;
   return html;
 }
+function observationPill(entry){
+  if(!entry || !entry.observation) return '<span class="note-dash">–</span>';
+  const bucket = entry.observation === '+' ? 1 : entry.observation === '-' ? 5 : 3;
+  let html = `<span class="note-pill note-${bucket}" style="font-size:1.05rem;">${entry.observation}</span>`;
+  if(entry.note) html += `<span class="avg-sub" title="${escapeHtml(entry.note)}">📝</span>`;
+  return html;
+}
 function gradeForPercent(table, pct){
   const sorted = [...table].sort((a,b)=>b.min-a.min);
   for(const row of sorted){ if(pct >= row.min) return row.note; }
   return sorted.length ? sorted[sorted.length-1].note : null;
 }
 function activeGradeTable(cls){ return cls.gradingSystem === 'punkte' ? cls.gradeTablePunkte : cls.gradeTableNoten; }
+const OBSERVATION_SYMBOLS = ['+','○','-'];
 function entryValue(cls, cat, entry){
   if(cat.mode === 'points'){
     const pts = parseFloat(entry.points), max = parseFloat(entry.maxPoints);
@@ -310,6 +320,12 @@ function entryValue(cls, cat, entry){
     if(cls.gradingSystem === 'punkte') return gradeForPercent(cls.gradeTablePunkte, pct);
     const noteStr = gradeForPercent(cls.gradeTableNoten, pct);
     return gradeStrToValue(noteStr);
+  } else if(cat.mode === 'observation'){
+    if(cls.gradingSystem === 'punkte'){
+      const v = parseFloat(entry.hiddenGrade);
+      return isNaN(v) ? null : v;
+    }
+    return gradeStrToValue(entry.hiddenGrade);
   } else {
     if(cls.gradingSystem === 'punkte'){
       const v = parseFloat(entry.grade);
@@ -408,8 +424,8 @@ function groupWeightSum(semester){ return semester.groups.reduce((s,g)=>s+(g.wei
 // ---------- migration ----------
 function defaultOralCategories(){
   return [
-    {id: uid(), name: 'SoMi 1', weight: 50, mode: 'grade', containerOnly: true, children: [], entries: {}},
-    {id: uid(), name: 'SoMi 2', weight: 50, mode: 'grade', containerOnly: true, children: [], entries: {}},
+    {id: uid(), name: 'SoMi 1', weight: 50, mode: 'grade', entries: {}},
+    {id: uid(), name: 'SoMi 2', weight: 50, mode: 'grade', entries: {}},
   ];
 }
 function defaultWrittenCategories(){
@@ -668,6 +684,7 @@ async function importCSV(file){
 
 // ---------- WebDAV (z.B. IServ, nur im Intranet erreichbar) ----------
 const WEBDAV_KEY = 'notenbuch-webdav-config';
+const NN_MAP_KEY = 'notenbuch-notennachweis-map';
 function loadWebdavConfig(){
   const defaults = {url:'', username:'', password:'', autobackupSeconds:0, webdavAutoEnabled:false};
   try{
@@ -981,6 +998,12 @@ function render(){
   document.getElementById('positionModeBtn').classList.toggle('active-toggle', state.positionMode);
   document.getElementById('incognitoBtn').disabled = !cls;
   document.getElementById('incognitoBtn').classList.toggle('active-toggle', state.incognito);
+  const ubBtn = document.getElementById('ubNotesBtn');
+  ubBtn.disabled = !cls || !state.selectedStudentId;
+  ubBtn.onclick = () => {
+    if(!cls || !state.selectedStudentId) return;
+    openStudentObservationsModal(cls, getActiveSemester(cls), state.selectedStudentId);
+  };
   document.getElementById('copyStructureBtn').disabled = !cls || cls.semesters.length < 2;
   const warn = document.getElementById('weightWarn');
   if(cls){
@@ -1140,6 +1163,11 @@ function renderGrid(main, cls, sem){
         let html = `<td class="total-col"><div class="cell-stack" data-open-entries data-cat="${cat.id}" data-group="${g.id}" data-student="${s.id}">${notePill(cls, a)}${overrideMark(cat, g, s)}</div></td>`;
         cat.children.forEach(child => { html += catCell(child, g, s); });
         return html;
+      }
+      if(cat.mode === 'observation' && !isContainerCat(cat)){
+        const ov = cat.overrides && cat.overrides[s.id];
+        const pillHtml = (ov !== undefined && ov !== null && ov !== '') ? notePill(cls, a) : observationPill(cat.entries[s.id]);
+        return `<td><div class="cell-stack" data-open-entries data-cat="${cat.id}" data-group="${g.id}" data-student="${s.id}">${pillHtml}${overrideMark(cat, g, s)}</div></td>`;
       }
       let subLabel;
       if(cat.mode === 'points' && !isContainerCat(cat)){
@@ -1321,6 +1349,26 @@ async function promptNewCategory(defaultWeight, autoWeight){
   if(dateStr===null) return null;
   return {id: uid(), name: name.trim(), weight, mode, maxPoints, date: dateStr || '', entries: {}};
 }
+async function promptNewSubcategory(defaultWeight, autoWeight){
+  const name = await showPrompt('Unterkategorie hinzufügen', 'Name der Unterkategorie', '', {placeholder:'z.B. Beitrag 12.03.', confirmLabel:'Weiter'});
+  if(name===null || !name.trim()) return null;
+  let weight;
+  if(autoWeight){
+    weight = parseFloat(defaultWeight) || 0;
+  } else {
+    const weightStr = await showPrompt('Gewichtung', 'Gewichtung in %', defaultWeight, {inputType:'number', confirmLabel:'Weiter'});
+    if(weightStr===null) return null;
+    weight = parseFloat(weightStr) || 0;
+  }
+  const mode = await showChoice('Notenschema', 'Wie soll dieser Eintrag bewertet werden?', [
+    {label: 'Noten (gewertet, 1+ bis 6)', value: 'grade'},
+    {label: 'Unterrichtsbeobachtung (− ○ +)', value: 'observation'},
+  ]);
+  if(mode === null) return null;
+  const dateStr = await showPrompt('Datum', 'Datum dieser Unterkategorie', new Date().toISOString().slice(0,10), {inputType:'date', confirmLabel:'Anlegen'});
+  if(dateStr===null) return null;
+  return {id: uid(), name: name.trim(), weight, mode, date: dateStr || '', entries: {}};
+}
 async function addCategory(cls, sem, groupId){
   const g = sem.groups.find(x=>x.id===groupId);
   const defaultWeight = (g.name||'').trim().toLowerCase()==='schriftlich' ? '50' : '10';
@@ -1344,7 +1392,7 @@ async function addCategoryNear(cls, sem, groupId, catId){
   if(choice === 'unter'){
     if(!clickedCat.children) clickedCat.children = [];
     const suggested = String(Math.round(100/(clickedCat.children.length+1)));
-    const newChild = await promptNewCategory(suggested, true);
+    const newChild = await promptNewSubcategory(suggested, true);
     if(!newChild) return;
     clickedCat.children.push(newChild);
     rebalanceEqualWeights(clickedCat.children);
@@ -1354,7 +1402,7 @@ async function addCategoryNear(cls, sem, groupId, catId){
 
   // 'neben' – sibling within the same list (top-level categories, or the same set of sub-categories)
   if(!list.length){
-    const newCat = await promptNewCategory(defaultWeight, !!parentCat);
+    const newCat = parentCat ? await promptNewSubcategory(defaultWeight, true) : await promptNewCategory(defaultWeight, false);
     if(!newCat) return;
     list.push(newCat);
     if(parentCat) rebalanceEqualWeights(list);
@@ -1365,7 +1413,7 @@ async function addCategoryNear(cls, sem, groupId, catId){
     list.map((c,i) => ({label: c.name, value: i}))
   );
   if(idx === null) return;
-  const newCat = await promptNewCategory(defaultWeight, !!parentCat);
+  const newCat = parentCat ? await promptNewSubcategory(defaultWeight, true) : await promptNewCategory(defaultWeight, false);
   if(!newCat) return;
   list.splice(idx+1, 0, newCat);
   if(parentCat) rebalanceEqualWeights(list);
@@ -1382,8 +1430,8 @@ async function openCategoryLongPressMenu(cls, sem, groupId, catId){
   const ctx = findCategoryContext(sem, groupId, catId);
   if(!ctx) return;
   const choice = await showChoice(ctx.cat.name, 'Was möchtest du tun?', [
-    {label: 'Duplizieren', value: 'dup'},
-    {label: 'Löschen', value: 'del'},
+    {label: 'Kategorie duplizieren', value: 'dup'},
+    {label: 'Kategorie löschen', value: 'del'},
   ]);
   if(choice === null) return;
   if(choice === 'dup'){
@@ -1513,6 +1561,195 @@ function renderGroupOverrideModal(cls, group, student){
     };
   }
 }
+// ---------- Notennachweis-Export ----------
+function collectSelectableCategories(sem){
+  const list = [];
+  function walk(cat, group, pathLabel){
+    const label = pathLabel ? `${pathLabel} → ${cat.name}` : `${group.name} → ${cat.name}`;
+    list.push({id: cat.id, label});
+    if(cat.children) cat.children.forEach(child => walk(child, group, label));
+  }
+  sem.groups.forEach(g => { g.categories.forEach(cat => walk(cat, g, null)); });
+  return list;
+}
+function collectObservationEntriesForStudent(sem, studentId){
+  const results = [];
+  function walk(cat, pathLabel){
+    if(cat.mode === 'observation'){
+      const entry = cat.entries[studentId];
+      if(entry && entry.observation){
+        results.push({label: pathLabel, symbol: entry.observation, note: entry.note || '', date: cat.date || ''});
+      }
+    }
+    if(cat.children) cat.children.forEach(child => walk(child, `${pathLabel} → ${child.name}`));
+  }
+  sem.groups.forEach(g => { g.categories.forEach(cat => walk(cat, `${g.name} → ${cat.name}`)); });
+  return results;
+}
+function openStudentObservationsModal(cls, sem, studentId){
+  const student = cls.students.find(s=>s.id===studentId);
+  if(!student) return;
+  const root = document.getElementById('modalRoot');
+  const entries = collectObservationEntriesForStudent(sem, studentId);
+  root.innerHTML = `
+    <div class="overlay" id="overlay">
+      <div class="modal">
+        <div class="modal-close"><button class="ghost small" id="closeModal">Schließen</button></div>
+        <h3>${escapeHtml(student.name)}</h3>
+        <div class="sub">Unterrichtsbeobachtungen · ${escapeHtml(sem.name)}</div>
+        <div style="margin-top:14px;display:flex;flex-direction:column;gap:8px;">
+          ${entries.length === 0
+            ? `<div class="hint">Keine Beobachtungseinträge (− ○ +) vorhanden.</div>`
+            : entries.map(e => {
+                const bucket = e.symbol === '+' ? 1 : e.symbol === '-' ? 5 : 3;
+                return `<div class="row" style="align-items:flex-start;gap:8px;">
+                  <span class="note-pill note-${bucket}" style="font-size:1.05rem;flex-shrink:0;">${e.symbol}</span>
+                  <div style="flex:1;">
+                    <div style="font-weight:600;font-size:0.88rem;">${escapeHtml(e.label)}${e.date ? ' · '+formatDate(e.date) : ''}</div>
+                    ${e.note ? `<div class="hint" style="margin-top:2px;">${escapeHtml(e.note)}</div>` : ''}
+                  </div>
+                </div>`;
+              }).join('')
+          }
+        </div>
+      </div>
+    </div>
+  `;
+  document.getElementById('overlay').addEventListener('click', (e)=>{ if(e.target.id==='overlay'){ root.innerHTML=''; render(); } });
+  document.getElementById('closeModal').onclick = () => { root.innerHTML=''; render(); };
+}
+function findCatByIdInSemester(sem, catId){
+  let found = null;
+  function walk(cat){
+    if(cat.id === catId){ found = cat; return; }
+    if(cat.children) cat.children.forEach(walk);
+  }
+  sem.groups.forEach(g => g.categories.forEach(walk));
+  return found;
+}
+function punkteValueToNoteText(punkteVal){
+  // PUNKTE_TABLE und NOTEN_TABLE haben identische Prozent-Schwellen an gleicher Stelle,
+  // daher lässt sich ein Punktwert über den Index auf eine Buchstabennote zurückrechnen.
+  const rounded = Math.round(punkteVal);
+  let idx = PUNKTE_TABLE.findIndex(row => row.note === rounded);
+  if(idx === -1){
+    idx = PUNKTE_TABLE.reduce((bestIdx, row, i) => Math.abs(row.note-rounded) < Math.abs(PUNKTE_TABLE[bestIdx].note-rounded) ? i : bestIdx, 0);
+  }
+  return NOTEN_TABLE[idx].note;
+}
+function gradeTextForCategory(cls, cat, studentId){
+  if(!cat) return '';
+  const val = categoryAvgForStudent(cls, cat, studentId);
+  if(val === null || val === undefined || isNaN(val)) return '';
+  return cls.gradingSystem === 'punkte' ? punkteValueToNoteText(val) : valueToGradeStr(val);
+}
+function loadNnMappings(){
+  try{ return JSON.parse(localStorage.getItem(NN_MAP_KEY)) || {}; }catch(e){ return {}; }
+}
+function saveNnMappings(map){
+  try{ localStorage.setItem(NN_MAP_KEY, JSON.stringify(map)); }catch(e){}
+}
+function openNotennachweisModal(cls, sem){
+  const root = document.getElementById('modalRoot');
+  const cats = collectSelectableCategories(sem);
+  const mapKey = cls.id + ':' + sem.id;
+  const allMaps = loadNnMappings();
+  const cfg = Object.assign({mode:'SII', klE1:'', klE2:'', siK1:'', siK2:'', siK3:'', smE1:'', smE2:''}, allMaps[mapKey] || {});
+  const catOptionsHtml = (selected) => `<option value="">– keine –</option>` + cats.map(c => `<option value="${c.id}" ${c.id===selected?'selected':''}>${escapeHtml(c.label)}</option>`).join('');
+  const fieldRow = (field, label) => `
+    <div class="row" style="justify-content:space-between;gap:8px;margin-top:6px;">
+      <span style="white-space:nowrap;">${label}</span>
+      <select data-nn-field="${field}" style="flex:1;">${catOptionsHtml(cfg[field])}</select>
+    </div>`;
+  root.innerHTML = `
+    <div class="overlay" id="overlay">
+      <div class="modal">
+        <div class="modal-close"><button class="ghost small" id="closeModal">Schließen</button></div>
+        <h3>Für Notennachweis exportieren</h3>
+        <div class="sub">${escapeHtml(cls.name)} · ${escapeHtml(sem.name)}</div>
+        <div class="hint" style="margin-top:8px;">Ordne zu, welche Notenbuch-Kategorie in welches Notennachweis-Feld übertragen werden soll. Die Zuordnung wird für diese Lerngruppe gemerkt.</div>
+        <div class="row" style="gap:10px;margin-top:12px;">
+          <label class="row" style="gap:4px;"><input type="radio" name="nnMode" value="SII" ${cfg.mode!=='SI'?'checked':''}> Oberstufe (Klausuren)</label>
+          <label class="row" style="gap:4px;"><input type="radio" name="nnMode" value="SI" ${cfg.mode==='SI'?'checked':''}> Sek I (Klassenarbeiten)</label>
+        </div>
+        <div id="nnFieldsSII" style="display:${cfg.mode!=='SI'?'block':'none'};">
+          ${fieldRow('klE1','Klausur 1 (klE1)')}
+          ${fieldRow('klE2','Klausur 2 (klE2)')}
+        </div>
+        <div id="nnFieldsSI" style="display:${cfg.mode==='SI'?'block':'none'};">
+          ${fieldRow('siK1','Klassenarbeit 1 (siK1)')}
+          ${fieldRow('siK2','Klassenarbeit 2 (siK2)')}
+          ${fieldRow('siK3','Klassenarbeit 3 (siK3)')}
+        </div>
+        ${fieldRow('smE1','SoMi 1 (smE1)')}
+        ${fieldRow('smE2','SoMi 2 (smE2)')}
+        <div class="row" style="margin-top:16px;">
+          <button id="nnExportBtn">⬇ Notennachweis-Datei erzeugen</button>
+        </div>
+      </div>
+    </div>
+  `;
+  const close = () => { root.innerHTML=''; render(); };
+  document.getElementById('overlay').addEventListener('click', (e)=>{ if(e.target.id==='overlay') close(); });
+  document.getElementById('closeModal').onclick = close;
+  const readCfgFromForm = () => {
+    const mode = root.querySelector('input[name="nnMode"]:checked').value;
+    const c = {mode};
+    ['klE1','klE2','siK1','siK2','siK3','smE1','smE2'].forEach(f => {
+      const el = root.querySelector(`[data-nn-field="${f}"]`);
+      c[f] = el ? el.value : '';
+    });
+    return c;
+  };
+  root.querySelectorAll('input[name="nnMode"]').forEach(r => {
+    r.onchange = () => {
+      document.getElementById('nnFieldsSII').style.display = r.value === 'SII' && r.checked ? 'block' : (root.querySelector('input[name="nnMode"]:checked').value==='SII'?'block':'none');
+      document.getElementById('nnFieldsSI').style.display = root.querySelector('input[name="nnMode"]:checked').value==='SI' ? 'block' : 'none';
+      document.getElementById('nnFieldsSII').style.display = root.querySelector('input[name="nnMode"]:checked').value==='SII' ? 'block' : 'none';
+    };
+  });
+  document.getElementById('nnExportBtn').onclick = async () => {
+    const cfgNow = readCfgFromForm();
+    allMaps[mapKey] = cfgNow;
+    saveNnMappings(allMaps);
+    await exportNotennachweisJson(cls, sem, cfgNow);
+  };
+}
+async function exportNotennachweisJson(cls, sem, cfg){
+  const students = getSemesterStudents(cls, sem);
+  if(students.length === 0){
+    await showAlert('Keine Schüler', 'In dieser Lerngruppe/diesem Halbjahr sind keine Schüler eingetragen.');
+    return;
+  }
+  const catFor = (field) => cfg[field] ? findCatByIdInSemester(sem, cfg[field]) : null;
+  const catKlE1 = catFor('klE1'), catKlE2 = catFor('klE2');
+  const catSiK1 = catFor('siK1'), catSiK2 = catFor('siK2'), catSiK3 = catFor('siK3');
+  const catSmE1 = catFor('smE1'), catSmE2 = catFor('smE2');
+  const rows = students.map((st, idx) => ({
+    nr: idx+1, name: st.name, kursart: '',
+    klE1: gradeTextForCategory(cls, catKlE1, st.id), klE2: gradeTextForCategory(cls, catKlE2, st.id), klFlag: '',
+    siK1: gradeTextForCategory(cls, catSiK1, st.id), siK2: gradeTextForCategory(cls, catSiK2, st.id), siK3: gradeTextForCategory(cls, catSiK3, st.id), siKlFlag: '',
+    smE1: gradeTextForCategory(cls, catSmE1, st.id), smE2: gradeTextForCategory(cls, catSmE2, st.id), smFlag: '',
+    ntFlag: '', fehlGes: '', fehlUe: ''
+  }));
+  const data = {
+    meta: {
+      stufe: '', kurs: cls.name, schuljahr: state.schoolYear || '', mode: cfg.mode,
+      siK1Enabled: !!cfg.siK1, siK2Enabled: !!cfg.siK2, siK3Enabled: !!cfg.siK3,
+    },
+    rows
+  };
+  const blob = new Blob([JSON.stringify(data, null, 2)], {type:'application/json'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = sanitizeForFilename(cls.name) + '_notennachweis.json';
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+  setStatus('Notennachweis-Datei erzeugt · ' + new Date().toLocaleTimeString('de-DE'));
+}
+function sanitizeForFilename(s){
+  return String(s||'notenbuch').trim().replace(/[\\/:*?"<>|]+/g,'').replace(/\s+/g,'-');
+}
 function openEndnoteModal(cls, sem, studentId){
   const student = cls.students.find(s=>s.id===studentId);
   renderEndnoteModal(cls, sem, student);
@@ -1571,20 +1808,25 @@ function gradeValuesList(cls){
   }
   return vals;
 }
-function gradeChipsHtml(cls, selected){
+function gradeChipsHtml(cls, selected, hidden){
   const vals = gradeValuesList(cls);
-  return `<div class="grade-picker">${vals.map(v => `<button type="button" class="grade-chip ${String(selected)===v?'selected':''}" data-chip-value="${v}">${v}</button>`).join('')}</div>`;
+  const attr = hidden ? 'data-hidden-grade-value' : 'data-chip-value';
+  return `<div class="grade-picker">${vals.map(v => `<button type="button" class="grade-chip ${String(selected)===v?'selected':''}" ${attr}="${v}">${v}</button>`).join('')}</div>`;
+}
+function observationChipsHtml(selected){
+  return `<div class="grade-picker">${OBSERVATION_SYMBOLS.map(sym => `<button type="button" class="grade-chip ${selected===sym?'selected':''}" data-obs-value="${sym}" style="font-size:1.2rem;">${sym}</button>`).join('')}</div>`;
 }
 function renderModal(cls, cat, student){
   const root = document.getElementById('modalRoot');
   const entry = cat.entries[student.id];
   const unit = cls.gradingSystem === 'punkte' ? 'Notenpunkte (0-15)' : 'Note mit Tendenz';
+  const modeLabel = cat.mode==='points' ? 'Klausurpunkte (automatisch berechnet)' : cat.mode==='observation' ? 'Unterrichtsbeobachtung' : unit;
   root.innerHTML = `
     <div class="overlay" id="overlay">
       <div class="modal">
         <div class="modal-close"><button class="ghost small" id="closeModal">Fertig</button></div>
         <h3>${escapeHtml(cat.name)}</h3>
-        <div class="sub">${escapeHtml(student.name)} · ${cat.mode==='points'?'Klausurpunkte (automatisch berechnet)':unit}${cat.date ? ' · '+formatDate(cat.date) : ''}</div>
+        <div class="sub">${escapeHtml(student.name)} · ${modeLabel}${cat.date ? ' · '+formatDate(cat.date) : ''}</div>
         <div style="margin-top:14px;">
           ${cat.mode==='points'
             ? `<div class="row">
@@ -1592,7 +1834,14 @@ function renderModal(cls, cat, student){
                  <span style="color:var(--ink-soft);">/</span>
                  <input type="number" class="mono" style="width:70px;" id="entryMax" placeholder="Max." value="${entry?.maxPoints ?? cat.maxPoints ?? ''}">
                </div>`
-            : gradeChipsHtml(cls, entry?.grade)}
+            : cat.mode==='observation'
+              ? `<div class="hint" style="margin-bottom:6px;">Sichtbares Symbol</div>${observationChipsHtml(entry?.observation)}
+                 <div class="hint" style="margin:14px 0 6px;">Zugrunde liegende Note (nicht sichtbar, zählt aber in die Berechnung)</div>
+                 ${gradeChipsHtml(cls, entry?.hiddenGrade, true)}`
+              : gradeChipsHtml(cls, entry?.grade)}
+        </div>
+        <div style="margin-top:14px;">
+          <textarea id="entryNote" rows="2" placeholder="Notiz (optional)" style="width:100%;resize:vertical;">${escapeHtml(entry?.note || '')}</textarea>
         </div>
         ${entry ? `<div class="row" style="margin-top:14px;"><button class="ghost small" id="clearEntryBtn">Eintrag löschen</button></div>` : ''}
       </div>
@@ -1600,24 +1849,49 @@ function renderModal(cls, cat, student){
   `;
   document.getElementById('overlay').addEventListener('click', (e)=>{ if(e.target.id==='overlay'){ root.innerHTML=''; render(); } });
   document.getElementById('closeModal').onclick = () => { root.innerHTML=''; render(); };
+  const currentNote = () => document.getElementById('entryNote').value;
   const savePoints = () => {
     const pts = document.getElementById('entryPoints').value;
     const max = document.getElementById('entryMax').value;
-    if(pts==='' && max===''){ delete cat.entries[student.id]; saveState(); return; }
-    cat.entries[student.id] = {points: pts===''?'':parseFloat(pts), maxPoints: max===''?'':parseFloat(max)};
+    const note = currentNote();
+    if(pts==='' && max==='' && !note){ delete cat.entries[student.id]; saveState(); return; }
+    cat.entries[student.id] = {points: pts===''?'':parseFloat(pts), maxPoints: max===''?'':parseFloat(max), note};
     if(max!=='') cat.maxPoints = parseFloat(max);
     saveState();
   };
   const ptsInput = document.getElementById('entryPoints');
   const maxInput = document.getElementById('entryMax');
   if(ptsInput){ ptsInput.addEventListener('input', savePoints); maxInput.addEventListener('input', savePoints); }
-  root.querySelectorAll('[data-chip-value]').forEach(btn=>{
-    btn.onclick = () => {
-      cat.entries[student.id] = {grade: btn.dataset.chipValue};
-      saveState();
-      root.innerHTML = ''; render();
-    };
-  });
+  if(cat.mode === 'observation'){
+    root.querySelectorAll('[data-obs-value]').forEach(btn=>{
+      btn.onclick = () => {
+        cat.entries[student.id] = {...(cat.entries[student.id]||{}), observation: btn.dataset.obsValue, note: currentNote()};
+        saveState();
+        renderModal(cls, cat, student);
+      };
+    });
+    root.querySelectorAll('[data-hidden-grade-value]').forEach(btn=>{
+      btn.onclick = () => {
+        cat.entries[student.id] = {...(cat.entries[student.id]||{}), hiddenGrade: btn.dataset.hiddenGradeValue, note: currentNote()};
+        saveState();
+        renderModal(cls, cat, student);
+      };
+    });
+  } else {
+    root.querySelectorAll('[data-chip-value]').forEach(btn=>{
+      btn.onclick = () => {
+        cat.entries[student.id] = {grade: btn.dataset.chipValue, note: currentNote()};
+        saveState();
+        root.innerHTML = ''; render();
+      };
+    });
+  }
+  const noteInput = document.getElementById('entryNote');
+  if(noteInput){
+    noteInput.addEventListener('change', () => {
+      if(cat.entries[student.id]) { cat.entries[student.id].note = noteInput.value; saveState(); }
+    });
+  }
   const clearBtn = document.getElementById('clearEntryBtn');
   if(clearBtn){
     clearBtn.onclick = () => { delete cat.entries[student.id]; saveState(); renderModal(cls, cat, student); };
@@ -1726,6 +2000,12 @@ function updateAutobackupDot(){
   dot.classList.toggle('on', c.autobackupSeconds > 0 && c.webdavAutoEnabled);
 }
 document.getElementById('autobackupLabel').onclick = () => { state.webdavOpen = !state.webdavOpen; renderWebdavPanel(); };
+document.getElementById('notennachweisBtn').onclick = async () => {
+  const cls = getActiveClass();
+  if(!cls){ await showAlert('Keine Lerngruppe', 'Bitte zuerst eine Lerngruppe auswählen.'); return; }
+  const sem = getActiveSemester(cls);
+  openNotennachweisModal(cls, sem);
+};
 document.getElementById('resetAllBtn').onclick = async () => {
   const typed = await showPrompt(
     'Alles zurücksetzen',
