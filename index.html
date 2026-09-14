@@ -1120,7 +1120,7 @@ function renderGrid(main, cls, sem){
   function catHeaderCell(cat, g, colspan, rowspan){
     return `<th class="cat-head" ${rowspan>1?`rowspan="${rowspan}"`:''} colspan="${colspan}">
       <div class="colhead">
-        <span data-edit-cat="${cat.id}" data-group="${g.id}" title="Antippen: umbenennen · Halten: duplizieren/löschen">${escapeHtml(cat.name)}</span>
+        <span data-edit-cat="${cat.id}" data-group="${g.id}" title="Antippen: bearbeiten, duplizieren oder löschen">${escapeHtml(cat.name)}</span>
         <span class="weight">${cat.weight}%${isContainerCat(cat) ? '' : ' · '+(cat.mode==='points'?'Punkte':'Note')}</span>
         ${(cat.date && !isContainerCat(cat)) ? `<span class="weight">${formatDate(cat.date)}</span>` : ''}
         <div class="row" style="gap:2px;">
@@ -1316,25 +1316,7 @@ function renderGrid(main, cls, sem){
   main.querySelectorAll('[data-add-cat]').forEach(btn=>{ btn.onclick = () => addCategory(cls, sem, btn.dataset.addCat); });
   main.querySelectorAll('[data-add-near-cat]').forEach(btn=>{ btn.onclick = () => addCategoryNear(cls, sem, btn.dataset.group, btn.dataset.addNearCat); });
   main.querySelectorAll('[data-edit-cat]').forEach(el=>{
-    let pressTimer = null, longPressed = false, startX = 0, startY = 0;
-    const clear = () => { clearTimeout(pressTimer); };
-    el.addEventListener('pointerdown', (e) => {
-      longPressed = false;
-      startX = e.clientX; startY = e.clientY;
-      pressTimer = setTimeout(() => {
-        longPressed = true;
-        openCategoryLongPressMenu(cls, sem, el.dataset.group, el.dataset.editCat);
-      }, 500);
-    });
-    el.addEventListener('pointermove', (e) => {
-      if(Math.abs(e.clientX-startX) > 8 || Math.abs(e.clientY-startY) > 8) clear();
-    });
-    el.addEventListener('pointerup', clear);
-    el.addEventListener('pointercancel', clear);
-    el.onclick = () => {
-      if(longPressed){ longPressed = false; return; }
-      editCategory(cls, sem, el.dataset.group, el.dataset.editCat);
-    };
+    el.onclick = () => { openCategoryMenu(cls, sem, el.dataset.group, el.dataset.editCat); };
   });
   main.querySelectorAll('[data-open-entries]').forEach(el=>{ el.onclick = () => openEntriesModal(cls, sem, el.dataset.group, el.dataset.cat, el.dataset.student); });
   main.querySelectorAll('[data-open-endnote]').forEach(el=>{ el.onclick = () => openEndnoteModal(cls, sem, el.dataset.openEndnote); });
@@ -1484,15 +1466,18 @@ function cloneCategoryForDuplicate(cat){
     children: cat.children ? cat.children.map(cloneCategoryForDuplicate) : undefined
   };
 }
-async function openCategoryLongPressMenu(cls, sem, groupId, catId){
+async function openCategoryMenu(cls, sem, groupId, catId){
   const ctx = findCategoryContext(sem, groupId, catId);
   if(!ctx) return;
   const choice = await showChoice(ctx.cat.name, 'Was möchtest du tun?', [
+    {label: 'Kategorie bearbeiten', value: 'edit'},
     {label: 'Kategorie duplizieren', value: 'dup'},
     {label: 'Kategorie löschen', value: 'del'},
   ]);
   if(choice === null) return;
-  if(choice === 'dup'){
+  if(choice === 'edit'){
+    editCategory(cls, sem, groupId, catId);
+  } else if(choice === 'dup'){
     const copy = cloneCategoryForDuplicate(ctx.cat);
     const idx = ctx.list.findIndex(c=>c.id===catId);
     ctx.list.splice(idx+1, 0, copy);
