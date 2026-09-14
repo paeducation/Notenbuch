@@ -989,6 +989,7 @@ function render(){
   renderClassRow();
   const cls = getActiveClass();
   renderSemRow(cls);
+  syncStickyOffsets();
   const main = document.getElementById('main');
   const prevWraps = Array.from(main.querySelectorAll('.grid-wrap'));
   const prevScrolls = prevWraps.map(w => w.scrollLeft);
@@ -2098,6 +2099,17 @@ document.getElementById('searchStudent').addEventListener('input', (e) => {
 
 document.getElementById('schoolYearInput').addEventListener('input', (e) => { state.schoolYear = e.target.value; saveState(); });
 
+function syncStickyOffsets(){
+  const titlebar = document.querySelector('.titlebar');
+  const headerApp = document.querySelector('header.app');
+  const toolbar = document.querySelector('.toolbar');
+  if(!titlebar || !headerApp || !toolbar) return;
+  const tbH = titlebar.offsetHeight;
+  headerApp.style.top = tbH + 'px';
+  const hH = headerApp.offsetHeight;
+  toolbar.style.top = (tbH + hH) + 'px';
+}
+window.addEventListener('resize', syncStickyOffsets);
 (async () => {
   setStatus('Wird geladen …');
   await loadState();
@@ -2105,6 +2117,7 @@ document.getElementById('schoolYearInput').addEventListener('input', (e) => { st
   render();
   initAutobackupFromConfig();
   updateAutobackupDot();
+  syncStickyOffsets();
 })();
 if('serviceWorker' in navigator){
   window.addEventListener('load', () => { navigator.serviceWorker.register('sw.js').catch(()=>{}); });
