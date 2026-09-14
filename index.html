@@ -290,11 +290,13 @@ function colorBucket(cls, value){
   }
   return baseGradeNum(valueToGradeStr(value));
 }
-function notePill(cls, value, subLabel){
+function notePill(cls, value, subLabel, scaleOverride){
   if(value === null || value === undefined || isNaN(value)) return '<span class="note-dash">–</span>';
-  const bucket = colorBucket(cls, value);
-  let html = `<span class="note-pill note-${bucket}">${displayValue(cls, value)}</span>`;
-  const sub = subLabel !== undefined ? subLabel : value.toFixed(2);
+  const effCls = scaleOverride ? {...cls, gradingSystem: scaleOverride} : cls;
+  const displayVal = scaleOverride ? convertValueScale(value, cls.gradingSystem, scaleOverride) : value;
+  const bucket = colorBucket(effCls, displayVal);
+  let html = `<span class="note-pill note-${bucket}">${displayValue(effCls, displayVal)}</span>`;
+  const sub = subLabel !== undefined ? subLabel : displayVal.toFixed(2);
   html += `<span class="avg-sub">${escapeHtml(sub)}</span>`;
   return html;
 }
@@ -430,8 +432,8 @@ function defaultOralCategories(){
 }
 function defaultWrittenCategories(){
   return [
-    {id: uid(), name: 'KL1', weight: 50, mode: 'points', maxPoints: 100, date: '', entries: {}},
-    {id: uid(), name: 'KL2', weight: 50, mode: 'points', maxPoints: 100, date: '', entries: {}},
+    {id: uid(), name: 'KL1', weight: 50, mode: 'grade', date: '', entries: {}},
+    {id: uid(), name: 'KL2', weight: 50, mode: 'grade', date: '', entries: {}},
   ];
 }
 function defaultGroups(){
@@ -1175,7 +1177,7 @@ function renderGrid(main, cls, sem){
         const entry = cat.entries[s.id];
         if(entry) subLabel = `${entry.points ?? '?'}/${entry.maxPoints ?? '?'}`;
       }
-      return `<td><div class="cell-stack" data-open-entries data-cat="${cat.id}" data-group="${g.id}" data-student="${s.id}">${notePill(cls, a, subLabel)}${overrideMark(cat, g, s)}</div></td>`;
+      return `<td><div class="cell-stack" data-open-entries data-cat="${cat.id}" data-group="${g.id}" data-student="${s.id}">${notePill(cls, a, subLabel, cat.displayScale)}${overrideMark(cat, g, s)}</div></td>`;
     }
     visibleStudents.forEach(s => {
       const end = semesterEndnoteForStudent(cls, sem, s.id);
@@ -1424,6 +1426,7 @@ function cloneCategoryForDuplicate(cat){
   return {
     id: uid(), name: cat.name + ' Kopie', weight: cat.weight, mode: cat.mode, maxPoints: cat.maxPoints,
     date: cat.date, containerOnly: cat.containerOnly || false, entries: {}, overrides: {},
+    displayScale: cat.displayScale,
     children: cat.children ? cat.children.map(cloneCategoryForDuplicate) : undefined
   };
 }
@@ -1450,6 +1453,29 @@ async function openCategoryLongPressMenu(cls, sem, groupId, catId){
     saveState(); render();
   }
 }
+async function convertCategoryMode(cls, cat, newMode){
+  if(newMode === cat.mode) return;
+  if(cat.mode === 'points' && newMode === 'grade'){
+    const newEntries = {};
+    cls.students.forEach(st => {
+      const entry = cat.entries[st.id];
+      if(!entry) return;
+      const v = entryValue(cls, cat, entry);
+      if(v === null || v === undefined || isNaN(v)) return;
+      const gradeStr = cls.gradingSystem === 'punkte' ? String(Math.round(v)) : valueToGradeStr(v);
+      newEntries[st.id] = {grade: gradeStr, note: entry.note};
+    });
+    cat.entries = newEntries;
+    cat.mode = 'grade';
+  } else if(cat.mode === 'grade' && newMode === 'points'){
+    const ok = await showConfirm('Zu Klausurpunkten wechseln', 'Bereits eingetragene Noten lassen sich nicht in Klausurpunkte zurückrechnen und werden dabei gelöscht.', {confirmLabel:'Trotzdem wechseln', danger:true});
+    if(!ok) return;
+    cat.entries = {};
+    cat.mode = 'points';
+  } else {
+    cat.mode = newMode;
+  }
+}
 async function editCategory(cls, sem, groupId, catId){
   const ctx = findCategoryContext(sem, groupId, catId);
   if(!ctx) return;
@@ -1457,14 +1483,30 @@ async function editCategory(cls, sem, groupId, catId){
   const isContainer = isContainerCat(cat);
   const name = await showPrompt('Kategorie bearbeiten', 'Name der Kategorie', cat.name, {confirmLabel:'Weiter'});
   if(name===null) return;
-  const weightStr = await showPrompt('Gewichtung', `Gewichtung in % (innerhalb von "${g.name}")`, cat.weight, {inputType:'number', confirmLabel: (isContainer||cat.mode==='points') ? 'Weiter' : 'Speichern'});
+  const weightStr = await showPrompt('Gewichtung', `Gewichtung in % (innerhalb von "${g.name}")`, cat.weight, {inputType:'number', confirmLabel:'Weiter'});
   if(weightStr===null) return;
   cat.name = name.trim() || cat.name;
   cat.weight = parseFloat(weightStr) || 0;
   if(isContainer){ saveState(); render(); return; }
+  if(cat.mode !== 'observation'){
+    const modeChoice = await showChoice('Eingabeart', `Aktuell: ${cat.mode==='points'?'Klausurpunkte (automatisch berechnet)':'Note direkt eintragen'}`, [
+      {label: 'Note direkt eintragen (mit Tendenz)', value: 'grade'},
+      {label: 'Klausurpunkte (Note wird automatisch berechnet)', value: 'points'},
+    ]);
+    if(modeChoice !== null) await convertCategoryMode(cls, cat, modeChoice);
+  }
   if(cat.mode === 'points'){
-    const maxStr = await showPrompt('Maximalpunktzahl', 'Übliche maximale Punktzahl einer Klausur in dieser Kategorie', cat.maxPoints ?? 60, {inputType:'number', confirmLabel:'Weiter'});
+    const maxStr = await showPrompt('Maximalpunktzahl', 'Übliche maximale Punktzahl einer Klausur in dieser Kategorie', cat.maxPoints ?? 100, {inputType:'number', confirmLabel:'Weiter'});
     if(maxStr !== null) cat.maxPoints = parseFloat(maxStr) || cat.maxPoints;
+  }
+  if(cat.mode !== 'observation'){
+    const currentLabel = cls.gradingSystem === 'punkte' ? 'Notenpunkte' : 'Noten mit Tendenz';
+    const scaleChoice = await showChoice('Darstellung dieser Spalte', 'Unabhängig vom Notenschema der Lerngruppe wählbar', [
+      {label: `Wie Lerngruppe (aktuell: ${currentLabel})`, value: ''},
+      {label: 'Noten mit Tendenz (1+ bis 6)', value: 'noten'},
+      {label: 'Notenpunkte (0-15)', value: 'punkte'},
+    ]);
+    if(scaleChoice !== null) cat.displayScale = scaleChoice || undefined;
   }
   const dateStr = await showPrompt('Datum', 'Datum dieser Kategorie, leer lassen zum Entfernen', cat.date || '', {inputType:'date', confirmLabel:'Speichern'});
   if(dateStr !== null) cat.date = dateStr;
@@ -1637,6 +1679,17 @@ function punkteValueToNoteText(punkteVal){
     idx = PUNKTE_TABLE.reduce((bestIdx, row, i) => Math.abs(row.note-rounded) < Math.abs(PUNKTE_TABLE[bestIdx].note-rounded) ? i : bestIdx, 0);
   }
   return NOTEN_TABLE[idx].note;
+}
+function noteValueToPunkte(noteVal){
+  const noteStr = valueToGradeStr(noteVal);
+  const idx = NOTEN_TABLE.findIndex(row => row.note === noteStr);
+  return idx > -1 ? PUNKTE_TABLE[idx].note : Math.round(15 - (noteVal-1)/5*15);
+}
+function convertValueScale(value, fromScale, toScale){
+  if(value === null || value === undefined || isNaN(value) || fromScale === toScale) return value;
+  if(fromScale === 'noten' && toScale === 'punkte') return noteValueToPunkte(value);
+  if(fromScale === 'punkte' && toScale === 'noten') return gradeStrToValue(punkteValueToNoteText(value));
+  return value;
 }
 function gradeTextForCategory(cls, cat, studentId){
   if(!cat) return '';
