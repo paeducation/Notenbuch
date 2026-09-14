@@ -232,6 +232,7 @@
 <script>
 const STORAGE_KEY = 'classes';
 let state = { classes: [], activeClassId: null, scaleOpen: false, searchTerm: '', compareView: false, positionMode: false, webdavOpen: false, selectedStudentId: null, incognito: false };
+let pendingCsvStufe = 'SII';
 
 const NOTEN_TABLE = [
   {min:95, note:'1+'}, {min:90, note:'1'}, {min:85, note:'1-'},
@@ -339,10 +340,11 @@ function entryValue(cls, cat, entry){
   }
 }
 function rebalanceEqualWeights(list){
-  const n = list.length;
+  const graded = list.filter(item => !item.ungraded);
+  const n = graded.length;
   if(n === 0) return;
   const base = Math.floor(100/n);
-  list.forEach((item,i) => { item.weight = (i === n-1) ? (100 - base*(n-1)) : base; });
+  graded.forEach((item,i) => { item.weight = (i === n-1) ? (100 - base*(n-1)) : base; });
 }
 function moveItem(arr, id, dir){
   const idx = arr.findIndex(x=>x.id===id);
@@ -432,16 +434,23 @@ function defaultOralCategories(){
     {id: uid(), name: 'SoMi 2', weight: 50, mode: 'grade', entries: {}},
   ];
 }
-function defaultWrittenCategories(){
+function defaultWrittenCategories(stufe){
+  if(stufe === 'SI'){
+    return [
+      {id: uid(), name: 'KA1', weight: 33, mode: 'grade', date: '', entries: {}},
+      {id: uid(), name: 'KA2', weight: 33, mode: 'grade', date: '', entries: {}},
+      {id: uid(), name: 'KA3', weight: 34, mode: 'grade', date: '', entries: {}},
+    ];
+  }
   return [
     {id: uid(), name: 'KL1', weight: 50, mode: 'grade', date: '', entries: {}},
     {id: uid(), name: 'KL2', weight: 50, mode: 'grade', date: '', entries: {}},
   ];
 }
-function defaultGroups(){
+function defaultGroups(stufe){
   return [
     {id: uid(), name: 'Mündlich', color: GROUP_COLORS[0], weight: 50, locked: true, categories: defaultOralCategories()},
-    {id: uid(), name: 'Schriftlich', color: GROUP_COLORS[1], weight: 50, locked: true, categories: defaultWrittenCategories()},
+    {id: uid(), name: 'Schriftlich', color: GROUP_COLORS[1], weight: 50, locked: true, categories: defaultWrittenCategories(stufe)},
   ];
 }
 function ensureDefaultGroups(sem){
@@ -657,8 +666,8 @@ async function importCSV(file){
   if(!ok) return;
 
   if(isNewClass){
-    const sem1 = {id: uid(), name: '1. HJ', groups: defaultGroups(), studentIds: []};
-    const sem2 = {id: uid(), name: '2. HJ', groups: defaultGroups(), studentIds: []};
+    const sem1 = {id: uid(), name: '1. HJ', groups: defaultGroups(pendingCsvStufe), studentIds: []};
+    const sem2 = {id: uid(), name: '2. HJ', groups: defaultGroups(pendingCsvStufe), studentIds: []};
     targetCls = {id: uid(), name: klasseName, students: [], semesters: [sem1, sem2], activeSemesterId: sem1.id,
       gradingSystem: 'noten', gradeTableNoten: NOTEN_TABLE.map(r=>({...r})), gradeTablePunkte: PUNKTE_TABLE.map(r=>({...r}))};
     state.classes.push(targetCls);
@@ -898,6 +907,7 @@ function formatDate(iso){
 // ---------- rendering ----------
 function renderAddLerngruppeModal(){
   const root = document.getElementById('modalRoot');
+  let stufe = 'SII';
   root.innerHTML = `
     <div class="overlay" id="overlay">
       <div class="modal">
@@ -906,6 +916,11 @@ function renderAddLerngruppeModal(){
         <div class="sub">Name eingeben oder per CSV importieren</div>
         <div style="margin-top:14px;">
           <input type="text" id="newLerngruppeName" placeholder="Name, z.B. 9b" style="width:100%;">
+          <div class="row" style="margin-top:10px;gap:8px;">
+            <button class="ghost small" id="stufeSIBtn" style="flex:1;">Sek I</button>
+            <button class="ghost small" id="stufeSIIBtn" style="flex:1;">Sek II</button>
+          </div>
+          <div class="hint" style="margin-top:6px;" id="stufeHint">Schriftlich wird vorbelegt mit: KL1, KL2</div>
           <div class="row" style="margin-top:10px;justify-content:flex-end;">
             <button id="createLerngruppeBtn">Anlegen</button>
           </div>
@@ -919,6 +934,16 @@ function renderAddLerngruppeModal(){
       </div>
     </div>
   `;
+  const syncStufeButtons = () => {
+    document.getElementById('stufeSIBtn').classList.toggle('active-toggle', stufe==='SI');
+    document.getElementById('stufeSIIBtn').classList.toggle('active-toggle', stufe==='SII');
+    document.getElementById('stufeHint').textContent = stufe==='SI'
+      ? 'Schriftlich wird vorbelegt mit: KA1, KA2, KA3'
+      : 'Schriftlich wird vorbelegt mit: KL1, KL2';
+  };
+  syncStufeButtons();
+  document.getElementById('stufeSIBtn').onclick = () => { stufe = 'SI'; syncStufeButtons(); };
+  document.getElementById('stufeSIIBtn').onclick = () => { stufe = 'SII'; syncStufeButtons(); };
   document.getElementById('overlay').addEventListener('click', (e) => { if(e.target.id==='overlay') root.innerHTML=''; });
   document.getElementById('closeAddModal').onclick = () => { root.innerHTML=''; };
   const nameInput = document.getElementById('newLerngruppeName');
@@ -926,8 +951,8 @@ function renderAddLerngruppeModal(){
   const doCreate = () => {
     const name = nameInput.value.trim();
     if(!name) return;
-    const sem1 = {id: uid(), name: '1. HJ', groups: defaultGroups(), studentIds: []};
-    const sem2 = {id: uid(), name: '2. HJ', groups: defaultGroups(), studentIds: []};
+    const sem1 = {id: uid(), name: '1. HJ', groups: defaultGroups(stufe), studentIds: []};
+    const sem2 = {id: uid(), name: '2. HJ', groups: defaultGroups(stufe), studentIds: []};
     const cls = {id: uid(), name, students: [], semesters: [sem1, sem2], activeSemesterId: sem1.id,
       gradingSystem: 'noten', gradeTableNoten: NOTEN_TABLE.map(r=>({...r})), gradeTablePunkte: PUNKTE_TABLE.map(r=>({...r}))};
     state.classes.push(cls); state.activeClassId = cls.id;
@@ -939,6 +964,7 @@ function renderAddLerngruppeModal(){
   nameInput.addEventListener('keydown', (e) => { if(e.key==='Enter') doCreate(); });
   document.getElementById('csvFromAddModalBtn').onclick = () => {
     root.innerHTML = '';
+    pendingCsvStufe = stufe;
     document.getElementById('csvImportFile').click();
   };
 }
@@ -1125,7 +1151,7 @@ function renderGrid(main, cls, sem){
         ${(cat.date && !isContainerCat(cat)) ? `<span class="weight">${formatDate(cat.date)}</span>` : ''}
         <div class="row" style="gap:2px;">
           ${state.positionMode ? `<button class="colx dark" data-move-cat="${cat.id}" data-group="${g.id}" data-dir="-1">‹</button>` : ''}
-          <button class="colx dark" data-add-near-cat="${cat.id}" data-group="${g.id}">+</button>
+          <button class="colx dark" data-add-near-cat="${cat.id}" data-group="${g.id}" style="font-size:1.15rem;font-weight:700;width:24px;height:24px;">+</button>
           ${state.positionMode ? `<button class="colx dark" data-move-cat="${cat.id}" data-group="${g.id}" data-dir="1">›</button>` : ''}
         </div>
       </div>
@@ -1391,22 +1417,33 @@ async function promptNewCategory(defaultWeight, autoWeight){
 async function promptNewSubcategory(defaultWeight, autoWeight){
   const name = await showPrompt('Unterkategorie hinzufügen', 'Name der Unterkategorie', '', {placeholder:'z.B. Beitrag 12.03.', confirmLabel:'Weiter'});
   if(name===null || !name.trim()) return null;
+  const mode = await showChoice('Notenschema', 'Wie soll dieser Eintrag bewertet werden?', [
+    {label: 'Noten (gewertet, 1+ bis 6)', value: 'grade'},
+    {label: 'Unterrichtsbeobachtung (− ○ +)', value: 'observation'},
+  ]);
+  if(mode === null) return null;
+  let ungraded = false;
+  if(mode === 'observation'){
+    const gradingChoice = await showChoice('Notenwertung', 'Soll dieser Beobachtungseintrag mit in die Berechnung einfließen?', [
+      {label: 'Mit Notenwertung (verdeckte Note zählt mit)', value: 'mit'},
+      {label: 'Ohne Notenwertung (nur Beobachtung, 0% Gewichtung)', value: 'ohne'},
+    ]);
+    if(gradingChoice === null) return null;
+    ungraded = gradingChoice === 'ohne';
+  }
   let weight;
-  if(autoWeight){
+  if(ungraded){
+    weight = 0;
+  } else if(autoWeight){
     weight = parseFloat(defaultWeight) || 0;
   } else {
     const weightStr = await showPrompt('Gewichtung', 'Gewichtung in %', defaultWeight, {inputType:'number', confirmLabel:'Weiter'});
     if(weightStr===null) return null;
     weight = parseFloat(weightStr) || 0;
   }
-  const mode = await showChoice('Notenschema', 'Wie soll dieser Eintrag bewertet werden?', [
-    {label: 'Noten (gewertet, 1+ bis 6)', value: 'grade'},
-    {label: 'Unterrichtsbeobachtung (− ○ +)', value: 'observation'},
-  ]);
-  if(mode === null) return null;
   const dateStr = await showPrompt('Datum', 'Datum dieser Unterkategorie', new Date().toISOString().slice(0,10), {inputType:'date', confirmLabel:'Anlegen'});
   if(dateStr===null) return null;
-  return {id: uid(), name: name.trim(), weight, mode, date: dateStr || '', entries: {}};
+  return {id: uid(), name: name.trim(), weight, mode, ungraded, date: dateStr || '', entries: {}};
 }
 async function addCategory(cls, sem, groupId){
   const g = sem.groups.find(x=>x.id===groupId);
@@ -1929,8 +1966,8 @@ function renderModal(cls, cat, student){
                </div>`
             : cat.mode==='observation'
               ? `<div class="hint" style="margin-bottom:6px;">Sichtbares Symbol</div>${observationChipsHtml(entry?.observation)}
-                 <div class="hint" style="margin:14px 0 6px;">Zugrunde liegende Note (nicht sichtbar, zählt aber in die Berechnung)</div>
-                 ${gradeChipsHtml(cls, entry?.hiddenGrade, true)}`
+                 ${cat.ungraded ? '' : `<div class="hint" style="margin:14px 0 6px;">Zugrunde liegende Note (nicht sichtbar, zählt aber in die Berechnung)</div>
+                 ${gradeChipsHtml(cls, entry?.hiddenGrade, true)}`}`
               : gradeChipsHtml(cls, entry?.grade)}
         </div>
         <div style="margin-top:14px;">
