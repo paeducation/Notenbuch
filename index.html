@@ -183,10 +183,13 @@
   .switch.sm input:checked + .slider:before{transform:translateX(14px);}
   .modal-close{position:sticky;top:0;text-align:right;}
   @page{size:A4 portrait;margin:10mm;}
+  .print-header{display:none;}
   @media print{
     .titlebar, header.app, .toolbar, #scalePanel, #webdavPanel, #modalRoot, .status{display:none!important;}
     body{padding-bottom:0!important;background:#fff!important;}
     main{padding:0!important;}
+    .print-header{display:flex!important;gap:18px;flex-wrap:wrap;font-size:11px;margin-bottom:10px;padding-bottom:6px;border-bottom:1px solid #999;}
+    table.grid th, table.grid td{white-space:normal!important;word-break:break-word;}
     .grid-wrap{max-height:none!important;overflow:visible!important;box-shadow:none!important;border:none!important;}
     table.grid{font-size:10px!important;}
     .colx, .reset-arrow, [data-del-student], .add-student-row{display:none!important;}
@@ -1106,6 +1109,16 @@ function findGroupByName(sem, name){
 }
 function findCategoryByName(group, name){
   return group ? group.categories.find(c => (c.name||'').trim().toLowerCase() === name.toLowerCase()) : null;
+}
+function printHeaderHtml(cls, sem){
+  const today = new Date().toLocaleDateString('de-DE');
+  const schoolYear = state.schoolYear ? escapeHtml(state.schoolYear) : '–';
+  return `<div class="print-header">
+    <span><strong>Schuljahr:</strong> ${schoolYear}</span>
+    <span><strong>Lerngruppe:</strong> ${escapeHtml(cls.name)}</span>
+    <span><strong>Halbjahr:</strong> ${escapeHtml(sem.name)}</span>
+    <span><strong>Gedruckt am:</strong> ${today}</span>
+  </div>`;
 }
 function renderKonferenztabelleHtml(cls, sem){
   const schriftlich = findGroupByName(sem, 'schriftlich');
@@ -2377,11 +2390,13 @@ document.getElementById('printBtn').onclick = async () => {
   const main = document.getElementById('main');
   if(reportChoice === 'konferenz'){
     try{
-      main.innerHTML = renderKonferenztabelleHtml(cls, sem);
+      main.innerHTML = printHeaderHtml(cls, sem) + renderKonferenztabelleHtml(cls, sem);
     }catch(err){
       await showAlert('Fehler', 'Konferenztabelle konnte nicht erzeugt werden: ' + err.message);
       return;
     }
+  } else {
+    main.insertAdjacentHTML('afterbegin', printHeaderHtml(cls, sem));
   }
   scaleTablesForPrint();
   window.print();
@@ -2389,7 +2404,7 @@ document.getElementById('printBtn').onclick = async () => {
   const restore = () => {
     if(restored) return;
     restored = true;
-    if(reportChoice === 'konferenz') render();
+    render();
     resetPrintScale();
   };
   window.addEventListener('afterprint', restore, {once: true});
