@@ -1101,6 +1101,45 @@ function findCategoryContext(sem, groupId, catId){
   }
   return search(g.categories, null);
 }
+function findGroupByName(sem, name){
+  return sem.groups.find(g => (g.name||'').trim().toLowerCase() === name.toLowerCase());
+}
+function findCategoryByName(group, name){
+  return group ? group.categories.find(c => (c.name||'').trim().toLowerCase() === name.toLowerCase()) : null;
+}
+function renderKonferenztabelleHtml(cls, sem){
+  const schriftlich = findGroupByName(sem, 'schriftlich');
+  const muendlich = findGroupByName(sem, 'mündlich');
+  const soMi1 = findCategoryByName(muendlich, 'somi 1');
+  const soMi2 = findCategoryByName(muendlich, 'somi 2');
+  const students = getSemesterStudents(cls, sem);
+  const schriftlichCats = schriftlich ? schriftlich.categories : [];
+  let headerRow = `<tr><th class="name-col">Schüler</th>`;
+  schriftlichCats.forEach(c => { headerRow += `<th class="cat-head"><div class="colhead"><span>${escapeHtml(c.name)}</span></div></th>`; });
+  headerRow += `<th class="cat-head total-head">Gesamt Schriftlich</th>`;
+  if(soMi1) headerRow += `<th class="cat-head"><div class="colhead"><span>SoMi 1</span></div></th>`;
+  if(soMi2) headerRow += `<th class="cat-head"><div class="colhead"><span>SoMi 2</span></div></th>`;
+  headerRow += `<th class="cat-head total-head">Gesamt Mündlich</th>`;
+  headerRow += `<th class="endnote-col">Endnote (NT)</th></tr>`;
+  let body = '';
+  students.forEach(s => {
+    let row = `<tr><td class="name-col">${escapeHtml(s.name)}</td>`;
+    schriftlichCats.forEach(c => {
+      const v = categoryAvgForStudent(cls, c, s.id);
+      row += `<td>${notePill(cls, v, undefined, c.displayScale)}</td>`;
+    });
+    const gSchr = schriftlich ? groupGesamtForStudent(cls, schriftlich, s.id) : null;
+    row += `<td class="total-col">${notePill(cls, gSchr)}</td>`;
+    if(soMi1){ row += `<td>${notePill(cls, categoryAvgForStudent(cls, soMi1, s.id))}</td>`; }
+    if(soMi2){ row += `<td>${notePill(cls, categoryAvgForStudent(cls, soMi2, s.id))}</td>`; }
+    const gMue = muendlich ? groupGesamtForStudent(cls, muendlich, s.id) : null;
+    row += `<td class="total-col">${notePill(cls, gMue)}</td>`;
+    const end = semesterEndnoteForStudent(cls, sem, s.id);
+    row += `<td class="endnote-col">${notePill(cls, end)}</td>`;
+    body += row + `</tr>`;
+  });
+  return `<div class="grid-wrap"><table class="grid"><thead>${headerRow}</thead><tbody>${body}</tbody></table></div>`;
+}
 function getSemesterStudents(cls, sem){
   if(!sem.studentIds) return cls.students.slice();
   return cls.students.filter(s => sem.studentIds.includes(s.id));
@@ -2319,17 +2358,42 @@ function resetPrintScale(){
 }
 window.addEventListener('afterprint', resetPrintScale);
 document.getElementById('printBtn').onclick = async () => {
-  const choice = await showChoice('Drucken', '', [
+  const cls = getActiveClass();
+  if(!cls){ await showAlert('Keine Lerngruppe', 'Bitte zuerst eine Lerngruppe auswählen.'); return; }
+  const sem = getActiveSemester(cls);
+  const reportChoice = await showChoice('Drucken', 'Was möchtest du drucken?', [
+    {label: 'Notenbuch (alles)', value: 'alles'},
+    {label: 'Konferenztabelle (Schriftlich, Mündlich, Endnote)', value: 'konferenz'},
+  ]);
+  if(reportChoice === null) return;
+  const methodChoice = await showChoice('Drucken', '', [
     {label: 'Direkt drucken', value: 'direct'},
     {label: 'Als PDF speichern', value: 'pdf'},
   ]);
-  if(choice === null) return;
-  if(choice === 'pdf'){
+  if(methodChoice === null) return;
+  if(methodChoice === 'pdf'){
     await showAlert('Als PDF speichern', 'Im nächsten Fenster als Ziel/Drucker "Als PDF sichern" (bzw. "Auf iPad sichern" o.ä.) auswählen statt eines echten Druckers.');
+  }
+  const main = document.getElementById('main');
+  if(reportChoice === 'konferenz'){
+    try{
+      main.innerHTML = renderKonferenztabelleHtml(cls, sem);
+    }catch(err){
+      await showAlert('Fehler', 'Konferenztabelle konnte nicht erzeugt werden: ' + err.message);
+      return;
+    }
   }
   scaleTablesForPrint();
   window.print();
-  setTimeout(resetPrintScale, 1000);
+  let restored = false;
+  const restore = () => {
+    if(restored) return;
+    restored = true;
+    if(reportChoice === 'konferenz') render();
+    resetPrintScale();
+  };
+  window.addEventListener('afterprint', restore, {once: true});
+  setTimeout(restore, 1500);
 };
 document.getElementById('importFile').addEventListener('change', (e) => {
   const file = e.target.files[0];
