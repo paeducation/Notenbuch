@@ -94,7 +94,8 @@
   table.grid th:last-child, table.grid td:last-child{border-right:none;}
   table.grid thead th{background:var(--surface);font-weight:600;color:var(--ink);font-size:0.76rem;}
   .grp-head{color:#fff;font-weight:700;font-size:0.68rem;
-    padding:4px 8px;text-transform:uppercase;letter-spacing:0.03em;position:relative;}
+    padding:4px 8px;text-transform:uppercase;letter-spacing:0.03em;}
+  .grp-head-wrap{position:relative;display:block;}
   .grp-head .grp-inner{display:flex;align-items:center;justify-content:center;gap:6px;}
   .grp-head .collapse-eye{position:absolute;right:8px;top:50%;transform:translateY(-50%);}
   .cat-head{background:var(--surface);}
@@ -1102,13 +1103,15 @@ function renderGrid(main, cls, sem){
     }
     const span = g.categories.reduce((s,c)=>s+catWidth(c), 0) + 1;
     groupHeadRow += `<th class="grp-head" colspan="${span}" style="background:${colorForGroupName(g.name)};">
-      <button class="colx collapse-eye" data-toggle-group-collapse="${g.id}" title="Ausblenden" style="text-decoration:line-through;">👁</button>
-      <div class="grp-inner">
-        ${state.positionMode ? `<button class="colx" data-move-group="${g.id}" data-dir="-1">‹</button>` : ''}
-        <span data-rename-group="${g.id}" style="cursor:pointer;">${escapeHtml(g.name)} <span style="font-weight:400;opacity:0.85;">${g.weight}%</span></span>
-        <button class="colx" data-add-cat="${g.id}">+</button>
-        ${g.locked ? '' : `<button class="colx danger" data-del-group="${g.id}">✕</button>`}
-        ${state.positionMode ? `<button class="colx" data-move-group="${g.id}" data-dir="1">›</button>` : ''}
+      <div class="grp-head-wrap">
+        <button class="colx collapse-eye" data-toggle-group-collapse="${g.id}" title="Ausblenden" style="text-decoration:line-through;">👁</button>
+        <div class="grp-inner">
+          ${state.positionMode ? `<button class="colx" data-move-group="${g.id}" data-dir="-1">‹</button>` : ''}
+          <span data-rename-group="${g.id}" style="cursor:pointer;">${escapeHtml(g.name)} <span style="font-weight:400;opacity:0.85;">${g.weight}%</span></span>
+          <button class="colx" data-add-cat="${g.id}">+</button>
+          ${g.locked ? '' : `<button class="colx danger" data-del-group="${g.id}">✕</button>`}
+          ${state.positionMode ? `<button class="colx" data-move-group="${g.id}" data-dir="1">›</button>` : ''}
+        </div>
       </div>
     </th>`;
   });
