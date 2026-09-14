@@ -128,6 +128,11 @@
   .note-3,.note-4{background:var(--warn-soft);color:var(--warn);}
   .note-5,.note-6{background:var(--danger-soft);color:var(--danger);}
   .note-dash{color:var(--ink-soft);font-family:ui-monospace,'SF Mono',Menlo,monospace;}
+  .border-badge{display:inline-block;margin-left:3px;font-size:0.62rem;font-weight:700;padding:1px 4px;border-radius:8px;vertical-align:middle;}
+  .border-badge.border-ok{background:var(--pass-soft);color:var(--pass);}
+  .border-badge.border-warn{background:var(--danger-soft);color:var(--danger);cursor:pointer;}
+  .border-badge.border-resolved{background:var(--warn-soft);color:var(--warn);}
+  .note-pill.border-tie-pill{background:var(--danger-soft);color:var(--danger);cursor:pointer;font-size:0.78rem;padding:2px 8px;}
   .avg-sub{font-size:0.64rem;color:var(--ink-soft);font-family:ui-monospace,'SF Mono',Menlo,monospace;}
   .add-student-row td{background:var(--surface-soft);}
   .add-student-row input{width:100%;min-width:130px;}
@@ -207,6 +212,7 @@
   <button class="ghost small" id="positionModeBtn">↕ Position</button>
   <button class="ghost small" id="copyStructureBtn">⇄ Struktur übernehmen…</button>
   <button class="ghost small" id="toggleScaleBtn">Notenschema</button>
+  <button class="ghost small" id="borderlineToggleBtn">🎯 Grenzfälle</button>
   <button class="ghost small" id="exportBtn">⬇ Backup</button>
   <button class="ghost small" id="importBtn">⬆ Wiederherstellen</button>
   <button class="ghost small" id="notennachweisBtn">📋 Notennachweis</button>
@@ -697,6 +703,14 @@ async function importCSV(file){
 
 // ---------- WebDAV (z.B. IServ, nur im Intranet erreichbar) ----------
 const WEBDAV_KEY = 'notenbuch-webdav-config';
+const BORDERLINE_KEY = 'notenbuch-borderline-toggle';
+function loadBorderlineToggle(){
+  try{ return localStorage.getItem(BORDERLINE_KEY) === '1'; }catch(e){ return false; }
+}
+function saveBorderlineToggle(on){
+  try{ localStorage.setItem(BORDERLINE_KEY, on ? '1' : '0'); }catch(e){}
+}
+let borderlineEnabled = loadBorderlineToggle();
 const NN_MAP_KEY = 'notenbuch-notennachweis-map';
 function loadWebdavConfig(){
   const defaults = {url:'', username:'', password:'', autobackupSeconds:0, webdavAutoEnabled:false};
@@ -1028,6 +1042,7 @@ function render(){
   document.getElementById('positionModeBtn').disabled = !cls;
   document.getElementById('positionModeBtn').classList.toggle('active-toggle', state.positionMode);
   document.getElementById('incognitoBtn').disabled = !cls;
+  document.getElementById('borderlineToggleBtn').classList.toggle('active-toggle', borderlineEnabled);
   document.getElementById('incognitoBtn').classList.toggle('active-toggle', state.incognito);
   const ubBtn = document.getElementById('ubNotesBtn');
   ubBtn.disabled = !cls || !state.selectedStudentId;
@@ -1206,7 +1221,7 @@ function renderGrid(main, cls, sem){
   } else {
     function overrideMark(cat, g, s){
       const ov = cat.overrides && cat.overrides[s.id];
-      return (ov !== undefined && ov !== null && ov !== '') ? `<button class="reset-arrow" data-reset-cat="${cat.id}" data-group="${g.id}" data-student="${s.id}" title="Automatische Berechnung wiederherstellen">🧮</button>` : '';
+      return (ov !== undefined && ov !== null && ov !== '') ? `<button class="reset-arrow" data-reset-cat="${cat.id}" data-group="${g.id}" data-student="${s.id}" title="Automatische Berechnung wiederherstellen"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style="display:block;"><rect x="4" y="2" width="16" height="20" rx="2" stroke="currentColor" stroke-width="2.2"/><rect x="7" y="5" width="10" height="4" rx="0.8" fill="currentColor"/><circle cx="7.6" cy="13.2" r="1.15" fill="currentColor"/><circle cx="12" cy="13.2" r="1.15" fill="currentColor"/><circle cx="16.4" cy="13.2" r="1.15" fill="currentColor"/><circle cx="7.6" cy="17.4" r="1.15" fill="currentColor"/><circle cx="12" cy="17.4" r="1.15" fill="currentColor"/><circle cx="16.4" cy="17.4" r="1.15" fill="currentColor"/></svg></button>` : '';
     }
     function catCell(cat, g, s){
       const hasKids = cat.children && cat.children.length;
@@ -1233,7 +1248,21 @@ function renderGrid(main, cls, sem){
       const overridden = sem.endnoteOverrides && sem.endnoteOverrides[s.id] !== undefined && sem.endnoteOverrides[s.id] !== '';
       const isSelected = state.selectedStudentId === s.id;
       let row = `<tr class="${isSelected?'student-selected':''}"><td class="name-col" data-select-student="${s.id}" style="cursor:pointer;"><div class="name-cell-row"><span>${escapeHtml(s.name)}</span><button class="colx dark" data-del-student="${s.id}" title="Aus ${escapeHtml(sem.name)} entfernen">✕</button></div></td>`;
-      row += `<td class="endnote-col"><div class="cell-stack" data-open-endnote="${s.id}">${notePill(cls, end)}${overridden ? `<button class="reset-arrow" data-reset-endnote="${s.id}" title="Automatische Berechnung wiederherstellen">🧮</button>` : ''}</div></td>`;
+      let endPillHtml = notePill(cls, end);
+      let endBadge = '';
+      if(borderlineEnabled){
+        if(overridden){
+          endBadge = `<span class="border-badge border-resolved" title="Grenzfall manuell entschieden">⚑</span>`;
+        } else {
+          const endStatus = computeBorderlineStatus(cls, end);
+          if(endStatus && endStatus.isTie){
+            endPillHtml = tieOnlyBadgeHtmlEndnote(endStatus, s.id);
+          } else {
+            endBadge = borderlineBadgeHtmlEndnote(endStatus, s.id);
+          }
+        }
+      }
+      row += `<td class="endnote-col"><div class="cell-stack" data-open-endnote="${s.id}">${endPillHtml}${endBadge}${overridden ? `<button class="reset-arrow" data-reset-endnote="${s.id}" title="Automatische Berechnung wiederherstellen"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style="display:block;"><rect x="4" y="2" width="16" height="20" rx="2" stroke="currentColor" stroke-width="2.2"/><rect x="7" y="5" width="10" height="4" rx="0.8" fill="currentColor"/><circle cx="7.6" cy="13.2" r="1.15" fill="currentColor"/><circle cx="12" cy="13.2" r="1.15" fill="currentColor"/><circle cx="16.4" cy="13.2" r="1.15" fill="currentColor"/><circle cx="7.6" cy="17.4" r="1.15" fill="currentColor"/><circle cx="12" cy="17.4" r="1.15" fill="currentColor"/><circle cx="16.4" cy="17.4" r="1.15" fill="currentColor"/></svg></button>` : ''}</div></td>`;
       groups.forEach(g => {
         if(g.collapsed){
           row += `<td class="total-col" data-toggle-group-collapse="${g.id}" style="cursor:pointer;color:var(--ink-soft);text-align:center;" title="Einblenden">···</td>`;
@@ -1242,7 +1271,21 @@ function renderGrid(main, cls, sem){
         const gt = groupGesamtForStudent(cls, g, s.id);
         const gOv = g.overrides && g.overrides[s.id];
         const gOverridden = gOv !== undefined && gOv !== null && gOv !== '';
-        row += `<td class="total-col"><div class="cell-stack" data-open-group="${g.id}" data-student="${s.id}">${notePill(cls, gt)}${gOverridden ? `<button class="reset-arrow" data-reset-group="${g.id}" data-student="${s.id}" title="Automatische Berechnung wiederherstellen">🧮</button>` : ''}</div></td>`;
+        let gPillHtml = notePill(cls, gt);
+        let badge = '';
+        if(borderlineEnabled){
+          if(gOverridden){
+            badge = `<span class="border-badge border-resolved" title="Grenzfall manuell entschieden">⚑</span>`;
+          } else {
+            const status = computeBorderlineStatus(cls, gt);
+            if(status && status.isTie){
+              gPillHtml = tieOnlyBadgeHtmlGroup(status, g.id, s.id);
+            } else {
+              badge = borderlineBadgeHtml(status, g.id, s.id);
+            }
+          }
+        }
+        row += `<td class="total-col"><div class="cell-stack" data-open-group="${g.id}" data-student="${s.id}">${gPillHtml}${badge}${gOverridden ? `<button class="reset-arrow" data-reset-group="${g.id}" data-student="${s.id}" title="Automatische Berechnung wiederherstellen"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style="display:block;"><rect x="4" y="2" width="16" height="20" rx="2" stroke="currentColor" stroke-width="2.2"/><rect x="7" y="5" width="10" height="4" rx="0.8" fill="currentColor"/><circle cx="7.6" cy="13.2" r="1.15" fill="currentColor"/><circle cx="12" cy="13.2" r="1.15" fill="currentColor"/><circle cx="16.4" cy="13.2" r="1.15" fill="currentColor"/><circle cx="7.6" cy="17.4" r="1.15" fill="currentColor"/><circle cx="12" cy="17.4" r="1.15" fill="currentColor"/><circle cx="16.4" cy="17.4" r="1.15" fill="currentColor"/></svg></button>` : ''}</div></td>`;
         g.categories.forEach(cat => { row += catCell(cat, g, s); });
       });
       body += row + `</tr>`;
@@ -1359,6 +1402,35 @@ function renderGrid(main, cls, sem){
       e.stopPropagation();
       const g = sem.groups.find(x=>x.id===btn.dataset.resetGroup);
       if(g && g.overrides) delete g.overrides[btn.dataset.student];
+      saveState(); render();
+    };
+  });
+  main.querySelectorAll('[data-borderline-resolve]').forEach(el=>{
+    el.onclick = async (e) => {
+      e.stopPropagation();
+      const g = sem.groups.find(x=>x.id===el.dataset.borderlineResolve);
+      if(!g) return;
+      const choice = await showChoice('Grenzfall entscheiden', 'Welche Note soll gelten?', [
+        {label: el.dataset.floor, value: el.dataset.floor},
+        {label: el.dataset.ceil, value: el.dataset.ceil},
+      ]);
+      if(choice === null) return;
+      if(!g.overrides) g.overrides = {};
+      g.overrides[el.dataset.student] = choice;
+      saveState(); render();
+    };
+  });
+  main.querySelectorAll('[data-endnote-borderline-resolve]').forEach(el=>{
+    el.onclick = async (e) => {
+      e.stopPropagation();
+      const studentId = el.dataset.endnoteBorderlineResolve;
+      const choice = await showChoice('Grenzfall entscheiden', 'Welche Note soll gelten?', [
+        {label: el.dataset.floor, value: el.dataset.floor},
+        {label: el.dataset.ceil, value: el.dataset.ceil},
+      ]);
+      if(choice === null) return;
+      if(!sem.endnoteOverrides) sem.endnoteOverrides = {};
+      sem.endnoteOverrides[studentId] = choice;
       saveState(); render();
     };
   });
@@ -1929,6 +2001,50 @@ function tendencyOptionsHtml(selected){
   }
   return opts.join('');
 }
+const BORDERLINE_EPS = 0.05;
+function computeBorderlineStatus(cls, value){
+  if(value === null || value === undefined || isNaN(value)) return null;
+  if(cls.gradingSystem === 'punkte'){
+    const rounded = Math.round(value);
+    if(Math.abs(value - rounded) < BORDERLINE_EPS) return {exact: true, text: String(rounded)};
+    const floor = Math.floor(value), ceil = Math.ceil(value);
+    const diffFloor = value - floor, diffCeil = ceil - value;
+    const isTie = Math.abs(diffFloor - diffCeil) < BORDERLINE_EPS;
+    const recommendation = isTie ? `${floor} ↑ / ${ceil} ↓` : (diffFloor < diffCeil ? `${floor} ↑` : `${ceil} ↓`);
+    return {exact: false, isTie, floorText: String(floor), ceilText: String(ceil), recommendation};
+  }
+  const steps = gradeValuesList(cls).map(v => ({text: v, val: gradeStrToValue(v)})).sort((a,b)=>a.val-b.val);
+  const exactStep = steps.find(s => Math.abs(s.val - value) < BORDERLINE_EPS);
+  if(exactStep) return {exact: true, text: exactStep.text};
+  let floor = null, ceil = null;
+  for(const s of steps){
+    if(s.val <= value) floor = s;
+    if(s.val >= value && !ceil) ceil = s;
+  }
+  if(!floor || !ceil) return {exact: true, text: valueToGradeStr(value)};
+  const diffFloor = value - floor.val, diffCeil = ceil.val - value;
+  const isTie = Math.abs(diffFloor - diffCeil) < BORDERLINE_EPS;
+  const recommendation = isTie ? `${floor.text} ↑ / ${ceil.text} ↓` : (diffFloor < diffCeil ? `${floor.text} ↑` : `${ceil.text} ↓`);
+  return {exact: false, isTie, floorText: floor.text, ceilText: ceil.text, recommendation};
+}
+function tieOnlyBadgeHtmlGroup(status, groupId, studentId){
+  return `<span class="note-pill border-tie-pill" data-borderline-resolve="${groupId}" data-student="${studentId}" data-floor="${escapeHtml(status.floorText)}" data-ceil="${escapeHtml(status.ceilText)}" title="Exakter Gleichstand – bitte selbst entscheiden">${escapeHtml(status.recommendation)}</span>`;
+}
+function tieOnlyBadgeHtmlEndnote(status, studentId){
+  return `<span class="note-pill border-tie-pill" data-endnote-borderline-resolve="${studentId}" data-floor="${escapeHtml(status.floorText)}" data-ceil="${escapeHtml(status.ceilText)}" title="Exakter Gleichstand – bitte selbst entscheiden">${escapeHtml(status.recommendation)}</span>`;
+}
+function borderlineBadgeHtml(status, groupId, studentId){
+  if(!status) return '';
+  if(status.exact) return `<span class="border-badge border-ok" title="Eindeutige Berechnung">✓</span>`;
+  const title = status.isTie ? 'Exakter Gleichstand – bitte selbst entscheiden' : 'Grenzfall – antippen zum Entscheiden';
+  return `<span class="border-badge border-warn" data-borderline-resolve="${groupId}" data-student="${studentId}" data-floor="${escapeHtml(status.floorText)}" data-ceil="${escapeHtml(status.ceilText)}" title="${title}">${escapeHtml(status.recommendation)}</span>`;
+}
+function borderlineBadgeHtmlEndnote(status, studentId){
+  if(!status) return '';
+  if(status.exact) return `<span class="border-badge border-ok" title="Eindeutige Berechnung">✓</span>`;
+  const title = status.isTie ? 'Exakter Gleichstand – bitte selbst entscheiden' : 'Grenzfall – antippen zum Entscheiden';
+  return `<span class="border-badge border-warn" data-endnote-borderline-resolve="${studentId}" data-floor="${escapeHtml(status.floorText)}" data-ceil="${escapeHtml(status.ceilText)}" title="${title}">${escapeHtml(status.recommendation)}</span>`;
+}
 function gradeValuesList(cls){
   if(cls.gradingSystem === 'punkte') return Array.from({length:16}, (_,i) => String(15-i));
   const vals = [];
@@ -2120,6 +2236,11 @@ document.getElementById('copyStructureBtn').onclick = async () => {
   saveState(); render();
 };
 document.getElementById('toggleScaleBtn').onclick = () => { state.scaleOpen = !state.scaleOpen; render(); };
+document.getElementById('borderlineToggleBtn').onclick = () => {
+  borderlineEnabled = !borderlineEnabled;
+  saveBorderlineToggle(borderlineEnabled);
+  render();
+};
 document.getElementById('positionModeBtn').onclick = () => { state.positionMode = !state.positionMode; render(); };
 document.getElementById('exportBtn').onclick = exportBackup;
 document.getElementById('importBtn').onclick = () => document.getElementById('importFile').click();
