@@ -4,6 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1, user-scalable=no">
 <title>Notenbuch</title>
+<script src="https://cdn.jsdelivr.net/npm/exceljs@4.4.0/dist/exceljs.min.js"></script>
 <meta name="theme-color" content="#1D1D1F">
 <link rel="manifest" href="manifest.json">
 <link rel="apple-touch-icon" href="icon-192.png">
@@ -99,6 +100,9 @@
   .grp-head .grp-inner{display:flex;align-items:center;justify-content:center;gap:6px;}
   .grp-head .collapse-eye{position:absolute;right:8px;top:50%;transform:translateY(-50%);}
   .cat-head{background:var(--surface);}
+  .colhead-wrap{position:relative;display:block;}
+  .colhead-wrap .collapse-eye-cat{position:absolute;right:0;top:0;z-index:3;}
+  .colhead-wrap .colhead{position:relative;z-index:1;}
   .cat-head.total-head{background:var(--surface-soft);font-weight:700;}
   .cat-head .colhead{display:flex;flex-direction:column;align-items:center;gap:1px;cursor:pointer;padding:2px 0;}
   .cat-head .weight{font-weight:500;color:var(--ink-soft);font-size:0.66rem;}
@@ -218,13 +222,12 @@
   <button class="ghost small" id="borderlineToggleBtn">🎯 Grenzfälle</button>
   <button class="ghost small" id="exportBtn">⬇ Backup</button>
   <button class="ghost small" id="importBtn">⬆ Wiederherstellen</button>
-  <button class="ghost small" id="notennachweisBtn">📋 Notennachweis</button>
+  <button class="ghost small" id="exportMenuBtn">📤 Export</button>
   <span class="row" style="gap:6px;padding:0;">
     <button class="ghost small" id="autobackupLabel">⚙ Autobackup <span id="autobackupDot" class="status-dot"></span></button>
   </span>
   <input type="file" id="csvImportFile" accept=".csv,text/csv" style="position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0;">
   <button class="ghost small" id="resetAllBtn" style="color:var(--danger);">⟲ Zurücksetzen</button>
-  <button class="ghost small" id="incognitoBtn">👁 Inkognito</button>
   <button class="ghost small" id="ubNotesBtn" disabled>UB Notizen</button>
   <button class="ghost small" id="printBtn">🖨 Drucken</button>
   <input type="file" id="importFile" accept=".json,application/json" style="position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0;">
@@ -1044,9 +1047,7 @@ function render(){
   document.getElementById('toggleScaleBtn').disabled = !cls;
   document.getElementById('positionModeBtn').disabled = !cls;
   document.getElementById('positionModeBtn').classList.toggle('active-toggle', state.positionMode);
-  document.getElementById('incognitoBtn').disabled = !cls;
   document.getElementById('borderlineToggleBtn').classList.toggle('active-toggle', borderlineEnabled);
-  document.getElementById('incognitoBtn').classList.toggle('active-toggle', state.incognito);
   const ubBtn = document.getElementById('ubNotesBtn');
   ubBtn.disabled = !cls || !state.selectedStudentId;
   ubBtn.onclick = () => {
@@ -1120,6 +1121,113 @@ function printHeaderHtml(cls, sem){
     <span><strong>Gedruckt am:</strong> ${today}</span>
   </div>`;
 }
+function excelCellForValue(cls, value, scaleOverride){
+  if(value === null || value === undefined || isNaN(value)) return '';
+  const effCls = scaleOverride ? {...cls, gradingSystem: scaleOverride} : cls;
+  const displayVal = scaleOverride ? convertValueScale(value, cls.gradingSystem, scaleOverride) : value;
+  const bucket = colorBucket(effCls, displayVal);
+  return {text: displayValue(effCls, displayVal), bucket};
+}
+function excelCellForCategory(cls, cat, studentId){
+  const v = categoryAvgForStudent(cls, cat, studentId);
+  return excelCellForValue(cls, v, cat.displayScale);
+}
+function buildKonferenzExportData(cls, sem){
+  const schriftlich = findGroupByName(sem, 'schriftlich');
+  const muendlich = findGroupByName(sem, 'mündlich');
+  const soMi1 = findCategoryByName(muendlich, 'somi 1');
+  const soMi2 = findCategoryByName(muendlich, 'somi 2');
+  const students = getSemesterStudents(cls, sem);
+  const schriftlichCats = schriftlich ? schriftlich.categories : [];
+  const headers = ['Schüler'];
+  schriftlichCats.forEach(c => headers.push(c.name));
+  headers.push('Gesamt Schriftlich');
+  if(soMi1) headers.push('SoMi 1');
+  if(soMi2) headers.push('SoMi 2');
+  headers.push('Gesamt Mündlich', 'Endnote (NT)');
+  const rows = students.map(s => {
+    const row = [s.name];
+    schriftlichCats.forEach(c => row.push(excelCellForCategory(cls, c, s.id)));
+    row.push(excelCellForValue(cls, schriftlich ? groupGesamtForStudent(cls, schriftlich, s.id) : null));
+    if(soMi1) row.push(excelCellForCategory(cls, soMi1, s.id));
+    if(soMi2) row.push(excelCellForCategory(cls, soMi2, s.id));
+    row.push(excelCellForValue(cls, muendlich ? groupGesamtForStudent(cls, muendlich, s.id) : null));
+    row.push(excelCellForValue(cls, semesterEndnoteForStudent(cls, sem, s.id)));
+    return row;
+  });
+  return {headers, rows};
+}
+function buildFullExportData(cls, sem){
+  const students = getSemesterStudents(cls, sem);
+  const headers = ['Schüler', 'Endnote'];
+  const colDefs = [];
+  sem.groups.forEach(g => {
+    headers.push(`Gesamt ${g.name}`);
+    colDefs.push({type:'group', group:g});
+    function walk(cat, label){
+      headers.push(label);
+      colDefs.push({type:'cat', cat});
+      if(cat.children) cat.children.forEach(ch => walk(ch, `${label} - ${ch.name}`));
+    }
+    g.categories.forEach(cat => walk(cat, cat.name));
+  });
+  const rows = students.map(s => {
+    const row = [s.name, excelCellForValue(cls, semesterEndnoteForStudent(cls, sem, s.id))];
+    colDefs.forEach(def => {
+      if(def.type === 'group') row.push(excelCellForValue(cls, groupGesamtForStudent(cls, def.group, s.id)));
+      else row.push(excelCellForCategory(cls, def.cat, s.id));
+    });
+    return row;
+  });
+  return {headers, rows};
+}
+function excelFillForBucket(bucket){
+  if(bucket <= 2) return {bg:'FFE4F6EC', font:'FF1F9254'};
+  if(bucket <= 4) return {bg:'FFFBF0DA', font:'FFB7791F'};
+  return {bg:'FFFBE7E8', font:'FFE5484D'};
+}
+function printHeaderLines(cls, sem){
+  const today = new Date().toLocaleDateString('de-DE');
+  const schoolYear = state.schoolYear ? state.schoolYear : '–';
+  return [
+    `Schuljahr: ${schoolYear}`,
+    `Lerngruppe: ${cls.name}`,
+    `Halbjahr: ${sem.name}`,
+    `Exportiert am: ${today}`,
+  ];
+}
+async function downloadAsExcel(filename, sheetName, headers, rows, infoLines){
+  const wb = new ExcelJS.Workbook();
+  const ws = wb.addWorksheet(sheetName.slice(0,31));
+  if(infoLines && infoLines.length){
+    infoLines.forEach(line => { const r = ws.addRow([line]); r.font = {italic:true, size:10}; });
+    ws.addRow([]);
+  }
+  const headerRow = ws.addRow(headers);
+  headerRow.font = {bold: true};
+  headerRow.eachCell(cell => { cell.fill = {type:'pattern', pattern:'solid', fgColor:{argb:'FFEFEFEF'}}; });
+  rows.forEach(cellsInRow => {
+    const plainValues = cellsInRow.map(c => (c && typeof c === 'object') ? c.text : c);
+    const row = ws.addRow(plainValues);
+    cellsInRow.forEach((c, i) => {
+      if(c && typeof c === 'object' && c.bucket !== undefined){
+        const colors = excelFillForBucket(c.bucket);
+        const cell = row.getCell(i+1);
+        cell.fill = {type:'pattern', pattern:'solid', fgColor:{argb: colors.bg}};
+        cell.font = {color:{argb: colors.font}, bold:true};
+        cell.alignment = {horizontal:'center'};
+      }
+    });
+  });
+  ws.columns.forEach(col => { col.width = 16; });
+  const buffer = await wb.xlsx.writeBuffer();
+  const blob = new Blob([buffer], {type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = filename;
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
 function renderKonferenztabelleHtml(cls, sem){
   const schriftlich = findGroupByName(sem, 'schriftlich');
   const muendlich = findGroupByName(sem, 'mündlich');
@@ -1166,6 +1274,7 @@ async function renameStudent(cls, studentId){
   saveState(); render();
 }
 function catWidth(cat){
+  if(cat.collapsed) return 1;
   return (cat.children && cat.children.length) ? cat.children.reduce((s,c)=>s+catWidth(c),0) + 1 : 1;
 }
 function catDepth(cat){
@@ -1183,7 +1292,7 @@ function renderGrid(main, cls, sem){
   const maxDepth = maxCatDepth(groups);
   const topRowspan = maxDepth + 1;
 
-  let groupHeadRow = `<tr><th class="name-col" rowspan="${topRowspan}">Schüler</th><th class="endnote-col" rowspan="${topRowspan}"><div class="endnote-head">Endnote<br><span class="weight">${sem.name}</span></div></th>`;
+  let groupHeadRow = `<tr><th class="name-col" rowspan="${topRowspan}"><div style="display:flex;flex-direction:column;align-items:center;gap:2px;">Schüler${state.selectedStudentId ? `<button class="colx dark ${state.incognito?'active-toggle':''}" data-toggle-incognito title="${state.incognito?'Inkognito ausschalten':'Inkognito einschalten (nur markierten Schüler zeigen)'}" style="font-size:1.3rem;line-height:1;padding:0 2px;">👁</button>` : ''}</div></th><th class="endnote-col" rowspan="${topRowspan}"><div class="endnote-head">Endnote<br><span class="weight">${sem.name}</span></div></th>`;
   groups.forEach(g => {
     if(g.collapsed){
       groupHeadRow += `<th class="grp-head" rowspan="${topRowspan}" style="background:${colorForGroupName(g.name)};">
@@ -1210,16 +1319,34 @@ function renderGrid(main, cls, sem){
   });
   groupHeadRow += `</tr>`;
 
-  function catHeaderCell(cat, g, colspan, rowspan){
+  function catHeaderCell(cat, g, colspan, rowspan, depth){
+    const eyeHtml = depth === 0
+      ? (cat.collapsed
+          ? `<button class="colx collapse-eye-cat" data-toggle-cat-collapse="${cat.id}" data-group="${g.id}" title="Einblenden" style="text-decoration:line-through;">👁</button>`
+          : `<button class="colx collapse-eye-cat" data-toggle-cat-collapse="${cat.id}" data-group="${g.id}" title="Ausblenden" style="text-decoration:line-through;">👁</button>`)
+      : '';
+    if(cat.collapsed){
+      return `<th class="cat-head" ${rowspan>1?`rowspan="${rowspan}"`:''} colspan="1">
+        <div class="colhead-wrap">
+          ${eyeHtml}
+          <div class="colhead" style="${depth===0?'padding-right:16px;':''}">
+            <span data-edit-cat="${cat.id}" data-group="${g.id}" title="Antippen: bearbeiten, duplizieren oder löschen">${escapeHtml(cat.name)}</span>
+          </div>
+        </div>
+      </th>`;
+    }
     return `<th class="cat-head" ${rowspan>1?`rowspan="${rowspan}"`:''} colspan="${colspan}">
-      <div class="colhead">
-        <span data-edit-cat="${cat.id}" data-group="${g.id}" title="Antippen: bearbeiten, duplizieren oder löschen">${escapeHtml(cat.name)}</span>
-        <span class="weight">${cat.weight}%${isContainerCat(cat) ? '' : ' · '+(cat.mode==='points'?'Punkte':'Note')}</span>
-        ${(cat.date && !isContainerCat(cat)) ? `<span class="weight">${formatDate(cat.date)}</span>` : ''}
-        <div class="row" style="gap:2px;">
-          ${state.positionMode ? `<button class="colx dark" data-move-cat="${cat.id}" data-group="${g.id}" data-dir="-1">‹</button>` : ''}
-          <button class="colx dark" data-add-near-cat="${cat.id}" data-group="${g.id}" style="font-size:1.15rem;font-weight:700;width:24px;height:24px;">+</button>
-          ${state.positionMode ? `<button class="colx dark" data-move-cat="${cat.id}" data-group="${g.id}" data-dir="1">›</button>` : ''}
+      <div class="colhead-wrap">
+        ${eyeHtml}
+        <div class="colhead" style="${depth===0?'padding-right:16px;':''}">
+          <span data-edit-cat="${cat.id}" data-group="${g.id}" title="Antippen: bearbeiten, duplizieren oder löschen">${escapeHtml(cat.name)}</span>
+          <span class="weight">${cat.weight}%${isContainerCat(cat) ? '' : ' · '+(cat.mode==='points'?'Punkte':'Note')}</span>
+          ${(cat.date && !isContainerCat(cat)) ? `<span class="weight">${formatDate(cat.date)}</span>` : ''}
+          <div class="row" style="gap:2px;">
+            ${state.positionMode ? `<button class="colx dark" data-move-cat="${cat.id}" data-group="${g.id}" data-dir="-1">‹</button>` : ''}
+            <button class="colx dark" data-add-near-cat="${cat.id}" data-group="${g.id}" style="font-size:1.15rem;font-weight:700;width:24px;height:24px;">+</button>
+            ${state.positionMode ? `<button class="colx dark" data-move-cat="${cat.id}" data-group="${g.id}" data-dir="1">›</button>` : ''}
+          </div>
         </div>
       </div>
     </th>`;
@@ -1228,8 +1355,8 @@ function renderGrid(main, cls, sem){
   function buildCatRows(cat, g, depth){
     const rowsNeeded = maxDepth - depth;
     const rows = new Array(rowsNeeded).fill('');
-    const hasKids = cat.children && cat.children.length;
-    rows[0] = catHeaderCell(cat, g, catWidth(cat), hasKids ? 1 : rowsNeeded);
+    const hasKids = !cat.collapsed && cat.children && cat.children.length;
+    rows[0] = catHeaderCell(cat, g, catWidth(cat), hasKids ? 1 : rowsNeeded, depth);
     if(hasKids){
       const gesamtCell = `<th class="cat-head total-head">Gesamt ${escapeHtml(cat.name)}</th>`;
       const childRowSets = cat.children.map(child => buildCatRows(child, g, depth+1));
@@ -1276,6 +1403,9 @@ function renderGrid(main, cls, sem){
       return (ov !== undefined && ov !== null && ov !== '') ? `<button class="reset-arrow" data-reset-cat="${cat.id}" data-group="${g.id}" data-student="${s.id}" title="Automatische Berechnung wiederherstellen"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style="display:block;"><rect x="4" y="2" width="16" height="20" rx="2" stroke="currentColor" stroke-width="2.2"/><rect x="7" y="5" width="10" height="4" rx="0.8" fill="currentColor"/><circle cx="7.6" cy="13.2" r="1.15" fill="currentColor"/><circle cx="12" cy="13.2" r="1.15" fill="currentColor"/><circle cx="16.4" cy="13.2" r="1.15" fill="currentColor"/><circle cx="7.6" cy="17.4" r="1.15" fill="currentColor"/><circle cx="12" cy="17.4" r="1.15" fill="currentColor"/><circle cx="16.4" cy="17.4" r="1.15" fill="currentColor"/></svg></button>` : '';
     }
     function catCell(cat, g, s){
+      if(cat.collapsed){
+        return `<td class="total-col" data-toggle-cat-collapse="${cat.id}" data-group="${g.id}" style="cursor:pointer;color:var(--ink-soft);text-align:center;" title="Einblenden">···</td>`;
+      }
       const hasKids = cat.children && cat.children.length;
       const a = categoryAvgForStudent(cls, cat, s.id);
       if(hasKids){
@@ -1370,14 +1500,26 @@ function renderGrid(main, cls, sem){
       if(e.target.closest('[data-del-student]')) return;
       if(longPressed){ longPressed = false; return; }
       const id = el.dataset.selectStudent;
-      state.selectedStudentId = (state.selectedStudentId === id) ? null : id;
+      const wasSelected = state.selectedStudentId === id;
+      state.selectedStudentId = wasSelected ? null : id;
+      if(wasSelected && state.incognito) state.incognito = false;
+      render();
+    };
+  });
+  main.querySelectorAll('[data-toggle-incognito]').forEach(btn=>{
+    btn.onclick = (e) => {
+      e.stopPropagation();
+      state.incognito = !state.incognito;
       render();
     };
   });
   main.querySelectorAll('[data-del-student]').forEach(btn=>{
-    btn.onclick = (e) => {
+    btn.onclick = async (e) => {
       e.stopPropagation();
       const id = btn.dataset.delStudent;
+      const student = cls.students.find(s=>s.id===id);
+      const ok = await showConfirm('Schüler entfernen', `"${student ? student.name : 'Dieser Schüler'}" aus ${sem.name} entfernen?`, {confirmLabel:'Entfernen', danger:true});
+      if(!ok) return;
       sem.studentIds = sem.studentIds.filter(sid => sid !== id);
       const stillEnrolled = cls.semesters.some(sm => sm.studentIds && sm.studentIds.includes(id));
       if(!stillEnrolled){
@@ -1412,6 +1554,15 @@ function renderGrid(main, cls, sem){
       const g = sem.groups.find(x=>x.id===el.dataset.toggleGroupCollapse);
       if(!g) return;
       g.collapsed = !g.collapsed;
+      saveState(); render();
+    };
+  });
+  main.querySelectorAll('[data-toggle-cat-collapse]').forEach(el=>{
+    el.onclick = (e) => {
+      e.stopPropagation();
+      const ctx = findCategoryContext(sem, el.dataset.group, el.dataset.toggleCatCollapse);
+      if(!ctx) return;
+      ctx.cat.collapsed = !ctx.cat.collapsed;
       saveState(); render();
     };
   });
@@ -2192,7 +2343,11 @@ function renderModal(cls, cat, student){
   }
   const clearBtn = document.getElementById('clearEntryBtn');
   if(clearBtn){
-    clearBtn.onclick = () => { delete cat.entries[student.id]; saveState(); renderModal(cls, cat, student); };
+    clearBtn.onclick = async () => {
+      const ok = await showConfirm('Eintrag löschen', 'Diesen Eintrag wirklich löschen?', {confirmLabel:'Löschen', danger:true});
+      if(!ok) return;
+      delete cat.entries[student.id]; saveState(); renderModal(cls, cat, student);
+    };
   }
 }
 
@@ -2303,11 +2458,44 @@ function updateAutobackupDot(){
   dot.classList.toggle('on', c.autobackupSeconds > 0 && c.webdavAutoEnabled);
 }
 document.getElementById('autobackupLabel').onclick = () => { state.webdavOpen = !state.webdavOpen; renderWebdavPanel(); };
-document.getElementById('notennachweisBtn').onclick = async () => {
+document.getElementById('exportMenuBtn').onclick = async () => {
   const cls = getActiveClass();
   if(!cls){ await showAlert('Keine Lerngruppe', 'Bitte zuerst eine Lerngruppe auswählen.'); return; }
   const sem = getActiveSemester(cls);
-  openNotennachweisModal(cls, sem);
+  const exportChoice = await showChoice('Export', 'Was möchtest du exportieren?', [
+    {label: 'Für externe Notentabelle', value: 'notennachweis'},
+    {label: 'Excelexport', value: 'excel'},
+  ]);
+  if(exportChoice === null) return;
+  if(exportChoice === 'notennachweis'){
+    openNotennachweisModal(cls, sem);
+    return;
+  }
+  if(exportChoice === 'excel'){
+    const reportChoice = await showChoice('Excelexport', 'Was möchtest du exportieren?', [
+      {label: 'Notenbuch (alles)', value: 'alles'},
+      {label: 'Konferenztabelle (Schriftlich, Mündlich, Endnote)', value: 'konferenz'},
+    ]);
+    if(reportChoice === null) return;
+    if(typeof ExcelJS === 'undefined'){
+      await showAlert('Keine Internetverbindung', 'Für den Excel-Export wird einmalig eine Internetverbindung benötigt (lädt eine kleine Zusatzbibliothek). Bitte online erneut versuchen.');
+      return;
+    }
+    try{
+      const stamp = new Date().toISOString().slice(0,10);
+      const infoLines = printHeaderLines(cls, sem);
+      if(reportChoice === 'konferenz'){
+        const {headers, rows} = buildKonferenzExportData(cls, sem);
+        await downloadAsExcel(`${sanitizeForFilename(cls.name)}-konferenztabelle-${stamp}.xlsx`, 'Konferenztabelle', headers, rows, infoLines);
+      } else {
+        const {headers, rows} = buildFullExportData(cls, sem);
+        await downloadAsExcel(`${sanitizeForFilename(cls.name)}-notenbuch-${stamp}.xlsx`, 'Notenbuch', headers, rows, infoLines);
+      }
+      setStatus('Excel-Datei erzeugt · ' + new Date().toLocaleTimeString('de-DE'));
+    }catch(err){
+      await showAlert('Fehler', 'Excel-Datei konnte nicht erzeugt werden: ' + err.message);
+    }
+  }
 };
 document.getElementById('resetAllBtn').onclick = async () => {
   const typed = await showPrompt(
@@ -2326,7 +2514,6 @@ document.getElementById('resetAllBtn').onclick = async () => {
   render();
   setStatus('Zurückgesetzt · ' + new Date().toLocaleTimeString('de-DE'));
 };
-document.getElementById('incognitoBtn').onclick = () => { state.incognito = !state.incognito; render(); };
 function scaleTablesForPrint(){
   document.querySelectorAll('.grid-wrap').forEach(wrap => {
     wrap.style.transform = '';
