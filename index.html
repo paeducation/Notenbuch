@@ -228,6 +228,7 @@
   <button class="ghost small" id="positionModeBtn">↕ Position</button>
   <button class="ghost small" id="copyStructureBtn">⇄ Struktur aus 1. HJ übernehmen</button>
   <button class="ghost small" id="toggleScaleBtn">Notenschema</button>
+  <button class="ghost small" id="quickBackupBtn" title="Backup jetzt herunterladen">💾</button>
   <button class="ghost small" id="borderlineToggleBtn">🎯 Grenzfälle</button>
   <button class="ghost small" id="dataManagementBtn">🗂 Datenverwaltung <span id="autobackupDot" class="status-dot"></span></button>
   <input type="file" id="csvImportFile" accept=".csv,text/csv" style="position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0;">
@@ -270,7 +271,7 @@ function colorForGroupName(name){
 }
 
 function uid(){ return Math.random().toString(36).slice(2,10); }
-const APP_VERSION_INFO = 'v2.9 · Entwickler: G. Schulte';
+const APP_VERSION_INFO = 'v3.3 · Entwickler: G. Schulte';
 function setStatus(msg, isError){
   const el = document.getElementById('status');
   el.textContent = msg + ' · ' + APP_VERSION_INFO; el.style.color = isError ? 'var(--pen)' : 'var(--ink-soft)';
@@ -1274,6 +1275,83 @@ function findGroupByName(sem, name){
 function findCategoryByName(group, name){
   return group ? group.categories.find(c => (c.name||'').trim().toLowerCase() === name.toLowerCase()) : null;
 }
+function findSomiCategoriesForClass(cls){
+  const sem1 = cls.semesters[0], sem2 = cls.semesters[1];
+  const muendlich1 = sem1 ? findGroupByName(sem1, 'mündlich') : null;
+  const muendlich2 = sem2 ? findGroupByName(sem2, 'mündlich') : null;
+  return {
+    q1: findCategoryByName(muendlich1, 'somi 1'),
+    q2: findCategoryByName(muendlich1, 'somi 2'),
+    q3: findCategoryByName(muendlich2, 'somi 1'),
+    q4: findCategoryByName(muendlich2, 'somi 2'),
+  };
+}
+async function openQuartaleModal(cls){
+  const root = document.getElementById('modalRoot');
+  const cats = findSomiCategoriesForClass(cls);
+  const otherClasses = state.classes.filter(c => c.id !== cls.id);
+  const rows = [
+    {key:'q1', label:'1. Quartal (SoMi 1, 1. HJ)', cat: cats.q1},
+    {key:'q2', label:'2. Quartal (SoMi 2, 1. HJ)', cat: cats.q2},
+    {key:'q3', label:'3. Quartal (SoMi 1, 2. HJ)', cat: cats.q3},
+    {key:'q4', label:'4. Quartal (SoMi 2, 2. HJ)', cat: cats.q4},
+  ];
+  root.innerHTML = `
+    <div class="overlay" id="quartaleOverlay">
+      <div class="modal">
+        <div class="modal-close"><button class="ghost small" id="quartaleClose">Schließen</button></div>
+        <h3>Zeiträume</h3>
+        <div class="sub">${escapeHtml(cls.name)} · Quartale für SoMi 1/2, wirkt für 1. und 2. HJ</div>
+        ${otherClasses.length ? `<div class="row" style="margin:10px 0;"><button class="ghost small" id="copyFromClassBtn">Kopieren von Lerngruppe…</button></div>` : ''}
+        <div style="display:flex;flex-direction:column;gap:12px;margin-top:10px;">
+          ${rows.map(r => `
+            <div>
+              <div class="form-title">${escapeHtml(r.label)}${!r.cat ? ' (nicht verfügbar)' : ''}</div>
+              <div class="row" style="gap:8px;">
+                <input type="date" id="start-${r.key}" value="${r.cat?.dateStart || ''}" ${!r.cat?'disabled':''} style="flex:1;">
+                <span>–</span>
+                <input type="date" id="end-${r.key}" value="${r.cat?.dateEnd || ''}" ${!r.cat?'disabled':''} style="flex:1;">
+              </div>
+            </div>
+          `).join('')}
+        </div>
+        <div class="row" style="margin-top:16px;justify-content:flex-end;">
+          <button id="quartaleSave">Speichern</button>
+        </div>
+      </div>
+    </div>
+  `;
+  const close = () => { root.innerHTML = ''; render(); };
+  document.getElementById('quartaleOverlay').addEventListener('click', (e) => { if(e.target.id==='quartaleOverlay') close(); });
+  document.getElementById('quartaleClose').onclick = close;
+  const copyBtn = document.getElementById('copyFromClassBtn');
+  if(copyBtn){
+    copyBtn.onclick = async () => {
+      const chosen = await showChoice('Kopieren von Lerngruppe', 'Quartale von welcher Lerngruppe übernehmen?', otherClasses.map(c => ({label: c.name, value: c})));
+      if(chosen === null) return;
+      const srcCats = findSomiCategoriesForClass(chosen);
+      ['q1','q2','q3','q4'].forEach(k => {
+        const src = srcCats[k];
+        const startInput = document.getElementById('start-'+k);
+        const endInput = document.getElementById('end-'+k);
+        if(src && src.dateStart && src.dateEnd && startInput && !startInput.disabled){
+          startInput.value = src.dateStart; endInput.value = src.dateEnd;
+        }
+      });
+    };
+  }
+  document.getElementById('quartaleSave').onclick = () => {
+    rows.forEach(r => {
+      if(!r.cat) return;
+      const startVal = document.getElementById('start-'+r.key).value;
+      const endVal = document.getElementById('end-'+r.key).value;
+      if(startVal && endVal){ r.cat.dateStart = startVal; r.cat.dateEnd = endVal; r.cat.date = undefined; }
+    });
+    saveState();
+    setStatus('Zeiträume gespeichert · ' + new Date().toLocaleTimeString('de-DE'));
+    close();
+  };
+}
 function printHeaderHtml(cls, sem){
   const today = new Date().toLocaleDateString('de-DE');
   const schoolYear = state.schoolYear ? escapeHtml(state.schoolYear) : '–';
@@ -2071,14 +2149,6 @@ async function editCategory(cls, sem, groupId, catId){
     const likeChoice = await showChoice('Wie bei…', 'Farbe von welcher Kategorie übernehmen?', colorSiblings.map(c => ({label: c.name, value: c.bgColor})));
     if(likeChoice !== null) cat.bgColor = likeChoice;
   }
-  const isSomiTopLevel = !ctx.parentCat && ['somi 1','somi 2'].includes(cat.name.trim().toLowerCase());
-  if(isSomiTopLevel){
-    const startStr = await showPrompt('Anfang des Quartals', 'Beginn des Quartals', cat.dateStart || new Date().toISOString().slice(0,10), {inputType:'date', confirmLabel:'Weiter'});
-    if(startStr !== null){
-      const endStr = await showPrompt('Ende des Quartals', 'Ende des Quartals', cat.dateEnd || startStr, {inputType:'date', confirmLabel:'Speichern'});
-      if(endStr !== null){ cat.dateStart = startStr; cat.dateEnd = endStr; cat.date = undefined; }
-    }
-  }
   if(isContainer){ saveState(); render(); return; }
   {
     const currentModeLabel = cat.mode==='points' ? 'Klausurpunkte (automatisch berechnet)' : cat.mode==='observation' ? 'Unterrichtsbeobachtung (− ○ +)' : 'Note direkt eintragen';
@@ -2102,10 +2172,8 @@ async function editCategory(cls, sem, groupId, catId){
     ]);
     if(scaleChoice !== null) cat.displayScale = scaleChoice || undefined;
   }
-  if(!isSomiTopLevel){
-    const dateStr = await showPrompt('Datum', 'Datum dieser Kategorie, leer lassen zum Entfernen', cat.date || '', {inputType:'date', confirmLabel:'Speichern'});
-    if(dateStr !== null){ cat.date = dateStr; cat.dateStart = undefined; cat.dateEnd = undefined; }
-  }
+  const dateStr = await showPrompt('Datum', 'Datum dieser Kategorie, leer lassen zum Entfernen', cat.date || '', {inputType:'date', confirmLabel:'Speichern'});
+  if(dateStr !== null){ cat.date = dateStr; }
   saveState(); render();
 }
 
@@ -2684,6 +2752,7 @@ document.getElementById('copyStructureBtn').onclick = async () => {
   saveState(); render();
 };
 document.getElementById('toggleScaleBtn').onclick = () => { state.scaleOpen = !state.scaleOpen; render(); };
+document.getElementById('quickBackupBtn').onclick = exportBackup;
 document.getElementById('borderlineToggleBtn').onclick = () => {
   borderlineEnabled = !borderlineEnabled;
   saveBorderlineToggle(borderlineEnabled);
@@ -2742,11 +2811,12 @@ document.getElementById('dataManagementBtn').onclick = async () => {
   const cls = getActiveClass();
   const sem = cls ? getActiveSemester(cls) : null;
   const options = [
+    {label: '🗓 Zeiträume', value: 'zeitraeume'},
     {label: '⬇ Backup', value: 'backup'},
     {label: '⬆ Wiederherstellen', value: 'restore'},
     {label: '⟲ Alles zurücksetzen', value: 'reset'},
     {label: 'Export für Excel', value: 'excel'},
-    {label: 'Export für externe Notentabelle', value: 'notennachweis'},
+    {label: 'Export für externe Tabelle (Zusatztool)', value: 'notennachweis'},
     {label: '⚙ Autobackup', value: 'autobackup'},
   ];
   const choice = await showChoice('Datenverwaltung', '', options);
@@ -2755,6 +2825,10 @@ document.getElementById('dataManagementBtn').onclick = async () => {
   else if(choice === 'restore') document.getElementById('importFile').click();
   else if(choice === 'reset') resetAllData();
   else if(choice === 'autobackup'){ state.webdavOpen = true; renderWebdavPanel(); }
+  else if(choice === 'zeitraeume'){
+    if(!cls){ await showAlert('Keine Lerngruppe', 'Bitte zuerst eine Lerngruppe auswählen.'); return; }
+    openQuartaleModal(cls);
+  }
   else if(choice === 'notennachweis'){
     if(!cls){ await showAlert('Keine Lerngruppe', 'Bitte zuerst eine Lerngruppe auswählen.'); return; }
     openNotennachweisModal(cls, sem);
