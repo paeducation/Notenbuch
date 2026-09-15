@@ -211,28 +211,22 @@
 
 <header class="app">
   <div class="sem-row" id="classRow"></div>
-  <div class="sem-row" id="semRow"></div>
+  <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+    <div class="sem-row" id="semRow" style="margin:0;"></div>
+    <span class="weight-warn" id="weightWarn" style="margin-left:0;"></span>
+  </div>
 </header>
 
 <div class="toolbar">
-  <button class="ghost small" id="addGroupBtn">+Notenkategorie</button>
+  <button class="ghost small" id="addGroupBtn">+Notengruppe</button>
   <button class="ghost small" id="positionModeBtn">↕ Position</button>
-  <button class="ghost small" id="copyStructureBtn">⇄ Struktur übernehmen…</button>
+  <button class="ghost small" id="copyStructureBtn">⇄ Struktur aus 1. HJ übernehmen</button>
   <button class="ghost small" id="toggleScaleBtn">Notenschema</button>
   <button class="ghost small" id="borderlineToggleBtn">🎯 Grenzfälle</button>
-  <button class="ghost small" id="exportBtn">⬇ Backup</button>
-  <button class="ghost small" id="importBtn">⬆ Wiederherstellen</button>
-  <button class="ghost small" id="exportMenuBtn">📤 Export</button>
-  <span class="row" style="gap:6px;padding:0;">
-    <button class="ghost small" id="autobackupLabel">⚙ Autobackup <span id="autobackupDot" class="status-dot"></span></button>
-  </span>
+  <button class="ghost small" id="dataManagementBtn">🗂 Datenverwaltung <span id="autobackupDot" class="status-dot"></span></button>
   <input type="file" id="csvImportFile" accept=".csv,text/csv" style="position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0;">
-  <button class="ghost small" id="resetAllBtn" style="color:var(--danger);">⟲ Zurücksetzen</button>
-  <button class="ghost small" id="ubNotesBtn" disabled>UB Notizen</button>
   <button class="ghost small" id="printBtn">🖨 Drucken</button>
   <input type="file" id="importFile" accept=".json,application/json" style="position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0;">
-  <input type="text" id="searchStudent" placeholder="Schüler suchen…" style="max-width:150px;">
-  <span class="weight-warn" id="weightWarn"></span>
 </div>
 
 <main id="main"></main>
@@ -245,6 +239,7 @@
 const STORAGE_KEY = 'classes';
 let state = { classes: [], activeClassId: null, scaleOpen: false, searchTerm: '', compareView: false, positionMode: false, webdavOpen: false, selectedStudentId: null, incognito: false };
 let pendingCsvStufe = 'SII';
+let searchWasFocused = false;
 
 const NOTEN_TABLE = [
   {min:95, note:'1+'}, {min:90, note:'1'}, {min:85, note:'1-'},
@@ -1048,13 +1043,11 @@ function render(){
   document.getElementById('positionModeBtn').disabled = !cls;
   document.getElementById('positionModeBtn').classList.toggle('active-toggle', state.positionMode);
   document.getElementById('borderlineToggleBtn').classList.toggle('active-toggle', borderlineEnabled);
-  const ubBtn = document.getElementById('ubNotesBtn');
-  ubBtn.disabled = !cls || !state.selectedStudentId;
-  ubBtn.onclick = () => {
-    if(!cls || !state.selectedStudentId) return;
-    openStudentObservationsModal(cls, getActiveSemester(cls), state.selectedStudentId);
-  };
-  document.getElementById('copyStructureBtn').disabled = !cls || cls.semesters.length < 2;
+  {
+    const copyBtn = document.getElementById('copyStructureBtn');
+    const showCopyBtn = cls && cls.semesters.length >= 2 && getActiveSemester(cls) !== cls.semesters[0];
+    copyBtn.style.display = showCopyBtn ? '' : 'none';
+  }
   const warn = document.getElementById('weightWarn');
   if(cls){
     const sem = getActiveSemester(cls);
@@ -1292,7 +1285,7 @@ function renderGrid(main, cls, sem){
   const maxDepth = maxCatDepth(groups);
   const topRowspan = maxDepth + 1;
 
-  let groupHeadRow = `<tr><th class="name-col" rowspan="${topRowspan}"><div style="display:flex;flex-direction:column;align-items:center;gap:2px;">Schüler${state.selectedStudentId ? `<button class="colx dark ${state.incognito?'active-toggle':''}" data-toggle-incognito title="${state.incognito?'Inkognito ausschalten':'Inkognito einschalten (nur markierten Schüler zeigen)'}" style="font-size:1.3rem;line-height:1;padding:0 2px;">👁</button>` : ''}</div></th><th class="endnote-col" rowspan="${topRowspan}"><div class="endnote-head">Endnote<br><span class="weight">${sem.name}</span></div></th>`;
+  let groupHeadRow = `<tr><th class="name-col" rowspan="${topRowspan}"><div class="colhead-wrap" style="min-height:100px;"><input type="text" id="searchStudent" placeholder="Suchen…" value="${escapeHtml(state.searchTerm||'')}" style="position:absolute;top:4px;left:50%;transform:translateX(-50%);width:90%;max-width:120px;font-size:0.72rem;padding:3px 6px;z-index:2;"><div style="min-height:100px;display:flex;flex-direction:column;justify-content:center;align-items:center;gap:2px;">Schüler${state.selectedStudentId ? `<button class="colx dark ${state.incognito?'active-toggle':''}" data-toggle-incognito title="${state.incognito?'Inkognito ausschalten':'Inkognito einschalten (nur markierten Schüler zeigen)'}" style="font-size:1.3rem;line-height:1;padding:0 2px;">👁</button>` : ''}</div></div></th><th class="endnote-col" rowspan="${topRowspan}"><div class="endnote-head">Endnote<br><span class="weight">${sem.name}</span></div></th>`;
   groups.forEach(g => {
     if(g.collapsed){
       groupHeadRow += `<th class="grp-head" rowspan="${topRowspan}" style="background:${colorForGroupName(g.name)};">
@@ -1429,7 +1422,8 @@ function renderGrid(main, cls, sem){
       const end = semesterEndnoteForStudent(cls, sem, s.id);
       const overridden = sem.endnoteOverrides && sem.endnoteOverrides[s.id] !== undefined && sem.endnoteOverrides[s.id] !== '';
       const isSelected = state.selectedStudentId === s.id;
-      let row = `<tr class="${isSelected?'student-selected':''}"><td class="name-col" data-select-student="${s.id}" style="cursor:pointer;"><div class="name-cell-row"><span>${escapeHtml(s.name)}</span><button class="colx dark" data-del-student="${s.id}" title="Aus ${escapeHtml(sem.name)} entfernen">✕</button></div></td>`;
+      const hasNotes = studentHasObservationNotes(sem, s.id);
+      let row = `<tr class="${isSelected?'student-selected':''}"><td class="name-col" data-select-student="${s.id}" style="cursor:pointer;"><div class="name-cell-row"><span>${escapeHtml(s.name)}</span>${hasNotes ? `<button class="colx dark" data-show-ub-notes="${s.id}" title="Unterrichtsbeobachtungen mit Notizen ansehen">📝</button>` : ''}<button class="colx dark" data-del-student="${s.id}" title="Aus ${escapeHtml(sem.name)} entfernen">✕</button></div></td>`;
       let endPillHtml = notePill(cls, end);
       let endBadge = '';
       if(borderlineEnabled){
@@ -1483,7 +1477,7 @@ function renderGrid(main, cls, sem){
     let pressTimer = null, longPressed = false, startX = 0, startY = 0;
     const clear = () => { clearTimeout(pressTimer); };
     el.addEventListener('pointerdown', (e) => {
-      if(e.target.closest('[data-del-student]')) return;
+      if(e.target.closest('[data-del-student], [data-show-ub-notes]')) return;
       longPressed = false;
       startX = e.clientX; startY = e.clientY;
       pressTimer = setTimeout(() => {
@@ -1497,7 +1491,7 @@ function renderGrid(main, cls, sem){
     el.addEventListener('pointerup', clear);
     el.addEventListener('pointercancel', clear);
     el.onclick = (e) => {
-      if(e.target.closest('[data-del-student]')) return;
+      if(e.target.closest('[data-del-student], [data-show-ub-notes]')) return;
       if(longPressed){ longPressed = false; return; }
       const id = el.dataset.selectStudent;
       const wasSelected = state.selectedStudentId === id;
@@ -1511,6 +1505,26 @@ function renderGrid(main, cls, sem){
       e.stopPropagation();
       state.incognito = !state.incognito;
       render();
+    };
+  });
+  const searchInput = document.getElementById('searchStudent');
+  if(searchInput){
+    if(searchWasFocused){
+      searchInput.focus();
+      const pos = searchInput.value.length;
+      searchInput.setSelectionRange(pos, pos);
+      searchWasFocused = false;
+    }
+    searchInput.addEventListener('input', (e) => {
+      state.searchTerm = e.target.value;
+      searchWasFocused = true;
+      renderGrid(main, cls, sem);
+    });
+  }
+  main.querySelectorAll('[data-show-ub-notes]').forEach(btn=>{
+    btn.onclick = (e) => {
+      e.stopPropagation();
+      openStudentObservationsModal(cls, sem, btn.dataset.showUbNotes);
     };
   });
   main.querySelectorAll('[data-del-student]').forEach(btn=>{
@@ -1980,6 +1994,9 @@ function collectObservationEntriesForStudent(sem, studentId){
   sem.groups.forEach(g => { g.categories.forEach(cat => walk(cat, `${g.name} → ${cat.name}`)); });
   return results;
 }
+function studentHasObservationNotes(sem, studentId){
+  return collectObservationEntriesForStudent(sem, studentId).some(e => e.note && e.note.trim());
+}
 function openStudentObservationsModal(cls, sem, studentId){
   const student = cls.students.find(s=>s.id===studentId);
   if(!student) return;
@@ -2427,16 +2444,9 @@ function cloneGroupsStructure(groups){
 }
 document.getElementById('copyStructureBtn').onclick = async () => {
   const cls = getActiveClass(); if(!cls) return;
+  const source = cls.semesters[0];
   const target = getActiveSemester(cls);
-  const others = cls.semesters.filter(s => s.id !== target.id);
-  if(!others.length){ await showAlert('Nicht möglich', 'Es gibt kein anderes Halbjahr, aus dem übernommen werden kann.'); return; }
-  let source;
-  if(others.length === 1){
-    source = others[0];
-  } else {
-    source = await showChoice('Struktur übernehmen', 'Aus welchem Halbjahr die Struktur holen?', others.map(s => ({label: s.name, value: s})));
-    if(source === null) return;
-  }
+  if(target === source){ await showAlert('Nicht möglich', 'Im 1. HJ gibt es kein früheres Halbjahr, aus dem übernommen werden könnte.'); return; }
   const ok = await showConfirm('Struktur übernehmen?', `Kategorienbaum aus "${source.name}" nach "${target.name}" übernehmen? Gruppen und Kategorien in "${target.name}" werden dabei ersetzt (Noteneinträge dort gehen verloren). Es werden nur Namen/Gewichtungen/Modus kopiert, keine Noten – "${source.name}" bleibt unverändert.`, {confirmLabel:'Übernehmen', danger:true});
   if(!ok) return;
   target.groups = cloneGroupsStructure(source.groups);
@@ -2449,55 +2459,13 @@ document.getElementById('borderlineToggleBtn').onclick = () => {
   render();
 };
 document.getElementById('positionModeBtn').onclick = () => { state.positionMode = !state.positionMode; render(); };
-document.getElementById('exportBtn').onclick = exportBackup;
-document.getElementById('importBtn').onclick = () => document.getElementById('importFile').click();
 function updateAutobackupDot(){
   const dot = document.getElementById('autobackupDot');
   if(!dot) return;
   const c = loadWebdavConfig();
   dot.classList.toggle('on', c.autobackupSeconds > 0 && c.webdavAutoEnabled);
 }
-document.getElementById('autobackupLabel').onclick = () => { state.webdavOpen = !state.webdavOpen; renderWebdavPanel(); };
-document.getElementById('exportMenuBtn').onclick = async () => {
-  const cls = getActiveClass();
-  if(!cls){ await showAlert('Keine Lerngruppe', 'Bitte zuerst eine Lerngruppe auswählen.'); return; }
-  const sem = getActiveSemester(cls);
-  const exportChoice = await showChoice('Export', 'Was möchtest du exportieren?', [
-    {label: 'Für externe Notentabelle', value: 'notennachweis'},
-    {label: 'Excelexport', value: 'excel'},
-  ]);
-  if(exportChoice === null) return;
-  if(exportChoice === 'notennachweis'){
-    openNotennachweisModal(cls, sem);
-    return;
-  }
-  if(exportChoice === 'excel'){
-    const reportChoice = await showChoice('Excelexport', 'Was möchtest du exportieren?', [
-      {label: 'Notenbuch (alles)', value: 'alles'},
-      {label: 'Konferenztabelle (Schriftlich, Mündlich, Endnote)', value: 'konferenz'},
-    ]);
-    if(reportChoice === null) return;
-    if(typeof ExcelJS === 'undefined'){
-      await showAlert('Keine Internetverbindung', 'Für den Excel-Export wird einmalig eine Internetverbindung benötigt (lädt eine kleine Zusatzbibliothek). Bitte online erneut versuchen.');
-      return;
-    }
-    try{
-      const stamp = new Date().toISOString().slice(0,10);
-      const infoLines = printHeaderLines(cls, sem);
-      if(reportChoice === 'konferenz'){
-        const {headers, rows} = buildKonferenzExportData(cls, sem);
-        await downloadAsExcel(`${sanitizeForFilename(cls.name)}-konferenztabelle-${stamp}.xlsx`, 'Konferenztabelle', headers, rows, infoLines);
-      } else {
-        const {headers, rows} = buildFullExportData(cls, sem);
-        await downloadAsExcel(`${sanitizeForFilename(cls.name)}-notenbuch-${stamp}.xlsx`, 'Notenbuch', headers, rows, infoLines);
-      }
-      setStatus('Excel-Datei erzeugt · ' + new Date().toLocaleTimeString('de-DE'));
-    }catch(err){
-      await showAlert('Fehler', 'Excel-Datei konnte nicht erzeugt werden: ' + err.message);
-    }
-  }
-};
-document.getElementById('resetAllBtn').onclick = async () => {
+async function resetAllData(){
   const typed = await showPrompt(
     'Alles zurücksetzen',
     'Das löscht ALLE Lerngruppen, Noten und Einstellungen unwiderruflich aus diesem Browser. Zum Bestätigen "RESET" eintippen:',
@@ -2513,6 +2481,56 @@ document.getElementById('resetAllBtn').onclick = async () => {
   saveState();
   render();
   setStatus('Zurückgesetzt · ' + new Date().toLocaleTimeString('de-DE'));
+}
+async function runExcelExportFlow(cls, sem){
+  const reportChoice = await showChoice('Excelexport', 'Was möchtest du exportieren?', [
+    {label: 'Notenbuch (alles)', value: 'alles'},
+    {label: 'Konferenztabelle (Schriftlich, Mündlich, Endnote)', value: 'konferenz'},
+  ]);
+  if(reportChoice === null) return;
+  if(typeof ExcelJS === 'undefined'){
+    await showAlert('Keine Internetverbindung', 'Für den Excel-Export wird einmalig eine Internetverbindung benötigt (lädt eine kleine Zusatzbibliothek). Bitte online erneut versuchen.');
+    return;
+  }
+  try{
+    const stamp = new Date().toISOString().slice(0,10);
+    const infoLines = printHeaderLines(cls, sem);
+    if(reportChoice === 'konferenz'){
+      const {headers, rows} = buildKonferenzExportData(cls, sem);
+      await downloadAsExcel(`${sanitizeForFilename(cls.name)}-konferenztabelle-${stamp}.xlsx`, 'Konferenztabelle', headers, rows, infoLines);
+    } else {
+      const {headers, rows} = buildFullExportData(cls, sem);
+      await downloadAsExcel(`${sanitizeForFilename(cls.name)}-notenbuch-${stamp}.xlsx`, 'Notenbuch', headers, rows, infoLines);
+    }
+    setStatus('Excel-Datei erzeugt · ' + new Date().toLocaleTimeString('de-DE'));
+  }catch(err){
+    await showAlert('Fehler', 'Excel-Datei konnte nicht erzeugt werden: ' + err.message);
+  }
+}
+document.getElementById('dataManagementBtn').onclick = async () => {
+  const cls = getActiveClass();
+  const sem = cls ? getActiveSemester(cls) : null;
+  const options = [
+    {label: '⬇ Backup', value: 'backup'},
+    {label: '⬆ Wiederherstellen', value: 'restore'},
+    {label: '⟲ Alles zurücksetzen', value: 'reset'},
+    {label: 'Export für Excel', value: 'excel'},
+    {label: 'Export für externe Notentabelle', value: 'notennachweis'},
+    {label: '⚙ Autobackup', value: 'autobackup'},
+  ];
+  const choice = await showChoice('Datenverwaltung', '', options);
+  if(choice === null) return;
+  if(choice === 'backup') exportBackup();
+  else if(choice === 'restore') document.getElementById('importFile').click();
+  else if(choice === 'reset') resetAllData();
+  else if(choice === 'autobackup'){ state.webdavOpen = true; renderWebdavPanel(); }
+  else if(choice === 'notennachweis'){
+    if(!cls){ await showAlert('Keine Lerngruppe', 'Bitte zuerst eine Lerngruppe auswählen.'); return; }
+    openNotennachweisModal(cls, sem);
+  } else if(choice === 'excel'){
+    if(!cls){ await showAlert('Keine Lerngruppe', 'Bitte zuerst eine Lerngruppe auswählen.'); return; }
+    await runExcelExportFlow(cls, sem);
+  }
 };
 function scaleTablesForPrint(){
   document.querySelectorAll('.grid-wrap').forEach(wrap => {
@@ -2606,11 +2624,6 @@ document.getElementById('csvImportFile').addEventListener('change', (e) => {
   const file = e.target.files[0];
   if(file) importCSV(file);
   e.target.value = '';
-});
-document.getElementById('searchStudent').addEventListener('input', (e) => {
-  state.searchTerm = e.target.value;
-  const cls = getActiveClass();
-  if(cls) renderGrid(document.getElementById('main'), cls);
 });
 
 document.getElementById('schoolYearInput').addEventListener('input', (e) => { state.schoolYear = e.target.value; saveState(); });
