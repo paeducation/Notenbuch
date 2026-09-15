@@ -23,7 +23,7 @@
     --shadow:0 1px 2px rgba(0,0,0,.05), 0 4px 14px rgba(0,0,0,.06);
   }
   *{box-sizing:border-box;}
-  button, input:not([type=checkbox]):not([type=radio]), select, textarea{-webkit-appearance:none;appearance:none;}
+  button, input:not([type=checkbox]):not([type=radio]):not([type=color]), select, textarea{-webkit-appearance:none;appearance:none;}
   html,body{margin:0;padding:0;background:var(--bg);color:var(--ink);
     font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;-webkit-tap-highlight-color:transparent;}
   body{padding-bottom:50px;}
@@ -136,6 +136,12 @@
   .border-badge.border-ok{background:var(--pass-soft);color:var(--pass);}
   .border-badge.border-warn{background:var(--danger-soft);color:var(--danger);cursor:pointer;}
   .border-badge.border-resolved{background:var(--warn-soft);color:var(--warn);}
+  input.brightness-range{-webkit-appearance:none;appearance:none;width:100%;height:14px;border-radius:8px;
+    background:linear-gradient(to right, #000, #fff);border:1px solid var(--line);}
+  input.brightness-range::-webkit-slider-thumb{-webkit-appearance:none;appearance:none;width:26px;height:26px;
+    border-radius:50%;background:var(--accent);border:3px solid #fff;box-shadow:0 1px 4px rgba(0,0,0,.4);cursor:pointer;}
+  input.brightness-range::-moz-range-thumb{width:26px;height:26px;border-radius:50%;background:var(--accent);
+    border:3px solid #fff;box-shadow:0 1px 4px rgba(0,0,0,.4);cursor:pointer;}
   .note-pill.border-tie-pill{background:var(--danger-soft);color:var(--danger);cursor:pointer;font-size:0.78rem;padding:2px 8px;}
   .avg-sub{font-size:0.64rem;color:var(--ink-soft);font-family:ui-monospace,'SF Mono',Menlo,monospace;}
   .add-student-row td{background:var(--surface-soft);}
@@ -162,7 +168,7 @@
     overflow-y:auto;padding:20px;box-shadow:0 10px 40px rgba(0,0,0,.25);}
   @media(min-width:640px){.modal{border-radius:16px;}}
   .modal h3{font-size:1.05rem;margin-bottom:4px;}
-  .modal .sub{color:var(--ink-soft);font-size:0.82rem;margin-bottom:12px;}
+  .modal .sub{color:var(--ink-soft);font-size:0.82rem;margin-bottom:12px;white-space:pre-line;}
   .entry-row{display:flex;gap:8px;align-items:center;padding:7px 0;border-bottom:1px solid var(--line);}
   .entry-row:last-child{border-bottom:none;}
   .grade-picker{display:flex;flex-wrap:wrap;gap:5px;flex:1;}
@@ -264,7 +270,7 @@ function colorForGroupName(name){
 }
 
 function uid(){ return Math.random().toString(36).slice(2,10); }
-const APP_VERSION_INFO = 'v1.1 · Entwickler: G. Schulte';
+const APP_VERSION_INFO = 'v2.9 · Entwickler: G. Schulte';
 function setStatus(msg, isError){
   const el = document.getElementById('status');
   el.textContent = msg + ' · ' + APP_VERSION_INFO; el.style.color = isError ? 'var(--pen)' : 'var(--ink-soft)';
@@ -307,8 +313,8 @@ function notePill(cls, value, subLabel, scaleOverride){
   const displayVal = scaleOverride ? convertValueScale(value, cls.gradingSystem, scaleOverride) : value;
   const bucket = colorBucket(effCls, displayVal);
   let html = `<span class="note-pill note-${bucket}">${displayValue(effCls, displayVal)}</span>`;
-  const sub = subLabel !== undefined ? subLabel : displayVal.toFixed(2);
-  html += `<span class="avg-sub">${escapeHtml(sub)}</span>`;
+  const sub = subLabel !== undefined ? subLabel : (borderlineEnabled ? displayVal.toFixed(2) : '');
+  if(sub) html += `<span class="avg-sub">${escapeHtml(sub)}</span>`;
   return html;
 }
 function observationPill(entry){
@@ -911,6 +917,148 @@ function showDialog(opts){
 function showAlert(title, message){ return showDialog({title, message, type:'alert'}); }
 function showConfirm(title, message, opts={}){ return showDialog({title, message, type:'confirm', ...opts}); }
 function showPrompt(title, message, defaultValue='', opts={}){ return showDialog({title, message, type:'prompt', defaultValue, ...opts}); }
+function hsvToRgb(h, s, v){
+  const c = v * s, x = c * (1 - Math.abs((h/60) % 2 - 1)), m = v - c;
+  let r,g,b;
+  if(h<60){ r=c;g=x;b=0; } else if(h<120){ r=x;g=c;b=0; } else if(h<180){ r=0;g=c;b=x; }
+  else if(h<240){ r=0;g=x;b=c; } else if(h<300){ r=x;g=0;b=c; } else { r=c;g=0;b=x; }
+  return {r: Math.round((r+m)*255), g: Math.round((g+m)*255), b: Math.round((b+m)*255)};
+}
+function rgbToHsv(r, g, b){
+  r/=255; g/=255; b/=255;
+  const max=Math.max(r,g,b), min=Math.min(r,g,b), d=max-min;
+  let h=0;
+  if(d!==0){
+    if(max===r) h = 60*(((g-b)/d)%6);
+    else if(max===g) h = 60*((b-r)/d+2);
+    else h = 60*((r-g)/d+4);
+  }
+  if(h<0) h+=360;
+  return {h, s: max===0?0:d/max, v: max};
+}
+function rgbToHex(r,g,b){ return '#'+[r,g,b].map(v=>v.toString(16).padStart(2,'0')).join('').toUpperCase(); }
+function hexToRgb(hex){
+  const m = /^#([0-9A-Fa-f]{2})([0-9A-Fa-f]{2})([0-9A-Fa-f]{2})$/.exec(hex);
+  if(!m) return {r:0,g:0,b:0};
+  return {r:parseInt(m[1],16), g:parseInt(m[2],16), b:parseInt(m[3],16)};
+}
+function pickColorDialog(title, currentColor){
+  return new Promise((resolve) => {
+    const root = document.getElementById('modalRoot');
+    const start = currentColor || '#cfe8fb';
+    const startRgb = hexToRgb(start);
+    let hsv = rgbToHsv(startRgb.r, startRgb.g, startRgb.b);
+    const SIZE = 220, R = SIZE/2;
+    root.innerHTML = `
+      <div class="overlay" id="colorOverlay">
+        <div class="modal">
+          <h3>${escapeHtml(title)}</h3>
+          <div style="display:flex;flex-direction:column;align-items:center;gap:12px;margin-top:14px;">
+            <canvas id="colorWheelCanvas" width="${SIZE}" height="${SIZE}" style="border-radius:50%;touch-action:none;cursor:crosshair;"></canvas>
+            <div style="width:${SIZE}px;">
+              <label for="brightnessSlider" style="display:flex;justify-content:space-between;font-size:0.82rem;font-weight:600;color:var(--ink);margin-bottom:4px;">
+                <span>☀️ Helligkeit</span>
+                <span id="brightnessValue">${Math.round(hsv.v*100)}%</span>
+              </label>
+              <input type="range" class="brightness-range" id="brightnessSlider" min="0" max="100" value="${Math.round(hsv.v*100)}" style="width:100%;">
+            </div>
+            <div class="row" style="gap:10px;align-items:center;">
+              <span id="colorSwatch" style="display:inline-block;width:28px;height:28px;border-radius:50%;border:2px solid var(--line);background:${start};"></span>
+              <span class="hint">Hex-Code:</span>
+              <input type="text" id="colorHexInput" value="${start}" class="mono" style="width:110px;text-transform:uppercase;">
+            </div>
+          </div>
+          <div class="row" style="margin-top:16px;justify-content:flex-end;gap:8px;">
+            <button class="ghost" id="colorCancel">Abbrechen</button>
+            <button id="colorOk">Übernehmen</button>
+          </div>
+        </div>
+      </div>
+    `;
+    const finish = (val) => { root.innerHTML = ''; resolve(val); };
+    const canvas = document.getElementById('colorWheelCanvas');
+    const ctx = canvas.getContext('2d');
+    const hexInput = document.getElementById('colorHexInput');
+    const swatch = document.getElementById('colorSwatch');
+    const brightnessSlider = document.getElementById('brightnessSlider');
+
+    function drawWheel(){
+      ctx.clearRect(0,0,SIZE,SIZE);
+      const img = ctx.createImageData(SIZE, SIZE);
+      for(let y=0; y<SIZE; y++){
+        for(let x=0; x<SIZE; x++){
+          const dx = x - R, dy = y - R;
+          const dist = Math.sqrt(dx*dx + dy*dy);
+          const idx = (y*SIZE + x) * 4;
+          if(dist > R){ img.data[idx+3] = 0; continue; }
+          let angle = Math.atan2(dy, dx) * 180/Math.PI;
+          if(angle < 0) angle += 360;
+          const sat = Math.min(dist / R, 1);
+          const rgb = hsvToRgb(angle, sat, hsv.v);
+          img.data[idx] = rgb.r; img.data[idx+1] = rgb.g; img.data[idx+2] = rgb.b; img.data[idx+3] = 255;
+        }
+      }
+      ctx.putImageData(img, 0, 0);
+      // Auswahl-Punkt zeichnen – gefüllt mit der tatsächlich gewählten (ggf. abgedunkelten) Farbe
+      const angleRad = hsv.h * Math.PI/180;
+      const dist = hsv.s * R;
+      const px = R + Math.cos(angleRad) * dist, py = R + Math.sin(angleRad) * dist;
+      const trueRgb = hsvToRgb(hsv.h, hsv.s, hsv.v);
+      ctx.beginPath();
+      ctx.arc(px, py, 8, 0, Math.PI*2);
+      ctx.fillStyle = rgbToHex(trueRgb.r, trueRgb.g, trueRgb.b);
+      ctx.fill();
+      ctx.strokeStyle = '#fff'; ctx.lineWidth = 3; ctx.stroke();
+      ctx.beginPath();
+      ctx.arc(px, py, 8, 0, Math.PI*2);
+      ctx.strokeStyle = '#000'; ctx.lineWidth = 1; ctx.stroke();
+    }
+    function updateFromHsv(){
+      const rgb = hsvToRgb(hsv.h, hsv.s, hsv.v);
+      const hex = rgbToHex(rgb.r, rgb.g, rgb.b);
+      hexInput.value = hex;
+      swatch.style.background = hex;
+      drawWheel();
+    }
+    function pickAt(clientX, clientY){
+      const rect = canvas.getBoundingClientRect();
+      const x = (clientX - rect.left) * (SIZE/rect.width);
+      const y = (clientY - rect.top) * (SIZE/rect.height);
+      const dx = x - R, dy = y - R;
+      const dist = Math.min(Math.sqrt(dx*dx + dy*dy), R);
+      let angle = Math.atan2(dy, dx) * 180/Math.PI;
+      if(angle < 0) angle += 360;
+      hsv.h = angle; hsv.s = dist / R;
+      updateFromHsv();
+    }
+    let dragging = false;
+    canvas.addEventListener('pointerdown', (e) => { dragging = true; pickAt(e.clientX, e.clientY); canvas.setPointerCapture(e.pointerId); });
+    canvas.addEventListener('pointermove', (e) => { if(dragging) pickAt(e.clientX, e.clientY); });
+    canvas.addEventListener('pointerup', () => { dragging = false; });
+    canvas.addEventListener('pointercancel', () => { dragging = false; });
+    const brightnessValue = document.getElementById('brightnessValue');
+    brightnessSlider.addEventListener('input', () => { hsv.v = brightnessSlider.value/100; brightnessValue.textContent = brightnessSlider.value + '%'; updateFromHsv(); });
+    hexInput.addEventListener('input', () => {
+      const v = hexInput.value.trim();
+      if(/^#[0-9A-Fa-f]{6}$/.test(v)){
+        const rgb = hexToRgb(v);
+        hsv = rgbToHsv(rgb.r, rgb.g, rgb.b);
+        brightnessSlider.value = Math.round(hsv.v*100);
+        brightnessValue.textContent = Math.round(hsv.v*100) + '%';
+        swatch.style.background = v;
+        drawWheel();
+      }
+    });
+    updateFromHsv();
+    document.getElementById('colorOverlay').addEventListener('click', (e) => { if(e.target.id==='colorOverlay') finish(null); });
+    document.getElementById('colorCancel').onclick = () => finish(null);
+    document.getElementById('colorOk').onclick = () => {
+      const v = hexInput.value.trim();
+      const rgb = hsvToRgb(hsv.h, hsv.s, hsv.v);
+      finish(/^#[0-9A-Fa-f]{6}$/.test(v) ? v : rgbToHex(rgb.r, rgb.g, rgb.b));
+    };
+  });
+}
 function showChoice(title, message, options){ return showDialog({title, message, type:'choice', options}); }
 
 function formatDate(iso){
@@ -918,6 +1066,27 @@ function formatDate(iso){
   const parts = String(iso).split('-');
   if(parts.length !== 3) return iso;
   return `${parts[2]}.${parts[1]}.${parts[0]}`;
+}
+function isRangeActive(start, end){
+  const today = new Date().toISOString().slice(0,10);
+  return today >= start && today <= end;
+}
+function dateRangeHtml(cat){
+  if(!cat.dateStart || !cat.dateEnd) return '';
+  const active = isRangeActive(cat.dateStart, cat.dateEnd);
+  const dotColor = active ? 'var(--pass)' : 'var(--danger)';
+  const title = active ? 'Quartal aktuell aktiv' : 'Quartal aktuell nicht aktiv';
+  return `<span class="weight" style="display:inline-flex;align-items:center;gap:4px;" title="${title}">
+    <span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${dotColor};"></span>
+    ${formatDate(cat.dateStart)} – ${formatDate(cat.dateEnd)}
+  </span>`;
+}
+function dateRangeDotHtml(cat){
+  if(!cat.dateStart || !cat.dateEnd) return '';
+  const active = isRangeActive(cat.dateStart, cat.dateEnd);
+  const dotColor = active ? 'var(--pass)' : 'var(--danger)';
+  const title = active ? 'Quartal aktuell aktiv' : 'Quartal aktuell nicht aktiv';
+  return `<span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${dotColor};margin-right:4px;vertical-align:middle;" title="${title}"></span>`;
 }
 
 // ---------- rendering ----------
@@ -1289,7 +1458,7 @@ function renderGrid(main, cls, sem){
   let groupHeadRow = `<tr><th class="name-col" rowspan="${topRowspan}"><div class="colhead-wrap" style="min-height:100px;"><input type="text" id="searchStudent" placeholder="Suchen…" value="${escapeHtml(state.searchTerm||'')}" style="position:absolute;top:4px;left:50%;transform:translateX(-50%);width:90%;max-width:120px;font-size:0.72rem;padding:3px 6px;z-index:2;"><div style="min-height:100px;display:flex;flex-direction:column;justify-content:center;align-items:center;gap:2px;">Schüler${state.selectedStudentId ? `<button class="colx dark ${state.incognito?'active-toggle':''}" data-toggle-incognito title="${state.incognito?'Inkognito ausschalten':'Inkognito einschalten (nur markierten Schüler zeigen)'}" style="font-size:1.3rem;line-height:1;padding:0 2px;">👁</button>` : ''}</div></div></th><th class="endnote-col" rowspan="${topRowspan}"><div class="endnote-head">Endnote<br><span class="weight">${sem.name}</span></div></th>`;
   groups.forEach(g => {
     if(g.collapsed){
-      groupHeadRow += `<th class="grp-head" rowspan="${topRowspan}" style="background:${colorForGroupName(g.name)};">
+      groupHeadRow += `<th class="grp-head" rowspan="${topRowspan}" style="background:${(g.customColor || colorForGroupName(g.name))};">
         <div class="grp-inner" style="flex-direction:column;gap:6px;">
           <span data-rename-group="${g.id}" style="cursor:pointer;writing-mode:vertical-rl;">${escapeHtml(g.name)}</span>
           <button class="colx" data-toggle-group-collapse="${g.id}" title="Einblenden" style="text-decoration:line-through;">👁</button>
@@ -1298,7 +1467,7 @@ function renderGrid(main, cls, sem){
       return;
     }
     const span = g.categories.reduce((s,c)=>s+catWidth(c), 0) + 1;
-    groupHeadRow += `<th class="grp-head" colspan="${span}" style="background:${colorForGroupName(g.name)};">
+    groupHeadRow += `<th class="grp-head" colspan="${span}" style="background:${(g.customColor || colorForGroupName(g.name))};">
       <div class="grp-head-wrap">
         <button class="colx collapse-eye" data-toggle-group-collapse="${g.id}" title="Ausblenden" style="text-decoration:line-through;">👁</button>
         <div class="grp-inner">
@@ -1314,26 +1483,27 @@ function renderGrid(main, cls, sem){
   groupHeadRow += `</tr>`;
 
   function catHeaderCell(cat, g, colspan, rowspan, depth){
+    const bgStyle = cat.bgColor ? `background:${cat.bgColor};` : '';
     const eyeHtml = depth === 0
       ? (cat.collapsed
           ? `<button class="colx collapse-eye-cat" data-toggle-cat-collapse="${cat.id}" data-group="${g.id}" title="Einblenden" style="text-decoration:line-through;">👁</button>`
           : `<button class="colx collapse-eye-cat" data-toggle-cat-collapse="${cat.id}" data-group="${g.id}" title="Ausblenden" style="text-decoration:line-through;">👁</button>`)
       : '';
     if(cat.collapsed){
-      return `<th class="cat-head" ${rowspan>1?`rowspan="${rowspan}"`:''} colspan="1">
+      return `<th class="cat-head" style="${bgStyle}" ${rowspan>1?`rowspan="${rowspan}"`:''} colspan="1">
         <div class="colhead-wrap">
           ${eyeHtml}
           <div class="colhead" style="${depth===0?'padding-right:16px;':''}">
-            <span data-edit-cat="${cat.id}" data-group="${g.id}" title="Antippen: bearbeiten, duplizieren oder löschen">${escapeHtml(cat.name)}</span>
+            <span data-edit-cat="${cat.id}" data-group="${g.id}" title="Antippen: bearbeiten, duplizieren oder löschen">${dateRangeDotHtml(cat)}${escapeHtml(cat.name)}</span>
           </div>
         </div>
       </th>`;
     }
-    return `<th class="cat-head" ${rowspan>1?`rowspan="${rowspan}"`:''} colspan="${colspan}">
+    return `<th class="cat-head" style="${bgStyle}" ${rowspan>1?`rowspan="${rowspan}"`:''} colspan="${colspan}">
       <div class="colhead-wrap">
         ${eyeHtml}
         <div class="colhead" style="${depth===0?'padding-right:16px;':''}">
-          <span data-edit-cat="${cat.id}" data-group="${g.id}" title="Antippen: bearbeiten, duplizieren oder löschen">${escapeHtml(cat.name)}</span>
+          <span data-edit-cat="${cat.id}" data-group="${g.id}" title="Antippen: bearbeiten, duplizieren oder löschen">${dateRangeDotHtml(cat)}${escapeHtml(cat.name)}</span>
           <span class="weight">${cat.weight}%${isContainerCat(cat) ? '' : ' · '+(cat.mode==='points'?'Punkte':'Note')}</span>
           ${(cat.date && !isContainerCat(cat)) ? `<span class="weight">${formatDate(cat.date)}</span>` : ''}
           <div class="row" style="gap:2px;">
@@ -1397,27 +1567,28 @@ function renderGrid(main, cls, sem){
       return (ov !== undefined && ov !== null && ov !== '') ? `<button class="reset-arrow" data-reset-cat="${cat.id}" data-group="${g.id}" data-student="${s.id}" title="Automatische Berechnung wiederherstellen"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style="display:block;"><rect x="4" y="2" width="16" height="20" rx="2" stroke="currentColor" stroke-width="2.2"/><rect x="7" y="5" width="10" height="4" rx="0.8" fill="currentColor"/><circle cx="7.6" cy="13.2" r="1.15" fill="currentColor"/><circle cx="12" cy="13.2" r="1.15" fill="currentColor"/><circle cx="16.4" cy="13.2" r="1.15" fill="currentColor"/><circle cx="7.6" cy="17.4" r="1.15" fill="currentColor"/><circle cx="12" cy="17.4" r="1.15" fill="currentColor"/><circle cx="16.4" cy="17.4" r="1.15" fill="currentColor"/></svg></button>` : '';
     }
     function catCell(cat, g, s){
+      const bgAttr = cat.bgColor ? ` style="background:${cat.bgColor};"` : '';
       if(cat.collapsed){
-        return `<td class="total-col" data-toggle-cat-collapse="${cat.id}" data-group="${g.id}" style="cursor:pointer;color:var(--ink-soft);text-align:center;" title="Einblenden">···</td>`;
+        return `<td class="total-col" data-toggle-cat-collapse="${cat.id}" data-group="${g.id}" style="cursor:pointer;color:var(--ink-soft);text-align:center;${cat.bgColor?`background:${cat.bgColor};`:''}" title="Einblenden">···</td>`;
       }
       const hasKids = cat.children && cat.children.length;
       const a = categoryAvgForStudent(cls, cat, s.id);
       if(hasKids){
-        let html = `<td class="total-col"><div class="cell-stack" data-open-entries data-cat="${cat.id}" data-group="${g.id}" data-student="${s.id}">${notePill(cls, a)}${overrideMark(cat, g, s)}</div></td>`;
+        let html = `<td class="total-col"${bgAttr}><div class="cell-stack" data-open-entries data-cat="${cat.id}" data-group="${g.id}" data-student="${s.id}">${notePill(cls, a)}${overrideMark(cat, g, s)}</div></td>`;
         cat.children.forEach(child => { html += catCell(child, g, s); });
         return html;
       }
       if(cat.mode === 'observation' && !isContainerCat(cat)){
         const ov = cat.overrides && cat.overrides[s.id];
         const pillHtml = (ov !== undefined && ov !== null && ov !== '') ? notePill(cls, a) : observationPill(cat.entries[s.id]);
-        return `<td><div class="cell-stack" data-open-entries data-cat="${cat.id}" data-group="${g.id}" data-student="${s.id}">${pillHtml}${overrideMark(cat, g, s)}</div></td>`;
+        return `<td${bgAttr}><div class="cell-stack" data-open-entries data-cat="${cat.id}" data-group="${g.id}" data-student="${s.id}">${pillHtml}${overrideMark(cat, g, s)}</div></td>`;
       }
       let subLabel;
       if(cat.mode === 'points' && !isContainerCat(cat)){
         const entry = cat.entries[s.id];
         if(entry) subLabel = `${entry.points ?? '?'}/${entry.maxPoints ?? '?'}`;
       }
-      return `<td><div class="cell-stack" data-open-entries data-cat="${cat.id}" data-group="${g.id}" data-student="${s.id}">${notePill(cls, a, subLabel, cat.displayScale)}${overrideMark(cat, g, s)}</div></td>`;
+      return `<td${bgAttr}><div class="cell-stack" data-open-entries data-cat="${cat.id}" data-group="${g.id}" data-student="${s.id}">${notePill(cls, a, subLabel, cat.displayScale)}${overrideMark(cat, g, s)}</div></td>`;
     }
     visibleStudents.forEach(s => {
       const end = semesterEndnoteForStudent(cls, sem, s.id);
@@ -1594,9 +1765,18 @@ function renderGrid(main, cls, sem){
       const g = sem.groups.find(x=>x.id===el.dataset.renameGroup);
       const name = await showPrompt('Gruppe bearbeiten', 'Name der Gruppe', g.name, {confirmLabel:'Weiter'});
       if(name===null || !name.trim()) return;
-      const weightStr = await showPrompt('Gewichtung', 'Gewichtung dieser Gruppe in % (für die Endnote des Halbjahrs)', g.weight, {inputType:'number', confirmLabel:'Speichern'});
+      const weightStr = await showPrompt('Gewichtung', 'Gewichtung dieser Gruppe in % (für die Endnote des Halbjahrs)', g.weight, {inputType:'number', confirmLabel:'Weiter'});
       if(weightStr===null) return;
       g.name = name.trim(); g.weight = parseFloat(weightStr) || 0;
+      const colorChoice = await showChoice('Farbe der Gruppenkopfzeile', g.customColor ? 'Aktuell: eigene Farbe' : 'Aktuell: Standard', [
+        {label: 'Standardfarbe', value: 'default'},
+        {label: g.customColor ? 'Farbe ändern' : 'Eigene Farbe wählen', value: 'custom'},
+      ]);
+      if(colorChoice === 'default') g.customColor = undefined;
+      else if(colorChoice === 'custom'){
+        const colorVal = await pickColorDialog('Farbe für diese Gruppe wählen', g.customColor || colorForGroupName(g.name));
+        if(colorVal !== null) g.customColor = colorVal;
+      }
       saveState(); render();
     };
   });
@@ -1789,14 +1969,19 @@ function cloneCategoryForDuplicate(cat){
   return {
     id: uid(), name: cat.name + ' Kopie', weight: cat.weight, mode: cat.mode, maxPoints: cat.maxPoints,
     date: cat.date, containerOnly: cat.containerOnly || false, entries: {}, overrides: {},
-    displayScale: cat.displayScale,
+    displayScale: cat.displayScale, bgColor: cat.bgColor,
     children: cat.children ? cat.children.map(cloneCategoryForDuplicate) : undefined
   };
 }
 async function openCategoryMenu(cls, sem, groupId, catId){
   const ctx = findCategoryContext(sem, groupId, catId);
   if(!ctx) return;
-  const choice = await showChoice(ctx.cat.name, 'Was möchtest du tun?', [
+  let menuMessage = 'Was möchtest du tun?';
+  if(ctx.cat.dateStart && ctx.cat.dateEnd){
+    const active = isRangeActive(ctx.cat.dateStart, ctx.cat.dateEnd);
+    menuMessage = `Quartal: ${formatDate(ctx.cat.dateStart)} – ${formatDate(ctx.cat.dateEnd)} (${active ? 'aktuell aktiv' : 'aktuell nicht aktiv'})\n${menuMessage}`;
+  }
+  const choice = await showChoice(ctx.cat.name, menuMessage, [
     {label: 'Kategorie bearbeiten', value: 'edit'},
     {label: 'Kategorie duplizieren', value: 'dup'},
     {label: 'Kategorie löschen', value: 'del'},
@@ -1838,6 +2023,24 @@ async function convertCategoryMode(cls, cat, newMode){
     if(!ok) return;
     cat.entries = {};
     cat.mode = 'points';
+  } else if(cat.mode === 'observation' && newMode === 'grade'){
+    const newEntries = {};
+    cls.students.forEach(st => {
+      const entry = cat.entries[st.id];
+      if(entry && entry.hiddenGrade) newEntries[st.id] = {grade: entry.hiddenGrade, note: entry.note};
+    });
+    cat.entries = newEntries;
+    cat.mode = 'grade';
+  } else if((cat.mode === 'grade' || cat.mode === 'points') && newMode === 'observation'){
+    const ok = await showConfirm('Zu Unterrichtsbeobachtung wechseln', 'Bestehende Einträge lassen sich nicht automatisch in Beobachtungssymbole umwandeln und werden dabei gelöscht.', {confirmLabel:'Trotzdem wechseln', danger:true});
+    if(!ok) return;
+    cat.entries = {};
+    cat.mode = 'observation';
+  } else if(cat.mode === 'observation' && newMode === 'points'){
+    const ok = await showConfirm('Zu Klausurpunkten wechseln', 'Bestehende Beobachtungen lassen sich nicht in Klausurpunkte umwandeln und werden dabei gelöscht.', {confirmLabel:'Trotzdem wechseln', danger:true});
+    if(!ok) return;
+    cat.entries = {};
+    cat.mode = 'points';
   } else {
     cat.mode = newMode;
   }
@@ -1853,11 +2056,36 @@ async function editCategory(cls, sem, groupId, catId){
   if(weightStr===null) return;
   cat.name = name.trim() || cat.name;
   cat.weight = parseFloat(weightStr) || 0;
+  const colorSiblings = ctx.list.filter(c => c.id !== cat.id && c.bgColor);
+  const colorOptions = [
+    {label: 'Standardfarbe (kein Hintergrund)', value: 'default'},
+    {label: cat.bgColor ? 'Farbe ändern' : 'Eigene Farbe wählen', value: 'custom'},
+  ];
+  if(colorSiblings.length) colorOptions.push({label: 'Wie bei…', value: 'like'});
+  const colorChoice = await showChoice('Hintergrundfarbe der Spalte', cat.bgColor ? `Aktuell: eigene Farbe` : 'Aktuell: Standard', colorOptions);
+  if(colorChoice === 'default') cat.bgColor = undefined;
+  else if(colorChoice === 'custom'){
+    const colorVal = await pickColorDialog('Farbe für diese Spalte wählen', cat.bgColor || '#cfe8fb');
+    if(colorVal !== null) cat.bgColor = colorVal;
+  } else if(colorChoice === 'like'){
+    const likeChoice = await showChoice('Wie bei…', 'Farbe von welcher Kategorie übernehmen?', colorSiblings.map(c => ({label: c.name, value: c.bgColor})));
+    if(likeChoice !== null) cat.bgColor = likeChoice;
+  }
+  const isSomiTopLevel = !ctx.parentCat && ['somi 1','somi 2'].includes(cat.name.trim().toLowerCase());
+  if(isSomiTopLevel){
+    const startStr = await showPrompt('Anfang des Quartals', 'Beginn des Quartals', cat.dateStart || new Date().toISOString().slice(0,10), {inputType:'date', confirmLabel:'Weiter'});
+    if(startStr !== null){
+      const endStr = await showPrompt('Ende des Quartals', 'Ende des Quartals', cat.dateEnd || startStr, {inputType:'date', confirmLabel:'Speichern'});
+      if(endStr !== null){ cat.dateStart = startStr; cat.dateEnd = endStr; cat.date = undefined; }
+    }
+  }
   if(isContainer){ saveState(); render(); return; }
-  if(cat.mode !== 'observation'){
-    const modeChoice = await showChoice('Eingabeart', `Aktuell: ${cat.mode==='points'?'Klausurpunkte (automatisch berechnet)':'Note direkt eintragen'}`, [
+  {
+    const currentModeLabel = cat.mode==='points' ? 'Klausurpunkte (automatisch berechnet)' : cat.mode==='observation' ? 'Unterrichtsbeobachtung (− ○ +)' : 'Note direkt eintragen';
+    const modeChoice = await showChoice('Eingabeart', `Aktuell: ${currentModeLabel}`, [
       {label: 'Note direkt eintragen (mit Tendenz)', value: 'grade'},
       {label: 'Klausurpunkte (Note wird automatisch berechnet)', value: 'points'},
+      {label: 'Unterrichtsbeobachtung (− ○ +)', value: 'observation'},
     ]);
     if(modeChoice !== null) await convertCategoryMode(cls, cat, modeChoice);
   }
@@ -1874,8 +2102,10 @@ async function editCategory(cls, sem, groupId, catId){
     ]);
     if(scaleChoice !== null) cat.displayScale = scaleChoice || undefined;
   }
-  const dateStr = await showPrompt('Datum', 'Datum dieser Kategorie, leer lassen zum Entfernen', cat.date || '', {inputType:'date', confirmLabel:'Speichern'});
-  if(dateStr !== null) cat.date = dateStr;
+  if(!isSomiTopLevel){
+    const dateStr = await showPrompt('Datum', 'Datum dieser Kategorie, leer lassen zum Entfernen', cat.date || '', {inputType:'date', confirmLabel:'Speichern'});
+    if(dateStr !== null){ cat.date = dateStr; cat.dateStart = undefined; cat.dateEnd = undefined; }
+  }
   saveState(); render();
 }
 
@@ -2434,12 +2664,12 @@ document.getElementById('addGroupBtn').onclick = async () => {
   saveState(); render();
 };
 function cloneCategoryStructure(c){
-  return {id: uid(), name: c.name, weight: c.weight, mode: c.mode, maxPoints: c.maxPoints, date: c.date, entries: {},
+  return {id: uid(), name: c.name, weight: c.weight, mode: c.mode, maxPoints: c.maxPoints, date: c.date, entries: {}, bgColor: c.bgColor, displayScale: c.displayScale,
     children: c.children ? c.children.map(cloneCategoryStructure) : undefined};
 }
 function cloneGroupsStructure(groups){
   return groups.map(g => ({
-    id: uid(), name: g.name, color: g.color, weight: g.weight, locked: g.locked || false,
+    id: uid(), name: g.name, color: g.color, customColor: g.customColor, weight: g.weight, locked: g.locked || false,
     categories: g.categories.map(cloneCategoryStructure)
   }));
 }
