@@ -101,7 +101,9 @@
   .grp-head .collapse-eye{position:absolute;right:8px;top:50%;transform:translateY(-50%);}
   .cat-head{background:var(--surface);}
   .colhead-wrap{position:relative;display:block;}
-  .colhead-wrap .collapse-eye-cat{position:absolute;right:0;top:0;z-index:3;}
+  .colhead-wrap .collapse-eye-cat{position:absolute;right:0;top:1px;z-index:3;
+    box-sizing:border-box;padding:0;margin:0;width:16px;height:16px;min-width:16px;
+    background:transparent;color:var(--ink-soft);display:inline-flex;align-items:center;justify-content:center;}
   .colhead-wrap .colhead{position:relative;z-index:1;}
   .cat-head.total-head{background:var(--surface-soft);font-weight:700;}
   .cat-head .colhead{display:flex;flex-direction:column;align-items:center;gap:1px;cursor:pointer;padding:2px 0;}
@@ -270,7 +272,7 @@ function colorForGroupName(name){
 }
 
 function uid(){ return Math.random().toString(36).slice(2,10); }
-const APP_VERSION_INFO = 'v4.3 · Entwickler: G. Schulte';
+const APP_VERSION_INFO = 'v4.5 · Entwickler: G. Schulte';
 function setStatus(msg, isError){
   const el = document.getElementById('status');
   el.textContent = msg + ' · ' + APP_VERSION_INFO; el.style.color = isError ? 'var(--pen)' : 'var(--ink-soft)';
@@ -1567,7 +1569,7 @@ function renderGrid(main, cls, sem){
   function catHeaderCell(cat, g, colspan, rowspan, depth){
     const bgStyle = cat.bgColor ? `background:${cat.bgColor};` : '';
     const eyeHtml = depth === 0
-      ? `<button class="colx collapse-eye-cat" data-toggle-cat-collapse="${cat.id}" data-group="${g.id}" title="${cat.collapsed?'Einblenden':'Ausblenden'}" style="text-decoration:line-through;">👁</button>`
+      ? `<button class="colx collapse-eye-cat" data-toggle-cat-collapse="${cat.id}" data-group="${g.id}" title="${cat.collapsed?'Einblenden':'Ausblenden'}">${eyeIconSvg(true)}</button>`
       : '';
     if(cat.collapsed){
       return `<th class="cat-head" style="${bgStyle}" ${rowspan>1?`rowspan="${rowspan}"`:''} colspan="1">
@@ -2761,6 +2763,43 @@ document.getElementById('borderlineToggleBtn').onclick = () => {
   render();
 };
 document.getElementById('positionModeBtn').onclick = () => { state.positionMode = !state.positionMode; render(); };
+async function performAppUpdate(){
+  try{
+    if('serviceWorker' in navigator){
+      const reg = await navigator.serviceWorker.getRegistration();
+      if(reg) await reg.update();
+    }
+  }catch(e){}
+  location.reload();
+}
+async function checkForAppUpdate(){
+  setStatus('Prüfe auf Updates …');
+  try{
+    const res = await fetch(window.location.pathname + '?cachebust=' + Date.now(), {cache: 'no-store'});
+    if(!res.ok) throw new Error('HTTP ' + res.status);
+    const text = await res.text();
+    const match = text.match(/APP_VERSION_INFO\s*=\s*'([^']+)'/);
+    if(!match){ await showAlert('Prüfung fehlgeschlagen', 'Version konnte in der Serverdatei nicht gefunden werden.'); return; }
+    const remoteVersion = match[1];
+    if(remoteVersion === APP_VERSION_INFO){
+      await showAlert('Aktuell', `Du nutzt bereits die neueste Version.\n${APP_VERSION_INFO}`);
+      return;
+    }
+    const choice = await showChoice('Update verfügbar', `Installiert: ${APP_VERSION_INFO}\nNeu: ${remoteVersion}\n\nEmpfehlung: Vor dem Update ein Backup erstellen.`, [
+      {label: '⬇ Backup jetzt erstellen', value: 'backup'},
+      {label: 'Update sofort ausführen', value: 'update'},
+    ]);
+    if(choice === 'backup'){
+      exportBackup();
+      const proceed = await showConfirm('Update jetzt ausführen?', 'Backup wurde heruntergeladen. Soll das Update jetzt ausgeführt werden?', {confirmLabel:'Update ausführen'});
+      if(proceed) await performAppUpdate();
+    } else if(choice === 'update'){
+      await performAppUpdate();
+    }
+  }catch(e){
+    await showAlert('Prüfung fehlgeschlagen', 'Es konnte keine Verbindung zum Server hergestellt werden. Internetverbindung erforderlich.');
+  }
+}
 async function resetAllData(){
   const typed = await showPrompt(
     'Alles zurücksetzen',
@@ -2807,6 +2846,7 @@ document.getElementById('dataManagementBtn').onclick = async () => {
   const cls = getActiveClass();
   const sem = cls ? getActiveSemester(cls) : null;
   const options = [
+    {label: '🔄 Update prüfen', value: 'update'},
     {label: '🗓 Zeiträume', value: 'zeitraeume'},
     {label: '⬇ Backup', value: 'backup'},
     {label: '⬆ Wiederherstellen', value: 'restore'},
@@ -2817,7 +2857,8 @@ document.getElementById('dataManagementBtn').onclick = async () => {
   ];
   const choice = await showChoice('Datenverwaltung', '', options);
   if(choice === null) return;
-  if(choice === 'backup') exportBackup();
+  if(choice === 'update'){ await checkForAppUpdate(); }
+  else if(choice === 'backup') exportBackup();
   else if(choice === 'restore') document.getElementById('importFile').click();
   else if(choice === 'reset') resetAllData();
   else if(choice === 'backuppw'){ await openBackupPasswordSettings(); }
