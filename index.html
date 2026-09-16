@@ -270,7 +270,7 @@ function colorForGroupName(name){
 }
 
 function uid(){ return Math.random().toString(36).slice(2,10); }
-const APP_VERSION_INFO = 'v3.5 · Entwickler: G. Schulte';
+const APP_VERSION_INFO = 'v3.6 · Entwickler: G. Schulte';
 function setStatus(msg, isError){
   const el = document.getElementById('status');
   el.textContent = msg + ' · ' + APP_VERSION_INFO; el.style.color = isError ? 'var(--pen)' : 'var(--ink-soft)';
@@ -825,6 +825,10 @@ function saveBorderlineToggle(on){
 }
 let borderlineEnabled = loadBorderlineToggle();
 const NN_MAP_KEY = 'notenbuch-notennachweis-map';
+function eyeIconSvg(crossed){
+  const strike = crossed ? '<line x1="2" y1="2" x2="14" y2="14" stroke="currentColor" stroke-width="1.4"/>' : '';
+  return `<svg width="13" height="13" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" style="display:block;"><path d="M1 8C1 8 4 3 8 3C12 3 15 8 15 8C15 8 12 13 8 13C4 13 1 8 1 8Z" stroke="currentColor" stroke-width="1.3"/><circle cx="8" cy="8" r="2.1" fill="currentColor"/>${strike}</svg>`;
+}
 function getActiveClass(){ return state.classes.find(c => c.id === state.activeClassId) || null; }
 function getActiveSemester(cls){ return cls.semesters.find(s=>s.id===cls.activeSemesterId) || cls.semesters[0]; }
 function escapeHtml(str){ return String(str).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
@@ -1490,13 +1494,13 @@ function renderGrid(main, cls, sem){
   const maxDepth = maxCatDepth(groups);
   const topRowspan = maxDepth + 1;
 
-  let groupHeadRow = `<tr><th class="name-col" rowspan="${topRowspan}"><div class="colhead-wrap" style="min-height:100px;"><input type="text" id="searchStudent" placeholder="Suchen…" value="${escapeHtml(state.searchTerm||'')}" style="position:absolute;top:4px;left:50%;transform:translateX(-50%);width:90%;max-width:120px;font-size:0.72rem;padding:3px 6px;z-index:2;"><div style="min-height:100px;display:flex;flex-direction:column;justify-content:center;align-items:center;gap:2px;">Schüler${state.selectedStudentId ? `<button class="colx dark ${state.incognito?'active-toggle':''}" data-toggle-incognito title="${state.incognito?'Inkognito ausschalten':'Inkognito einschalten (nur markierten Schüler zeigen)'}" style="font-size:1.3rem;line-height:1;padding:0 2px;">👁</button>` : ''}</div></div></th><th class="endnote-col" rowspan="${topRowspan}"><div class="endnote-head">Endnote<br><span class="weight">${sem.name}</span></div></th>`;
+  let groupHeadRow = `<tr><th class="name-col" rowspan="${topRowspan}"><div class="colhead-wrap" style="min-height:100px;"><input type="text" id="searchStudent" placeholder="Suchen…" value="${escapeHtml(state.searchTerm||'')}" style="position:absolute;top:4px;left:50%;transform:translateX(-50%);width:90%;max-width:120px;font-size:0.72rem;padding:3px 6px;z-index:2;"><div style="min-height:100px;display:flex;flex-direction:column;justify-content:center;align-items:center;gap:2px;">Schüler${state.selectedStudentId ? `<button class="colx dark ${state.incognito?'active-toggle':''}" data-toggle-incognito title="${state.incognito?'Inkognito ausschalten':'Inkognito einschalten (nur markierten Schüler zeigen)'}" style="display:inline-flex;align-items:center;justify-content:center;padding:0 2px;">${eyeIconSvg(false)}</button>` : ''}</div></div></th><th class="endnote-col" rowspan="${topRowspan}"><div class="endnote-head">Endnote<br><span class="weight">${sem.name}</span></div></th>`;
   groups.forEach(g => {
     if(g.collapsed){
       groupHeadRow += `<th class="grp-head" rowspan="${topRowspan}" style="background:${(g.customColor || colorForGroupName(g.name))};">
         <div class="grp-inner" style="flex-direction:column;gap:6px;">
           <span data-rename-group="${g.id}" style="cursor:pointer;writing-mode:vertical-rl;">${escapeHtml(g.name)}</span>
-          <button class="colx" data-toggle-group-collapse="${g.id}" title="Einblenden" style="text-decoration:line-through;">👁</button>
+          <button class="colx" data-toggle-group-collapse="${g.id}" title="Einblenden" style="display:inline-flex;align-items:center;">${eyeIconSvg(true)}</button>
         </div>
       </th>`;
       return;
@@ -1504,7 +1508,7 @@ function renderGrid(main, cls, sem){
     const span = g.categories.reduce((s,c)=>s+catWidth(c), 0) + 1;
     groupHeadRow += `<th class="grp-head" colspan="${span}" style="background:${(g.customColor || colorForGroupName(g.name))};">
       <div class="grp-head-wrap">
-        <button class="colx collapse-eye" data-toggle-group-collapse="${g.id}" title="Ausblenden" style="text-decoration:line-through;">👁</button>
+        <button class="colx collapse-eye" data-toggle-group-collapse="${g.id}" title="Ausblenden" style="display:inline-flex;align-items:center;">${eyeIconSvg(true)}</button>
         <div class="grp-inner">
           ${state.positionMode ? `<button class="colx" data-move-group="${g.id}" data-dir="-1">‹</button>` : ''}
           <span data-rename-group="${g.id}" style="cursor:pointer;">${escapeHtml(g.name)} <span style="font-weight:400;opacity:0.85;">${g.weight}%</span></span>
@@ -1521,8 +1525,8 @@ function renderGrid(main, cls, sem){
     const bgStyle = cat.bgColor ? `background:${cat.bgColor};` : '';
     const eyeHtml = depth === 0
       ? (cat.collapsed
-          ? `<button class="colx collapse-eye-cat" data-toggle-cat-collapse="${cat.id}" data-group="${g.id}" title="Einblenden" style="text-decoration:line-through;">👁</button>`
-          : `<button class="colx collapse-eye-cat" data-toggle-cat-collapse="${cat.id}" data-group="${g.id}" title="Ausblenden" style="text-decoration:line-through;">👁</button>`)
+          ? `<button class="colx collapse-eye-cat" data-toggle-cat-collapse="${cat.id}" data-group="${g.id}" title="Einblenden" style="display:inline-flex;align-items:center;">${eyeIconSvg(true)}</button>`
+          : `<button class="colx collapse-eye-cat" data-toggle-cat-collapse="${cat.id}" data-group="${g.id}" title="Ausblenden" style="display:inline-flex;align-items:center;">${eyeIconSvg(true)}</button>`)
       : '';
     if(cat.collapsed){
       return `<th class="cat-head" style="${bgStyle}" ${rowspan>1?`rowspan="${rowspan}"`:''} colspan="1">
