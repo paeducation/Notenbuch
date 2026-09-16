@@ -195,7 +195,7 @@
   @page{size:A4 portrait;margin:10mm;}
   .print-header{display:none;}
   @media print{
-    .titlebar, header.app, .toolbar, #scalePanel, #webdavPanel, #modalRoot, .status{display:none!important;}
+    .titlebar, header.app, .toolbar, #scalePanel, #modalRoot, .status{display:none!important;}
     body{padding-bottom:0!important;background:#fff!important;}
     main{padding:0!important;}
     .print-header{display:flex!important;gap:18px;flex-wrap:wrap;font-size:11px;margin-bottom:10px;padding-bottom:6px;border-bottom:1px solid #999;}
@@ -230,7 +230,7 @@
   <button class="ghost small" id="toggleScaleBtn">Notenschema</button>
   <button class="ghost small" id="quickBackupBtn" title="Backup jetzt herunterladen">💾</button>
   <button class="ghost small" id="borderlineToggleBtn">🎯 Grenzfälle</button>
-  <button class="ghost small" id="dataManagementBtn">🗂 Datenverwaltung <span id="autobackupDot" class="status-dot"></span></button>
+  <button class="ghost small" id="dataManagementBtn">🗂 Datenverwaltung</button>
   <input type="file" id="csvImportFile" accept=".csv,text/csv" style="position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0;">
   <button class="ghost small" id="printBtn">🖨 Drucken</button>
   <input type="file" id="importFile" accept=".json,application/json" style="position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0;">
@@ -238,13 +238,12 @@
 
 <main id="main"></main>
 <div id="scalePanel"></div>
-<div id="webdavPanel"></div>
 <div id="modalRoot"></div>
 <div class="status" id="status">Wird geladen …</div>
 
 <script>
 const STORAGE_KEY = 'classes';
-let state = { classes: [], activeClassId: null, scaleOpen: false, searchTerm: '', compareView: false, positionMode: false, webdavOpen: false, selectedStudentId: null, incognito: false };
+let state = { classes: [], activeClassId: null, scaleOpen: false, searchTerm: '', compareView: false, positionMode: false, selectedStudentId: null, incognito: false };
 let pendingCsvStufe = 'SII';
 let searchWasFocused = false;
 
@@ -271,7 +270,7 @@ function colorForGroupName(name){
 }
 
 function uid(){ return Math.random().toString(36).slice(2,10); }
-const APP_VERSION_INFO = 'v3.3 · Entwickler: G. Schulte';
+const APP_VERSION_INFO = 'v3.5 · Entwickler: G. Schulte';
 function setStatus(msg, isError){
   const el = document.getElementById('status');
   el.textContent = msg + ' · ' + APP_VERSION_INFO; el.style.color = isError ? 'var(--pen)' : 'var(--ink-soft)';
@@ -573,18 +572,106 @@ function saveState(){
     }catch(e){ setStatus('Speichern fehlgeschlagen – Speicher evtl. voll.', true); }
   }, 250);
 }
+// ---------- Backup-Verschlüsselung (Web Crypto, Passwort nur im Arbeitsspeicher) ----------
+let backupPassword = null; // nur für diese Sitzung, wird nie gespeichert
+const BACKUP_ENCRYPTION_KEY = 'notenbuch-backup-encryption-enabled';
+function loadBackupEncryptionEnabled(){
+  try{ return localStorage.getItem(BACKUP_ENCRYPTION_KEY) === '1'; }catch(e){ return false; }
+}
+function saveBackupEncryptionEnabled(on){
+  try{ localStorage.setItem(BACKUP_ENCRYPTION_KEY, on ? '1' : '0'); }catch(e){}
+}
+let backupEncryptionEnabled = loadBackupEncryptionEnabled();
+function bufToBase64(buf){
+  let binary = '';
+  const bytes = new Uint8Array(buf);
+  for(let i=0; i<bytes.length; i++) binary += String.fromCharCode(bytes[i]);
+  return btoa(binary);
+}
+function base64ToBuf(b64){
+  const binary = atob(b64);
+  const bytes = new Uint8Array(binary.length);
+  for(let i=0; i<binary.length; i++) bytes[i] = binary.charCodeAt(i);
+  return bytes.buffer;
+}
+async function deriveKeyFromPassword(password, saltBytes){
+  const enc = new TextEncoder();
+  const baseKey = await crypto.subtle.importKey('raw', enc.encode(password), 'PBKDF2', false, ['deriveKey']);
+  return crypto.subtle.deriveKey(
+    {name:'PBKDF2', salt: saltBytes, iterations: 150000, hash:'SHA-256'},
+    baseKey, {name:'AES-GCM', length:256}, false, ['encrypt','decrypt']
+  );
+}
+async function encryptBackupJson(plainJsonStr, password){
+  const salt = crypto.getRandomValues(new Uint8Array(16));
+  const iv = crypto.getRandomValues(new Uint8Array(12));
+  const key = await deriveKeyFromPassword(password, salt);
+  const ciphertext = await crypto.subtle.encrypt({name:'AES-GCM', iv}, key, new TextEncoder().encode(plainJsonStr));
+  return JSON.stringify({encrypted: true, salt: bufToBase64(salt), iv: bufToBase64(iv), data: bufToBase64(ciphertext)});
+}
+async function decryptBackupJson(encryptedObj, password){
+  const salt = new Uint8Array(base64ToBuf(encryptedObj.salt));
+  const iv = new Uint8Array(base64ToBuf(encryptedObj.iv));
+  const key = await deriveKeyFromPassword(password, salt);
+  const plainBuf = await crypto.subtle.decrypt({name:'AES-GCM', iv}, key, base64ToBuf(encryptedObj.data));
+  return new TextDecoder().decode(plainBuf);
+}
+async function ensureBackupPassword(promptIfMissing){
+  if(backupPassword) return backupPassword;
+  if(!promptIfMissing) return null;
+  const pw = await showPrompt('Backup-Passwort', 'Passwort für die Backup-Verschlüsselung eingeben (gilt für diese Sitzung)', '', {inputType:'password', confirmLabel:'Weiter'});
+  if(pw === null || !pw) return null;
+  backupPassword = pw;
+  return pw;
+}
+async function openBackupPasswordSettings(){
+  const status = backupEncryptionEnabled ? 'Verschlüsselung: An' : 'Verschlüsselung: Aus';
+  const passwordStatus = backupPassword ? ' (Passwort für diese Sitzung gesetzt)' : (backupEncryptionEnabled ? ' (Passwort wird beim nächsten Backup abgefragt)' : '');
+  const choice = await showChoice('Backup-Passwort', status + passwordStatus, [
+    {label: backupEncryptionEnabled ? 'Passwort ändern' : 'Verschlüsselung einschalten', value: 'set'},
+    ...(backupEncryptionEnabled ? [{label: 'Verschlüsselung ausschalten', value: 'off'}] : []),
+  ]);
+  if(choice === null) return;
+  if(choice === 'set'){
+    const pw = await showPrompt('Backup-Passwort', 'Neues Passwort eingeben (gilt nur für diese Sitzung, wird nirgends gespeichert)', '', {inputType:'password', confirmLabel:'Speichern'});
+    if(pw === null || !pw) return;
+    backupPassword = pw;
+    backupEncryptionEnabled = true;
+    saveBackupEncryptionEnabled(true);
+    await showAlert('Gespeichert', 'Backups werden ab jetzt automatisch verschlüsselt, solange diese Sitzung läuft. Nach einem Neuladen der Seite musst du das Passwort einmal neu eingeben.');
+  } else if(choice === 'off'){
+    backupEncryptionEnabled = false;
+    backupPassword = null;
+    saveBackupEncryptionEnabled(false);
+  }
+}
 function exportBackup(){
   try{
     const data = JSON.stringify({classes: state.classes, exportedAt: new Date().toISOString()}, null, 2);
-    const blob = new Blob([data], {type: 'application/json'});
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
     const stamp = new Date().toISOString().slice(0,10);
-    a.href = url; a.download = `notenbuch-backup-${stamp}.json`;
-    document.body.appendChild(a); a.click(); document.body.removeChild(a);
-    URL.revokeObjectURL(url);
+    if(backupEncryptionEnabled){
+      (async () => {
+        const pw = await ensureBackupPassword(true);
+        if(!pw){ setStatus('Export abgebrochen (kein Passwort).', true); return; }
+        try{
+          const encryptedStr = await encryptBackupJson(data, pw);
+          downloadBlobAsFile(encryptedStr, `notenbuch-backup-verschluesselt-${stamp}.json`);
+          setStatus('Verschlüsseltes Backup exportiert · ' + new Date().toLocaleTimeString('de-DE'));
+        }catch(e){ setStatus('Verschlüsselung fehlgeschlagen.', true); }
+      })();
+      return;
+    }
+    downloadBlobAsFile(data, `notenbuch-backup-${stamp}.json`);
     setStatus('Backup exportiert · ' + new Date().toLocaleTimeString('de-DE'));
   }catch(e){ setStatus('Export fehlgeschlagen.', true); }
+}
+function downloadBlobAsFile(str, filename){
+  const blob = new Blob([str], {type: 'application/json'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = filename;
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  URL.revokeObjectURL(url);
 }
 function stripCategoryToStructure(c){
   return {
@@ -619,7 +706,25 @@ function importBackup(file){
   const reader = new FileReader();
   reader.onload = async () => {
     try{
-      const parsed = JSON.parse(reader.result);
+      let rawObj = JSON.parse(reader.result);
+      if(rawObj && rawObj.encrypted){
+        let decrypted = null;
+        let pw = await ensureBackupPassword(true);
+        while(pw && !decrypted){
+          try{
+            const plainStr = await decryptBackupJson(rawObj, pw);
+            decrypted = JSON.parse(plainStr);
+          }catch(e){
+            backupPassword = null;
+            const retry = await showConfirm('Falsches Passwort', 'Entschlüsselung fehlgeschlagen. Erneut versuchen?', {confirmLabel:'Erneut versuchen'});
+            if(!retry) return;
+            pw = await ensureBackupPassword(true);
+          }
+        }
+        if(!decrypted) return;
+        rawObj = decrypted;
+      }
+      const parsed = rawObj;
       if(!Array.isArray(parsed.classes)) throw new Error('Ungültiges Format');
       const mode = await showChoice('Backup wiederherstellen', `${parsed.classes.length} Lerngruppe(n) gefunden. Was soll übernommen werden?`, [
         {label: 'Struktur und Inhalte – alles genau wie gesichert', value: 'full'},
@@ -710,8 +815,7 @@ async function importCSV(file){
   );
 }
 
-// ---------- WebDAV (z.B. IServ, nur im Intranet erreichbar) ----------
-const WEBDAV_KEY = 'notenbuch-webdav-config';
+// ---------- Grenzfälle-Anzeige (global) ----------
 const BORDERLINE_KEY = 'notenbuch-borderline-toggle';
 function loadBorderlineToggle(){
   try{ return localStorage.getItem(BORDERLINE_KEY) === '1'; }catch(e){ return false; }
@@ -721,153 +825,6 @@ function saveBorderlineToggle(on){
 }
 let borderlineEnabled = loadBorderlineToggle();
 const NN_MAP_KEY = 'notenbuch-notennachweis-map';
-function loadWebdavConfig(){
-  const defaults = {url:'', username:'', password:'', autobackupSeconds:0, webdavAutoEnabled:false};
-  try{
-    const raw = localStorage.getItem(WEBDAV_KEY);
-    const cfg = raw ? JSON.parse(raw) : {};
-    return {...defaults, ...cfg};
-  }catch(e){ return defaults; }
-}
-function saveWebdavConfig(cfg){
-  try{ localStorage.setItem(WEBDAV_KEY, JSON.stringify(cfg)); }catch(e){}
-}
-function webdavAuthHeader(cfg){
-  return 'Basic ' + btoa(unescape(encodeURIComponent(cfg.username + ':' + cfg.password)));
-}
-let autobackupTimer = null;
-function stopAutobackup(){ if(autobackupTimer){ clearInterval(autobackupTimer); autobackupTimer = null; } }
-async function runAutobackupTick(){
-  const cfg = loadWebdavConfig();
-  if(cfg.webdavAutoEnabled && cfg.url) webdavUpload(true);
-}
-function startAutobackup(seconds){
-  stopAutobackup();
-  autobackupTimer = setInterval(runAutobackupTick, seconds * 1000);
-}
-function initAutobackupFromConfig(){
-  const cfg = loadWebdavConfig();
-  if(cfg.autobackupSeconds > 0 && cfg.webdavAutoEnabled) startAutobackup(cfg.autobackupSeconds);
-}
-async function webdavUpload(silent){
-  const cfg = loadWebdavConfig();
-  if(!cfg.url){ if(!silent) await showAlert('WebDAV nicht eingerichtet', 'Bitte zuerst Server-Adresse, Benutzername und Passwort eintragen.'); return; }
-  const el = document.getElementById('webdavStatus');
-  if(el) el.textContent = 'Sende…';
-  try{
-    const data = JSON.stringify({classes: state.classes, exportedAt: new Date().toISOString()}, null, 2);
-    const res = await fetch(cfg.url, {
-      method: 'PUT',
-      headers: { 'Authorization': webdavAuthHeader(cfg), 'Content-Type': 'application/json' },
-      body: data
-    });
-    if(res.ok || res.status === 201 || res.status === 204){
-      if(el) el.textContent = 'Erfolgreich hochgeladen · ' + new Date().toLocaleTimeString('de-DE');
-    } else {
-      if(el) el.textContent = `Fehler beim Hochladen (Status ${res.status}). Zugangsdaten und Pfad prüfen.`;
-    }
-  }catch(e){
-    if(el) el.textContent = 'Verbindung fehlgeschlagen – vermutlich nicht im Intranet, falsche Adresse, oder der Server blockiert Anfragen von dieser App (CORS).';
-  }
-}
-async function webdavDownload(){
-  const cfg = loadWebdavConfig();
-  if(!cfg.url){ await showAlert('WebDAV nicht eingerichtet', 'Bitte zuerst Server-Adresse, Benutzername und Passwort eintragen.'); return; }
-  const el = document.getElementById('webdavStatus');
-  if(el) el.textContent = 'Lade…';
-  try{
-    const res = await fetch(cfg.url, { method: 'GET', headers: { 'Authorization': webdavAuthHeader(cfg) } });
-    if(!res.ok) throw new Error('Status ' + res.status);
-    const parsed = await res.json();
-    if(!Array.isArray(parsed.classes)) throw new Error('Ungültiges Format');
-    const ok = await showConfirm('Von WebDAV laden?', `${parsed.classes.length} Lerngruppe(n) ersetzen die aktuellen Daten in diesem Browser.`, {confirmLabel:'Laden', danger:true});
-    if(!ok){ if(el) el.textContent = ''; return; }
-    state.classes = parsed.classes;
-    state.classes.forEach(migrateClass);
-    state.activeClassId = state.classes.length ? state.classes[0].id : null;
-    saveState(); render();
-    if(el) el.textContent = 'Erfolgreich geladen · ' + new Date().toLocaleTimeString('de-DE');
-  }catch(e){
-    if(el) el.textContent = 'Laden fehlgeschlagen – vermutlich nicht im Intranet, falsche Adresse/Zugangsdaten, keine Datei am Ziel, oder CORS-Blockade.';
-  }
-}
-function frequencyOptionsHtml(selectedSeconds){
-  const options = [
-    [0,'Aus'],
-    [30,'30 Sekunden'], [60,'1 Minute'], [120,'2 Minuten'], [180,'3 Minuten'], [240,'4 Minuten'],
-    [300,'5 Minuten'], [360,'6 Minuten'], [420,'7 Minuten'], [480,'8 Minuten'], [540,'9 Minuten'],
-    [600,'10 Minuten'], [1200,'20 Minuten'], [1800,'30 Minuten'],
-  ];
-  return options.map(([v,label]) => `<option value="${v}" ${v===selectedSeconds?'selected':''}>${label}</option>`).join('');
-}
-function renderWebdavPanel(){
-  const panel = document.getElementById('webdavPanel');
-  if(!state.webdavOpen){ panel.innerHTML = ''; return; }
-  const cfg = loadWebdavConfig();
-  const isActive = cfg.autobackupSeconds > 0 && cfg.webdavAutoEnabled;
-  panel.innerHTML = `
-    <div class="panel">
-      <div class="form-title">Autobackup${isActive ? ' – aktiv' : ' – aus'}</div>
-      <div class="stack" style="display:flex;flex-direction:column;gap:8px;">
-        <div class="row">
-          <span style="white-space:nowrap;">Alle</span>
-          <select id="autobackupFreq" style="flex:1;">${frequencyOptionsHtml(cfg.autobackupSeconds)}</select>
-        </div>
-        <div class="hint">Die lokale Speicherung in diesem Browser läuft ohnehin immer automatisch bei jeder Eingabe. Hier legst du zusätzlich fest, ob (und wie oft) automatisch auf WebDAV gesichert wird.</div>
-
-        <div class="divider" style="height:1px;background:var(--line);margin:6px 0;"></div>
-        <label class="row" style="gap:8px;cursor:pointer;">
-          <input type="checkbox" id="webdavAutoCheck" ${cfg.webdavAutoEnabled ? 'checked' : ''} style="width:18px;height:18px;">
-          <span class="form-title" style="margin:0;">☁ WebDAV aktiv (z.B. IServ, nur im Schulnetz erreichbar)</span>
-        </label>
-        <input type="text" id="webdavUrl" placeholder="https://meine-schule.iserv.de/iserv/webdav/Notenbuch/backup.json" value="${escapeHtml(cfg.url)}">
-        <input type="text" id="webdavUser" placeholder="Benutzername" value="${escapeHtml(cfg.username)}">
-        <input type="password" id="webdavPass" placeholder="Passwort" value="${escapeHtml(cfg.password)}">
-        <div class="row">
-          <button class="ghost small" id="webdavSaveCfg">Zugangsdaten speichern</button>
-          <button class="small" id="webdavUploadBtn">Jetzt hochladen</button>
-          <button class="ghost small" id="webdavDownloadBtn">Jetzt laden</button>
-        </div>
-        <div class="hint" id="webdavStatus"></div>
-        <div class="hint">Zugangsdaten liegen unverschlüsselt im Browser-Speicher dieses Geräts. Funktioniert nur, wenn der Server Anfragen von dieser App zulässt (CORS) und du im selben Netzwerk bist.</div>
-      </div>
-    </div>
-  `;
-  const syncAndMaybeStart = () => {
-    const c = loadWebdavConfig();
-    const active = c.autobackupSeconds > 0 && c.webdavAutoEnabled;
-    updateAutobackupDot();
-    if(active) startAutobackup(c.autobackupSeconds); else stopAutobackup();
-  };
-  document.getElementById('webdavSaveCfg').onclick = () => {
-    const current = loadWebdavConfig();
-    const newCfg = {
-      ...current,
-      url: document.getElementById('webdavUrl').value.trim(),
-      username: document.getElementById('webdavUser').value.trim(),
-      password: document.getElementById('webdavPass').value
-    };
-    saveWebdavConfig(newCfg);
-    document.getElementById('webdavStatus').textContent = 'Zugangsdaten gespeichert.';
-    syncAndMaybeStart();
-  };
-  document.getElementById('webdavUploadBtn').onclick = () => webdavUpload();
-  document.getElementById('webdavDownloadBtn').onclick = webdavDownload;
-  document.getElementById('autobackupFreq').onchange = (e) => {
-    const current = loadWebdavConfig();
-    current.autobackupSeconds = parseInt(e.target.value) || 0;
-    saveWebdavConfig(current);
-    syncAndMaybeStart();
-    renderWebdavPanel();
-  };
-  document.getElementById('webdavAutoCheck').onchange = (e) => {
-    const current = loadWebdavConfig();
-    current.webdavAutoEnabled = e.target.checked;
-    saveWebdavConfig(current);
-    syncAndMaybeStart();
-    renderWebdavPanel();
-  };
-}
 function getActiveClass(){ return state.classes.find(c => c.id === state.activeClassId) || null; }
 function getActiveSemester(cls){ return cls.semesters.find(s=>s.id===cls.activeSemesterId) || cls.semesters[0]; }
 function escapeHtml(str){ return String(str).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
@@ -2759,12 +2716,6 @@ document.getElementById('borderlineToggleBtn').onclick = () => {
   render();
 };
 document.getElementById('positionModeBtn').onclick = () => { state.positionMode = !state.positionMode; render(); };
-function updateAutobackupDot(){
-  const dot = document.getElementById('autobackupDot');
-  if(!dot) return;
-  const c = loadWebdavConfig();
-  dot.classList.toggle('on', c.autobackupSeconds > 0 && c.webdavAutoEnabled);
-}
 async function resetAllData(){
   const typed = await showPrompt(
     'Alles zurücksetzen',
@@ -2817,14 +2768,14 @@ document.getElementById('dataManagementBtn').onclick = async () => {
     {label: '⟲ Alles zurücksetzen', value: 'reset'},
     {label: 'Export für Excel', value: 'excel'},
     {label: 'Export für externe Tabelle (Zusatztool)', value: 'notennachweis'},
-    {label: '⚙ Autobackup', value: 'autobackup'},
+    {label: '🔒 Backup-Passwort', value: 'backuppw'},
   ];
   const choice = await showChoice('Datenverwaltung', '', options);
   if(choice === null) return;
   if(choice === 'backup') exportBackup();
   else if(choice === 'restore') document.getElementById('importFile').click();
   else if(choice === 'reset') resetAllData();
-  else if(choice === 'autobackup'){ state.webdavOpen = true; renderWebdavPanel(); }
+  else if(choice === 'backuppw'){ await openBackupPasswordSettings(); }
   else if(choice === 'zeitraeume'){
     if(!cls){ await showAlert('Keine Lerngruppe', 'Bitte zuerst eine Lerngruppe auswählen.'); return; }
     openQuartaleModal(cls);
@@ -2949,8 +2900,6 @@ window.addEventListener('resize', syncStickyOffsets);
   await loadState();
   document.getElementById('schoolYearInput').value = state.schoolYear;
   render();
-  initAutobackupFromConfig();
-  updateAutobackupDot();
   syncStickyOffsets();
 })();
 if('serviceWorker' in navigator){
