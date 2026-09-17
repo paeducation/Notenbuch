@@ -99,11 +99,8 @@
   .grp-head-wrap{position:relative;display:block;}
   .grp-head .grp-inner{display:flex;align-items:center;justify-content:center;gap:6px;}
   .grp-head .collapse-eye{position:absolute;right:8px;top:50%;transform:translateY(-50%);}
-  .cat-head{background:var(--surface);}
+  .cat-head{background:var(--surface);min-width:78px;}
   .colhead-wrap{position:relative;display:block;}
-  .colhead-wrap .collapse-eye-cat{position:absolute;right:0;top:0;z-index:3;
-    box-sizing:border-box;padding:0;margin:0;width:16px;height:16px;min-width:16px;
-    background:transparent;color:var(--ink-soft);display:inline-flex;align-items:center;justify-content:center;}
   .colhead-wrap .colhead{position:relative;z-index:1;}
   .cat-head.total-head{background:var(--surface-soft);font-weight:700;}
   .cat-head .colhead{display:flex;flex-direction:column;align-items:center;gap:1px;cursor:pointer;padding:2px 0;}
@@ -149,7 +146,7 @@
   .add-student-row td{background:var(--surface-soft);}
   .add-student-row input{width:100%;min-width:130px;}
   .name-cell-row{display:flex;align-items:center;gap:6px;justify-content:space-between;}
-  tr.student-selected td{background:var(--accent-soft)!important;}
+  tr.student-selected td:not(.total-col):not(.endnote-col){background:var(--accent-soft)!important;}
   .panel{margin-top:16px;background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);
     padding:16px;box-shadow:var(--shadow);}
   .form-title{font-size:0.76rem;color:var(--ink-soft);font-weight:700;margin-bottom:10px;
@@ -272,7 +269,7 @@ function colorForGroupName(name){
 }
 
 function uid(){ return Math.random().toString(36).slice(2,10); }
-const APP_VERSION_INFO = 'v5.0 · Entwickler: G. Schulte';
+const APP_VERSION_INFO = 'v5.9 · Entwickler: G. Schulte';
 function setStatus(msg, isError){
   const el = document.getElementById('status');
   el.textContent = msg + ' · ' + APP_VERSION_INFO; el.style.color = isError ? 'var(--pen)' : 'var(--ink-soft)';
@@ -974,6 +971,16 @@ function pickColorDialog(title, currentColor){
               <span class="hint">Hex-Code:</span>
               <input type="text" id="colorHexInput" value="${start}" class="mono" style="width:110px;text-transform:uppercase;">
             </div>
+            <div style="width:${SIZE}px;">
+              <div class="hint" style="margin-bottom:4px;">Grautöne</div>
+              <div class="row" id="graySwatchRow" style="gap:6px;justify-content:space-between;">
+                ${[0,15,30,45,60,75,90,100].map(pct => {
+                  const v = Math.round(pct/100*255);
+                  const hex = rgbToHex(v,v,v);
+                  return `<button class="colx" data-gray-swatch="${hex}" title="${hex}" style="width:22px;height:22px;border-radius:50%;background:${hex};border:1px solid var(--line);padding:0;"></button>`;
+                }).join('')}
+              </div>
+            </div>
           </div>
           <div class="row" style="margin-top:16px;justify-content:flex-end;gap:8px;">
             <button class="ghost" id="colorCancel">Abbrechen</button>
@@ -1055,6 +1062,18 @@ function pickColorDialog(title, currentColor){
         swatch.style.background = v;
         drawWheel();
       }
+    });
+    document.querySelectorAll('[data-gray-swatch]').forEach(btn => {
+      btn.onclick = () => {
+        const hex = btn.dataset.graySwatch;
+        const rgb = hexToRgb(hex);
+        hsv = rgbToHsv(rgb.r, rgb.g, rgb.b);
+        brightnessSlider.value = Math.round(hsv.v*100);
+        brightnessValue.textContent = Math.round(hsv.v*100) + '%';
+        hexInput.value = hex;
+        swatch.style.background = hex;
+        drawWheel();
+      };
     });
     updateFromHsv();
     document.getElementById('colorOverlay').addEventListener('click', (e) => { if(e.target.id==='colorOverlay') finish(null); });
@@ -1539,7 +1558,7 @@ function renderGrid(main, cls, sem){
   const maxDepth = maxCatDepth(groups);
   const topRowspan = maxDepth + 1;
 
-  let groupHeadRow = `<tr><th class="name-col" rowspan="${topRowspan}"><div class="colhead-wrap" style="min-height:100px;"><input type="text" id="searchStudent" placeholder="Suchen…" value="${escapeHtml(state.searchTerm||'')}" style="position:absolute;top:4px;left:50%;transform:translateX(-50%);width:90%;max-width:120px;font-size:0.72rem;padding:3px 6px;z-index:2;"><div style="min-height:100px;display:flex;flex-direction:column;justify-content:center;align-items:center;gap:2px;">Schüler${state.selectedStudentId ? `<button class="colx dark ${state.incognito?'active-toggle':''}" data-toggle-incognito title="${state.incognito?'Inkognito ausschalten':'Inkognito einschalten (nur markierten Schüler zeigen)'}" style="display:inline-flex;align-items:center;justify-content:center;padding:0 2px;">${eyeIconSvg(false)}</button>` : ''}</div></div></th><th class="endnote-col" rowspan="${topRowspan}"><div class="endnote-head">Endnote<br><span class="weight">${sem.name}</span></div></th>`;
+  let groupHeadRow = `<tr><th class="name-col" rowspan="${topRowspan}"><div class="colhead-wrap" style="min-height:100px;"><input type="text" id="searchStudent" placeholder="Suchen…" value="${escapeHtml(state.searchTerm||'')}" style="position:absolute;top:4px;left:50%;transform:translateX(-50%);width:90%;max-width:120px;font-size:0.72rem;padding:3px 6px;z-index:2;"><div style="min-height:100px;display:flex;flex-direction:column;justify-content:center;align-items:center;gap:2px;">Schüler${state.selectedStudentId ? `<button class="colx dark ${state.incognito?'active-toggle':''}" data-toggle-incognito title="${state.incognito?'Inkognito ausschalten':'Inkognito einschalten (nur markierten Schüler zeigen)'}" style="display:inline-flex;align-items:center;justify-content:center;padding:0 2px;">${eyeIconSvg(false)}</button>` : ''}</div></div></th><th class="endnote-col" rowspan="${topRowspan}" data-edit-endnote-color style="cursor:pointer;${sem.endnoteColor?`background:${sem.endnoteColor};`:''}"><div class="endnote-head">Endnote<br><span class="weight">${sem.name}</span></div></th>`;
   groups.forEach(g => {
     if(g.collapsed){
       groupHeadRow += `<th class="grp-head" rowspan="${topRowspan}" style="background:${(g.customColor || colorForGroupName(g.name))};">
@@ -1569,30 +1588,28 @@ function renderGrid(main, cls, sem){
   function catHeaderCell(cat, g, colspan, rowspan, depth){
     const bgStyle = cat.bgColor ? `background:${cat.bgColor};` : '';
     const eyeHtml = depth === 0
-      ? `<button class="colx collapse-eye-cat" data-toggle-cat-collapse="${cat.id}" data-group="${g.id}" title="${cat.collapsed?'Einblenden':'Ausblenden'}">${eyeIconSvg(true)}</button>`
+      ? `<button class="colx dark" data-toggle-cat-collapse="${cat.id}" data-group="${g.id}" title="${cat.collapsed?'Einblenden':'Ausblenden'}" style="display:inline-flex;align-items:center;justify-content:center;padding:0;width:16px;height:16px;flex-shrink:0;">${eyeIconSvg(true)}</button>`
       : '';
+    const nameRow = `<div class="row" style="gap:4px;align-items:center;justify-content:center;">
+      <span data-edit-cat="${cat.id}" data-group="${g.id}" title="Antippen: bearbeiten, duplizieren oder löschen">${dateRangeDotHtml(cat)}${escapeHtml(cat.name)}</span>
+      ${eyeHtml}
+    </div>`;
     if(cat.collapsed){
       return `<th class="cat-head" style="${bgStyle}" ${rowspan>1?`rowspan="${rowspan}"`:''} colspan="1">
-        <div class="colhead-wrap">
-          ${eyeHtml}
-          <div class="colhead" style="${depth===0?'padding:0 22px;':''}">
-            <span data-edit-cat="${cat.id}" data-group="${g.id}" title="Antippen: bearbeiten, duplizieren oder löschen">${dateRangeDotHtml(cat)}${escapeHtml(cat.name)}</span>
-          </div>
+        <div class="colhead">
+          ${nameRow}
         </div>
       </th>`;
     }
     return `<th class="cat-head" style="${bgStyle}" ${rowspan>1?`rowspan="${rowspan}"`:''} colspan="${colspan}">
-      <div class="colhead-wrap">
-        ${eyeHtml}
-        <div class="colhead" style="${depth===0?'padding:0 22px;':''}">
-          <span data-edit-cat="${cat.id}" data-group="${g.id}" title="Antippen: bearbeiten, duplizieren oder löschen">${dateRangeDotHtml(cat)}${escapeHtml(cat.name)}</span>
-          <span class="weight">${cat.weight}%${isContainerCat(cat) ? '' : ' · '+(cat.mode==='points'?'Punkte':'Note')}</span>
-          ${(cat.date && !isContainerCat(cat)) ? `<span class="weight">${formatDate(cat.date)}</span>` : ''}
-          <div class="row" style="gap:2px;">
-            ${state.positionMode ? `<button class="colx dark" data-move-cat="${cat.id}" data-group="${g.id}" data-dir="-1">‹</button>` : ''}
-            <button class="colx dark" data-add-near-cat="${cat.id}" data-group="${g.id}" style="font-size:1.15rem;font-weight:700;width:24px;height:24px;">+</button>
-            ${state.positionMode ? `<button class="colx dark" data-move-cat="${cat.id}" data-group="${g.id}" data-dir="1">›</button>` : ''}
-          </div>
+      <div class="colhead">
+        ${nameRow}
+        <span class="weight">${cat.weight}%${isContainerCat(cat) ? '' : ' · '+(cat.mode==='points'?'Punkte':'Note')}</span>
+        ${(cat.date && !isContainerCat(cat)) ? `<span class="weight">${formatDate(cat.date)}</span>` : ''}
+        <div class="row" style="gap:2px;">
+          ${state.positionMode ? `<button class="colx dark" data-move-cat="${cat.id}" data-group="${g.id}" data-dir="-1">‹</button>` : ''}
+          <button class="colx dark" data-add-near-cat="${cat.id}" data-group="${g.id}" style="font-size:1.15rem;font-weight:700;width:24px;height:24px;">+</button>
+          ${state.positionMode ? `<button class="colx dark" data-move-cat="${cat.id}" data-group="${g.id}" data-dir="1">›</button>` : ''}
         </div>
       </div>
     </th>`;
@@ -1618,7 +1635,8 @@ function renderGrid(main, cls, sem){
   const catRowStrings = new Array(maxDepth).fill('');
   groups.forEach(g => {
     if(g.collapsed) return;
-    const groupRowSets = [`<th class="cat-head total-head" ${maxDepth>1?`rowspan="${maxDepth}"`:''}>Gesamt ${escapeHtml(g.name)}</th>`];
+    const groupColor = g.customColor || colorForGroupName(g.name);
+    const groupRowSets = [`<th class="cat-head total-head" style="background:${groupColor};color:#fff;" ${maxDepth>1?`rowspan="${maxDepth}"`:''}>Gesamt</th>`];
     for(let r=0; r<maxDepth; r++){
       catRowStrings[r] += (r===0 ? groupRowSets[0] : '');
     }
@@ -1646,7 +1664,7 @@ function renderGrid(main, cls, sem){
   } else {
     function overrideMark(cat, g, s){
       const ov = cat.overrides && cat.overrides[s.id];
-      return (ov !== undefined && ov !== null && ov !== '') ? `<button class="reset-arrow" data-reset-cat="${cat.id}" data-group="${g.id}" data-student="${s.id}" title="Automatische Berechnung wiederherstellen"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style="display:block;"><rect x="4" y="2" width="16" height="20" rx="2" stroke="currentColor" stroke-width="2.2"/><rect x="7" y="5" width="10" height="4" rx="0.8" fill="currentColor"/><circle cx="7.6" cy="13.2" r="1.15" fill="currentColor"/><circle cx="12" cy="13.2" r="1.15" fill="currentColor"/><circle cx="16.4" cy="13.2" r="1.15" fill="currentColor"/><circle cx="7.6" cy="17.4" r="1.15" fill="currentColor"/><circle cx="12" cy="17.4" r="1.15" fill="currentColor"/><circle cx="16.4" cy="17.4" r="1.15" fill="currentColor"/></svg></button>` : '';
+      return (borderlineEnabled && ov !== undefined && ov !== null && ov !== '') ? `<button class="reset-arrow" data-reset-cat="${cat.id}" data-group="${g.id}" data-student="${s.id}" title="Automatische Berechnung wiederherstellen"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style="display:block;"><rect x="4" y="2" width="16" height="20" rx="2" stroke="currentColor" stroke-width="2.2"/><rect x="7" y="5" width="10" height="4" rx="0.8" fill="currentColor"/><circle cx="7.6" cy="13.2" r="1.15" fill="currentColor"/><circle cx="12" cy="13.2" r="1.15" fill="currentColor"/><circle cx="16.4" cy="13.2" r="1.15" fill="currentColor"/><circle cx="7.6" cy="17.4" r="1.15" fill="currentColor"/><circle cx="12" cy="17.4" r="1.15" fill="currentColor"/><circle cx="16.4" cy="17.4" r="1.15" fill="currentColor"/></svg></button>` : '';
     }
     function catCell(cat, g, s){
       const bgAttr = cat.bgColor ? ` style="background:${cat.bgColor};"` : '';
@@ -1685,14 +1703,14 @@ function renderGrid(main, cls, sem){
           endBadge = `<span class="border-badge border-resolved" title="Grenzfall manuell entschieden">⚑</span>`;
         } else {
           const endStatus = computeBorderlineStatus(cls, end);
-          if(endStatus && endStatus.isTie){
+          if(endStatus && !endStatus.exact){
             endPillHtml = tieOnlyBadgeHtmlEndnote(endStatus, s.id);
           } else {
             endBadge = borderlineBadgeHtmlEndnote(endStatus, s.id);
           }
         }
       }
-      row += `<td class="endnote-col"><div class="cell-stack" data-open-endnote="${s.id}">${endPillHtml}${endBadge}${overridden ? `<button class="reset-arrow" data-reset-endnote="${s.id}" title="Automatische Berechnung wiederherstellen"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style="display:block;"><rect x="4" y="2" width="16" height="20" rx="2" stroke="currentColor" stroke-width="2.2"/><rect x="7" y="5" width="10" height="4" rx="0.8" fill="currentColor"/><circle cx="7.6" cy="13.2" r="1.15" fill="currentColor"/><circle cx="12" cy="13.2" r="1.15" fill="currentColor"/><circle cx="16.4" cy="13.2" r="1.15" fill="currentColor"/><circle cx="7.6" cy="17.4" r="1.15" fill="currentColor"/><circle cx="12" cy="17.4" r="1.15" fill="currentColor"/><circle cx="16.4" cy="17.4" r="1.15" fill="currentColor"/></svg></button>` : ''}</div></td>`;
+      row += `<td class="endnote-col"${sem.endnoteColor?` style="background:${sem.endnoteColor};"`:''}><div class="cell-stack" data-open-endnote="${s.id}">${endPillHtml}${endBadge}${(borderlineEnabled && overridden) ? `<button class="reset-arrow" data-reset-endnote="${s.id}" title="Automatische Berechnung wiederherstellen"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style="display:block;"><rect x="4" y="2" width="16" height="20" rx="2" stroke="currentColor" stroke-width="2.2"/><rect x="7" y="5" width="10" height="4" rx="0.8" fill="currentColor"/><circle cx="7.6" cy="13.2" r="1.15" fill="currentColor"/><circle cx="12" cy="13.2" r="1.15" fill="currentColor"/><circle cx="16.4" cy="13.2" r="1.15" fill="currentColor"/><circle cx="7.6" cy="17.4" r="1.15" fill="currentColor"/><circle cx="12" cy="17.4" r="1.15" fill="currentColor"/><circle cx="16.4" cy="17.4" r="1.15" fill="currentColor"/></svg></button>` : ''}</div></td>`;
       groups.forEach(g => {
         if(g.collapsed){
           row += `<td class="total-col" data-toggle-group-collapse="${g.id}" style="cursor:pointer;color:var(--ink-soft);text-align:center;" title="Einblenden">···</td>`;
@@ -1708,14 +1726,15 @@ function renderGrid(main, cls, sem){
             badge = `<span class="border-badge border-resolved" title="Grenzfall manuell entschieden">⚑</span>`;
           } else {
             const status = computeBorderlineStatus(cls, gt);
-            if(status && status.isTie){
+            if(status && !status.exact){
               gPillHtml = tieOnlyBadgeHtmlGroup(status, g.id, s.id);
             } else {
               badge = borderlineBadgeHtml(status, g.id, s.id);
             }
           }
         }
-        row += `<td class="total-col"><div class="cell-stack" data-open-group="${g.id}" data-student="${s.id}">${gPillHtml}${badge}${gOverridden ? `<button class="reset-arrow" data-reset-group="${g.id}" data-student="${s.id}" title="Automatische Berechnung wiederherstellen"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style="display:block;"><rect x="4" y="2" width="16" height="20" rx="2" stroke="currentColor" stroke-width="2.2"/><rect x="7" y="5" width="10" height="4" rx="0.8" fill="currentColor"/><circle cx="7.6" cy="13.2" r="1.15" fill="currentColor"/><circle cx="12" cy="13.2" r="1.15" fill="currentColor"/><circle cx="16.4" cy="13.2" r="1.15" fill="currentColor"/><circle cx="7.6" cy="17.4" r="1.15" fill="currentColor"/><circle cx="12" cy="17.4" r="1.15" fill="currentColor"/><circle cx="16.4" cy="17.4" r="1.15" fill="currentColor"/></svg></button>` : ''}</div></td>`;
+        const groupColorBody = g.customColor || colorForGroupName(g.name);
+        row += `<td class="total-col" style="background:${groupColorBody};"><div class="cell-stack" data-open-group="${g.id}" data-student="${s.id}">${gPillHtml}${badge}${(borderlineEnabled && gOverridden) ? `<button class="reset-arrow" data-reset-group="${g.id}" data-student="${s.id}" title="Automatische Berechnung wiederherstellen"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style="display:block;"><rect x="4" y="2" width="16" height="20" rx="2" stroke="currentColor" stroke-width="2.2"/><rect x="7" y="5" width="10" height="4" rx="0.8" fill="currentColor"/><circle cx="7.6" cy="13.2" r="1.15" fill="currentColor"/><circle cx="12" cy="13.2" r="1.15" fill="currentColor"/><circle cx="16.4" cy="13.2" r="1.15" fill="currentColor"/><circle cx="7.6" cy="17.4" r="1.15" fill="currentColor"/><circle cx="12" cy="17.4" r="1.15" fill="currentColor"/><circle cx="16.4" cy="17.4" r="1.15" fill="currentColor"/></svg></button>` : ''}</div></td>`;
         g.categories.forEach(cat => { row += catCell(cat, g, s); });
       });
       body += row + `</tr>`;
@@ -1839,6 +1858,20 @@ function renderGrid(main, cls, sem){
       const ctx = findCategoryContext(sem, btn.dataset.group, btn.dataset.moveCat);
       if(!ctx) return;
       moveItem(ctx.list, btn.dataset.moveCat, parseInt(btn.dataset.dir));
+      saveState(); render();
+    };
+  });
+  main.querySelectorAll('[data-edit-endnote-color]').forEach(el=>{
+    el.onclick = async () => {
+      const colorChoice = await showChoice('Farbe der Endnote-Spalte', sem.endnoteColor ? 'Aktuell: eigene Farbe' : 'Aktuell: Standard', [
+        {label: 'Standardfarbe', value: 'default'},
+        {label: sem.endnoteColor ? 'Farbe ändern' : 'Eigene Farbe wählen', value: 'custom'},
+      ]);
+      if(colorChoice === 'default') sem.endnoteColor = undefined;
+      else if(colorChoice === 'custom'){
+        const colorVal = await pickColorDialog('Farbe für die Endnote-Spalte wählen', sem.endnoteColor || '#8fb8a8');
+        if(colorVal !== null) sem.endnoteColor = colorVal;
+      }
       saveState(); render();
     };
   });
