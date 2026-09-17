@@ -101,7 +101,7 @@
   .grp-head .collapse-eye{position:absolute;right:8px;top:50%;transform:translateY(-50%);}
   .cat-head{background:var(--surface);}
   .colhead-wrap{position:relative;display:block;}
-  .colhead-wrap .collapse-eye-cat{position:absolute;right:0;top:1px;z-index:3;
+  .colhead-wrap .collapse-eye-cat{position:absolute;right:0;top:0;z-index:3;
     box-sizing:border-box;padding:0;margin:0;width:16px;height:16px;min-width:16px;
     background:transparent;color:var(--ink-soft);display:inline-flex;align-items:center;justify-content:center;}
   .colhead-wrap .colhead{position:relative;z-index:1;}
@@ -272,7 +272,7 @@ function colorForGroupName(name){
 }
 
 function uid(){ return Math.random().toString(36).slice(2,10); }
-const APP_VERSION_INFO = 'v4.6 · Entwickler: G. Schulte';
+const APP_VERSION_INFO = 'v5.0 · Entwickler: G. Schulte';
 function setStatus(msg, isError){
   const el = document.getElementById('status');
   el.textContent = msg + ' · ' + APP_VERSION_INFO; el.style.color = isError ? 'var(--pen)' : 'var(--ink-soft)';
@@ -1575,7 +1575,7 @@ function renderGrid(main, cls, sem){
       return `<th class="cat-head" style="${bgStyle}" ${rowspan>1?`rowspan="${rowspan}"`:''} colspan="1">
         <div class="colhead-wrap">
           ${eyeHtml}
-          <div class="colhead" style="${depth===0?'padding-right:16px;':''}">
+          <div class="colhead" style="${depth===0?'padding:0 22px;':''}">
             <span data-edit-cat="${cat.id}" data-group="${g.id}" title="Antippen: bearbeiten, duplizieren oder löschen">${dateRangeDotHtml(cat)}${escapeHtml(cat.name)}</span>
           </div>
         </div>
@@ -1584,7 +1584,7 @@ function renderGrid(main, cls, sem){
     return `<th class="cat-head" style="${bgStyle}" ${rowspan>1?`rowspan="${rowspan}"`:''} colspan="${colspan}">
       <div class="colhead-wrap">
         ${eyeHtml}
-        <div class="colhead" style="${depth===0?'padding-right:16px;':''}">
+        <div class="colhead" style="${depth===0?'padding:0 22px;':''}">
           <span data-edit-cat="${cat.id}" data-group="${g.id}" title="Antippen: bearbeiten, duplizieren oder löschen">${dateRangeDotHtml(cat)}${escapeHtml(cat.name)}</span>
           <span class="weight">${cat.weight}%${isContainerCat(cat) ? '' : ' · '+(cat.mode==='points'?'Punkte':'Note')}</span>
           ${(cat.date && !isContainerCat(cat)) ? `<span class="weight">${formatDate(cat.date)}</span>` : ''}
