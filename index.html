@@ -98,7 +98,6 @@
     padding:4px 8px;text-transform:uppercase;letter-spacing:0.03em;}
   .grp-head-wrap{position:relative;display:block;}
   .grp-head .grp-inner{display:flex;align-items:center;justify-content:center;gap:6px;}
-  .grp-head .collapse-eye{position:absolute;right:8px;top:50%;transform:translateY(-50%);}
   .cat-head{background:var(--surface);min-width:78px;}
   .colhead-wrap{position:relative;display:block;}
   .colhead-wrap .colhead{position:relative;z-index:1;}
@@ -269,7 +268,7 @@ function colorForGroupName(name){
 }
 
 function uid(){ return Math.random().toString(36).slice(2,10); }
-const APP_VERSION_INFO = 'v8.4 · Entwickler: G. Schulte';
+const APP_VERSION_INFO = 'v9.3 · Entwickler: G. Schulte';
 function setStatus(msg, isError){
   const el = document.getElementById('status');
   el.textContent = msg + ' · ' + APP_VERSION_INFO; el.style.color = isError ? 'var(--pen)' : 'var(--ink-soft)';
@@ -475,14 +474,14 @@ function defaultWrittenCategories(stufe){
 }
 function defaultGroups(stufe){
   return [
-    {id: uid(), name: 'Mündlich', color: GROUP_COLORS[0], weight: 50, locked: true, categories: defaultOralCategories()},
+    {id: uid(), name: 'Mündlich', color: GROUP_COLORS[0], customColor: '#A8BDCC', weight: 50, locked: true, categories: defaultOralCategories()},
     {id: uid(), name: 'Schriftlich', color: GROUP_COLORS[1], weight: 50, locked: true, categories: defaultWrittenCategories(stufe)},
   ];
 }
 function ensureDefaultGroups(sem){
   const names = sem.groups.map(g => (g.name||'').trim().toLowerCase());
   const toAdd = [];
-  if(!names.includes('mündlich')) toAdd.push({id: uid(), name: 'Mündlich', color: GROUP_COLORS[0], weight: 50, locked: true, categories: defaultOralCategories()});
+  if(!names.includes('mündlich')) toAdd.push({id: uid(), name: 'Mündlich', color: GROUP_COLORS[0], customColor: '#A8BDCC', weight: 50, locked: true, categories: defaultOralCategories()});
   if(!names.includes('schriftlich')) toAdd.push({id: uid(), name: 'Schriftlich', color: GROUP_COLORS[1], weight: 50, locked: true, categories: defaultWrittenCategories()});
   sem.groups = [...toAdd, ...sem.groups];
 }
@@ -549,8 +548,8 @@ function migrateClass(cls){
     legacyGroups.push({id: uid(), name: 'Mündlich', color: GROUP_COLORS[1], weight: 50, categories: cats});
   }
   legacyGroups.forEach(g => { if(g.weight===undefined) g.weight = Math.round(100/Math.max(legacyGroups.length,1)); });
-  const sem1 = {id: uid(), name: '1. HJ', groups: legacyGroups, studentIds: cls.students.map(s=>s.id)};
-  const sem2 = {id: uid(), name: '2. HJ', groups: [], studentIds: cls.students.map(s=>s.id)};
+  const sem1 = {id: uid(), name: '1. HJ', groups: legacyGroups, studentIds: cls.students.map(s=>s.id), endnoteColor: '#F2F2F2'};
+  const sem2 = {id: uid(), name: '2. HJ', groups: [], studentIds: cls.students.map(s=>s.id), endnoteColor: '#F2F2F2'};
   ensureDefaultGroups(sem1); ensureDefaultGroups(sem2);
   cls.semesters = [sem1, sem2];
   cls.activeSemesterId = sem1.id;
@@ -798,8 +797,8 @@ async function importCSV(file){
   if(!ok) return;
 
   if(isNewClass){
-    const sem1 = {id: uid(), name: '1. HJ', groups: defaultGroups(pendingCsvStufe), studentIds: []};
-    const sem2 = {id: uid(), name: '2. HJ', groups: defaultGroups(pendingCsvStufe), studentIds: []};
+    const sem1 = {id: uid(), name: '1. HJ', groups: defaultGroups(pendingCsvStufe), studentIds: [], endnoteColor: '#F2F2F2'};
+    const sem2 = {id: uid(), name: '2. HJ', groups: defaultGroups(pendingCsvStufe), studentIds: [], endnoteColor: '#F2F2F2'};
     targetCls = {id: uid(), name: klasseName, students: [], semesters: [sem1, sem2], activeSemesterId: sem1.id,
       gradingSystem: 'noten', gradeTableNoten: NOTEN_TABLE.map(r=>({...r})), gradeTablePunkte: PUNKTE_TABLE.map(r=>({...r}))};
     state.classes.push(targetCls);
@@ -1183,8 +1182,8 @@ function renderAddLerngruppeModal(){
   const doCreate = () => {
     const name = nameInput.value.trim();
     if(!name) return;
-    const sem1 = {id: uid(), name: '1. HJ', groups: defaultGroups(stufe), studentIds: []};
-    const sem2 = {id: uid(), name: '2. HJ', groups: defaultGroups(stufe), studentIds: []};
+    const sem1 = {id: uid(), name: '1. HJ', groups: defaultGroups(stufe), studentIds: [], endnoteColor: '#F2F2F2'};
+    const sem2 = {id: uid(), name: '2. HJ', groups: defaultGroups(stufe), studentIds: [], endnoteColor: '#F2F2F2'};
     const cls = {id: uid(), name, students: [], semesters: [sem1, sem2], activeSemesterId: sem1.id,
       gradingSystem: 'noten', gradeTableNoten: NOTEN_TABLE.map(r=>({...r})), gradeTablePunkte: PUNKTE_TABLE.map(r=>({...r}))};
     state.classes.push(cls); state.activeClassId = cls.id;
@@ -1593,7 +1592,6 @@ function renderGrid(main, cls, sem){
     const span = g.categories.reduce((s,c)=>s+catWidth(c), 0) + 1;
     groupHeadRow += `<th class="grp-head" colspan="${span}" style="background:${(g.customColor || colorForGroupName(g.name))};">
       <div class="grp-head-wrap">
-        <button class="colx collapse-eye" data-toggle-group-collapse="${g.id}" title="Ausblenden" style="display:inline-flex;align-items:center;">${eyeIconSvg(true)}</button>
         <div class="grp-inner">
           ${state.positionMode ? `<button class="colx" data-move-group="${g.id}" data-dir="-1">‹</button>` : ''}
           <span data-rename-group="${g.id}" style="cursor:pointer;">${escapeHtml(g.name)} <span style="font-weight:400;opacity:0.85;">${g.weight}%</span></span>
@@ -1610,17 +1608,16 @@ function renderGrid(main, cls, sem){
   const ADDITIONAL_ROW_FADE = 0.45;
   function catHeaderCell(cat, g, colspan, rowspan, depth, levelColor){
     const bgStyle = levelColor ? `background:${levelColor};` : '';
-    const eyeHtml = depth === 0
-      ? `<button class="colx dark" data-toggle-cat-collapse="${cat.id}" data-group="${g.id}" title="${cat.collapsed?'Einblenden':'Ausblenden'}" style="display:inline-flex;align-items:center;justify-content:center;padding:0;width:16px;height:16px;flex-shrink:0;">${eyeIconSvg(true)}</button>`
-      : '';
     const nameRow = `<div class="row" style="gap:4px;align-items:center;justify-content:center;">
       <span data-edit-cat="${cat.id}" data-group="${g.id}" title="Antippen: bearbeiten, duplizieren oder löschen">${dateRangeDotHtml(cat)}${escapeHtml(cat.name)}</span>
-      ${eyeHtml}
     </div>`;
     if(cat.collapsed){
+      const isContainer = cat.children && cat.children.length;
+      const collapsedEye = isContainer ? `<button class="colx dark" data-toggle-cat-collapse="${cat.id}" data-group="${g.id}" title="Einblenden" style="display:inline-flex;align-items:center;justify-content:center;padding:0;width:16px;height:16px;">${eyeIconSvg(true)}</button>` : '';
       return `<th class="cat-head" style="${bgStyle}" ${rowspan>1?`rowspan="${rowspan}"`:''} colspan="1">
-        <div class="colhead">
+        <div class="colhead" style="gap:4px;">
           ${nameRow}
+          ${collapsedEye}
         </div>
       </th>`;
     }
@@ -1649,7 +1646,8 @@ function renderGrid(main, cls, sem){
     if(hasKids){
       const gesamtRowspan = rowsNeeded - 1;
       const gesamtColor = ownColor ? lightenColor(ownColor, GRADIENT_STEP) : undefined;
-      const gesamtCell = `<th class="cat-head total-head" ${gesamtRowspan>1?`rowspan="${gesamtRowspan}"`:''} style="${gesamtColor?`background:${gesamtColor};`:''}"></th>`;
+      const eyeBtn = `<button class="colx" data-toggle-cat-collapse="${cat.id}" data-group="${g.id}" title="${cat.collapsed?'Einblenden':'Ausblenden'}" style="position:absolute;left:50%;top:8px;transform:translateX(-50%);display:inline-flex;align-items:center;justify-content:center;width:16px;height:16px;padding:0;background:#fff;border:1px solid var(--line);box-shadow:0 1px 2px rgba(0,0,0,.15);border-radius:4px;color:var(--ink);">${eyeIconSvg(false)}</button>`;
+      const gesamtCell = `<th class="cat-head total-head" ${gesamtRowspan>1?`rowspan="${gesamtRowspan}"`:''} style="position:relative;${gesamtColor?`background:${gesamtColor};`:''}">${eyeBtn}</th>`;
       const childRowSets = cat.children.map(child => buildCatRows(child, g, depth+1, undefined));
       for(let r=0; r<rowsNeeded-1; r++){
         let content = (r===0 ? gesamtCell : '');
@@ -1665,7 +1663,7 @@ function renderGrid(main, cls, sem){
     if(g.collapsed) return;
     const groupColor = g.customColor || colorForGroupName(g.name);
     const groupGesamtColor = lightenColor(groupColor, GRADIENT_STEP);
-    const groupRowSets = [`<th class="cat-head total-head" style="background:${groupGesamtColor};" ${maxDepth>1?`rowspan="${maxDepth}"`:''}></th>`];
+    const groupRowSets = [`<th class="cat-head total-head" style="background:${groupGesamtColor};position:relative;" ${maxDepth>1?`rowspan="${maxDepth}"`:''}><button class="colx" data-toggle-group-collapse="${g.id}" title="Ausblenden" style="position:absolute;left:50%;top:8px;transform:translateX(-50%);display:inline-flex;align-items:center;justify-content:center;width:16px;height:16px;padding:0;background:#fff;border:1px solid var(--line);box-shadow:0 1px 2px rgba(0,0,0,.15);border-radius:4px;color:var(--ink);">${eyeIconSvg(false)}</button></th>`];
     for(let r=0; r<maxDepth; r++){
       catRowStrings[r] += (r===0 ? groupRowSets[0] : '');
     }
@@ -1699,7 +1697,13 @@ function renderGrid(main, cls, sem){
       const ownColor = cat.bgColor || undefined;
       const bgAttr = ownColor ? ` style="background:${ownColor};"` : '';
       if(cat.collapsed){
-        return `<td class="total-col" data-toggle-cat-collapse="${cat.id}" data-group="${g.id}" style="cursor:pointer;color:var(--ink-soft);text-align:center;${ownColor?`background:${ownColor};`:''}" title="Einblenden">···</td>`;
+        const collapsedVal = categoryAvgForStudent(cls, cat, s.id);
+        let collapsedPill = notePill(cls, collapsedVal);
+        if(collapsedVal === null || collapsedVal === undefined || isNaN(collapsedVal)){
+          const majoritySym = majoritySymbolForCategory(cat, s.id);
+          if(majoritySym) collapsedPill = observationPill({observation: majoritySym});
+        }
+        return `<td class="total-col" data-toggle-cat-collapse="${cat.id}" data-group="${g.id}" style="cursor:pointer;text-align:center;${ownColor?`background:${ownColor};`:''}" title="Einblenden"><div class="cell-stack">${collapsedPill}</div></td>`;
       }
       const hasKids = cat.children && cat.children.length;
       const a = categoryAvgForStudent(cls, cat, s.id);
@@ -1750,7 +1754,8 @@ function renderGrid(main, cls, sem){
       row += `<td class="endnote-col"${sem.endnoteColor?` style="background:${sem.endnoteColor};"`:''}><div class="cell-stack" data-open-endnote="${s.id}">${endPillHtml}${endBadge}${(borderlineEnabled && overridden) ? `<button class="reset-arrow" data-reset-endnote="${s.id}" title="Automatische Berechnung wiederherstellen"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style="display:block;"><rect x="4" y="2" width="16" height="20" rx="2" stroke="currentColor" stroke-width="2.2"/><rect x="7" y="5" width="10" height="4" rx="0.8" fill="currentColor"/><circle cx="7.6" cy="13.2" r="1.15" fill="currentColor"/><circle cx="12" cy="13.2" r="1.15" fill="currentColor"/><circle cx="16.4" cy="13.2" r="1.15" fill="currentColor"/><circle cx="7.6" cy="17.4" r="1.15" fill="currentColor"/><circle cx="12" cy="17.4" r="1.15" fill="currentColor"/><circle cx="16.4" cy="17.4" r="1.15" fill="currentColor"/></svg></button>` : ''}</div></td>`;
       groups.forEach(g => {
         if(g.collapsed){
-          row += `<td class="total-col" data-toggle-group-collapse="${g.id}" style="cursor:pointer;color:var(--ink-soft);text-align:center;" title="Einblenden">···</td>`;
+          const collapsedGt = groupGesamtForStudent(cls, g, s.id);
+          row += `<td class="total-col" data-toggle-group-collapse="${g.id}" style="cursor:pointer;text-align:center;" title="Einblenden"><div class="cell-stack">${notePill(cls, collapsedGt)}</div></td>`;
           return;
         }
         const gt = groupGesamtForStudent(cls, g, s.id);
@@ -2927,11 +2932,11 @@ async function generateDemoClass(){
   const studentIds = students.map(s=>s.id);
   function buildSemester(name){
     const groups = [
-      {id: uid(), name:'Mündlich', color: GROUP_COLORS[0], weight:50, locked:true, categories: buildDemoOralCategories()},
+      {id: uid(), name:'Mündlich', color: GROUP_COLORS[0], customColor: '#A8BDCC', weight:50, locked:true, categories: buildDemoOralCategories()},
       {id: uid(), name:'Schriftlich', color: GROUP_COLORS[1], weight:50, locked:true, categories: buildDemoWrittenCategories()},
     ];
     groups.forEach(g => g.categories.forEach(cat => demoFillEntries(cat, studentIds)));
-    return {id: uid(), name, groups, studentIds: [...studentIds]};
+    return {id: uid(), name, groups, studentIds: [...studentIds], endnoteColor: '#F2F2F2'};
   }
   const sem1 = buildSemester('1. HJ');
   const sem2 = buildSemester('2. HJ');
