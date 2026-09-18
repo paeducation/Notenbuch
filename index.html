@@ -269,7 +269,7 @@ function colorForGroupName(name){
 }
 
 function uid(){ return Math.random().toString(36).slice(2,10); }
-const APP_VERSION_INFO = 'v5.9 · Entwickler: G. Schulte';
+const APP_VERSION_INFO = 'v8.1 · Entwickler: G. Schulte';
 function setStatus(msg, isError){
   const el = document.getElementById('status');
   el.textContent = msg + ' · ' + APP_VERSION_INFO; el.style.color = isError ? 'var(--pen)' : 'var(--ink-soft)';
@@ -322,6 +322,19 @@ function observationPill(entry){
   let html = `<span class="note-pill note-${bucket}" style="font-size:1.05rem;">${entry.observation}</span>`;
   if(entry.note) html += `<span class="avg-sub" title="${escapeHtml(entry.note)}">📝</span>`;
   return html;
+}
+function majoritySymbolForCategory(cat, studentId){
+  if(!cat.children) return null;
+  const counts = {};
+  cat.children.forEach(child => {
+    if(child.mode === 'observation'){
+      const entry = child.entries[studentId];
+      if(entry && entry.observation) counts[entry.observation] = (counts[entry.observation]||0) + 1;
+    }
+  });
+  let best = null, bestCount = 0;
+  Object.keys(counts).forEach(sym => { if(counts[sym] > bestCount){ bestCount = counts[sym]; best = sym; } });
+  return best;
 }
 function gradeForPercent(table, pct){
   const sorted = [...table].sort((a,b)=>b.min-a.min);
@@ -941,6 +954,14 @@ function rgbToHsv(r, g, b){
   return {h, s: max===0?0:d/max, v: max};
 }
 function rgbToHex(r,g,b){ return '#'+[r,g,b].map(v=>v.toString(16).padStart(2,'0')).join('').toUpperCase(); }
+function lightenColor(hex, amount){
+  const rgb = hexToRgb(hex);
+  const clampedAmount = Math.max(0, Math.min(1, amount));
+  const r = Math.round(rgb.r + (255-rgb.r)*clampedAmount);
+  const g = Math.round(rgb.g + (255-rgb.g)*clampedAmount);
+  const b = Math.round(rgb.b + (255-rgb.b)*clampedAmount);
+  return rgbToHex(r,g,b);
+}
 function hexToRgb(hex){
   const m = /^#([0-9A-Fa-f]{2})([0-9A-Fa-f]{2})([0-9A-Fa-f]{2})$/.exec(hex);
   if(!m) return {r:0,g:0,b:0};
@@ -1585,8 +1606,10 @@ function renderGrid(main, cls, sem){
   });
   groupHeadRow += `</tr>`;
 
-  function catHeaderCell(cat, g, colspan, rowspan, depth){
-    const bgStyle = cat.bgColor ? `background:${cat.bgColor};` : '';
+  const GRADIENT_STEP = 0.4;
+  const ADDITIONAL_ROW_FADE = 0.45;
+  function catHeaderCell(cat, g, colspan, rowspan, depth, levelColor){
+    const bgStyle = levelColor ? `background:${levelColor};` : '';
     const eyeHtml = depth === 0
       ? `<button class="colx dark" data-toggle-cat-collapse="${cat.id}" data-group="${g.id}" title="${cat.collapsed?'Einblenden':'Ausblenden'}" style="display:inline-flex;align-items:center;justify-content:center;padding:0;width:16px;height:16px;flex-shrink:0;">${eyeIconSvg(true)}</button>`
       : '';
@@ -1615,14 +1638,19 @@ function renderGrid(main, cls, sem){
     </th>`;
   }
   // Build one row-string per depth level (0..maxDepth-1) for a category subtree, recursively.
-  function buildCatRows(cat, g, depth){
+  // baseColor is inherited from the parent (or the group) unless this category has its own
+  // bgColor; each nesting level gets a progressively lighter shade of that base color.
+  function buildCatRows(cat, g, depth, baseColor){
     const rowsNeeded = maxDepth - depth;
     const rows = new Array(rowsNeeded).fill('');
     const hasKids = !cat.collapsed && cat.children && cat.children.length;
-    rows[0] = catHeaderCell(cat, g, catWidth(cat), hasKids ? 1 : rowsNeeded, depth);
+    const ownColor = cat.bgColor || undefined;
+    rows[0] = catHeaderCell(cat, g, catWidth(cat), hasKids ? 1 : rowsNeeded, depth, ownColor);
     if(hasKids){
-      const gesamtCell = `<th class="cat-head total-head">Gesamt ${escapeHtml(cat.name)}</th>`;
-      const childRowSets = cat.children.map(child => buildCatRows(child, g, depth+1));
+      const gesamtRowspan = rowsNeeded - 1;
+      const gesamtColor = ownColor ? lightenColor(ownColor, GRADIENT_STEP) : undefined;
+      const gesamtCell = `<th class="cat-head total-head" ${gesamtRowspan>1?`rowspan="${gesamtRowspan}"`:''} style="${gesamtColor?`background:${gesamtColor};`:''}"></th>`;
+      const childRowSets = cat.children.map(child => buildCatRows(child, g, depth+1, undefined));
       for(let r=0; r<rowsNeeded-1; r++){
         let content = (r===0 ? gesamtCell : '');
         childRowSets.forEach(set => { content += set[r] || ''; });
@@ -1636,12 +1664,13 @@ function renderGrid(main, cls, sem){
   groups.forEach(g => {
     if(g.collapsed) return;
     const groupColor = g.customColor || colorForGroupName(g.name);
-    const groupRowSets = [`<th class="cat-head total-head" style="background:${groupColor};color:#fff;" ${maxDepth>1?`rowspan="${maxDepth}"`:''}>Gesamt</th>`];
+    const groupGesamtColor = lightenColor(groupColor, GRADIENT_STEP);
+    const groupRowSets = [`<th class="cat-head total-head" style="background:${groupGesamtColor};" ${maxDepth>1?`rowspan="${maxDepth}"`:''}></th>`];
     for(let r=0; r<maxDepth; r++){
       catRowStrings[r] += (r===0 ? groupRowSets[0] : '');
     }
     g.categories.forEach(cat => {
-      const rowSet = buildCatRows(cat, g, 0);
+      const rowSet = buildCatRows(cat, g, 0, undefined);
       for(let r=0; r<maxDepth; r++){ catRowStrings[r] += rowSet[r] || ''; }
     });
   });
@@ -1666,16 +1695,24 @@ function renderGrid(main, cls, sem){
       const ov = cat.overrides && cat.overrides[s.id];
       return (borderlineEnabled && ov !== undefined && ov !== null && ov !== '') ? `<button class="reset-arrow" data-reset-cat="${cat.id}" data-group="${g.id}" data-student="${s.id}" title="Automatische Berechnung wiederherstellen"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style="display:block;"><rect x="4" y="2" width="16" height="20" rx="2" stroke="currentColor" stroke-width="2.2"/><rect x="7" y="5" width="10" height="4" rx="0.8" fill="currentColor"/><circle cx="7.6" cy="13.2" r="1.15" fill="currentColor"/><circle cx="12" cy="13.2" r="1.15" fill="currentColor"/><circle cx="16.4" cy="13.2" r="1.15" fill="currentColor"/><circle cx="7.6" cy="17.4" r="1.15" fill="currentColor"/><circle cx="12" cy="17.4" r="1.15" fill="currentColor"/><circle cx="16.4" cy="17.4" r="1.15" fill="currentColor"/></svg></button>` : '';
     }
-    function catCell(cat, g, s){
-      const bgAttr = cat.bgColor ? ` style="background:${cat.bgColor};"` : '';
+    function catCell(cat, g, s, depth, baseColor, rowLighten){
+      const ownColor = cat.bgColor || undefined;
+      const bgAttr = ownColor ? ` style="background:${ownColor};"` : '';
       if(cat.collapsed){
-        return `<td class="total-col" data-toggle-cat-collapse="${cat.id}" data-group="${g.id}" style="cursor:pointer;color:var(--ink-soft);text-align:center;${cat.bgColor?`background:${cat.bgColor};`:''}" title="Einblenden">···</td>`;
+        return `<td class="total-col" data-toggle-cat-collapse="${cat.id}" data-group="${g.id}" style="cursor:pointer;color:var(--ink-soft);text-align:center;${ownColor?`background:${ownColor};`:''}" title="Einblenden">···</td>`;
       }
       const hasKids = cat.children && cat.children.length;
       const a = categoryAvgForStudent(cls, cat, s.id);
       if(hasKids){
-        let html = `<td class="total-col"${bgAttr}><div class="cell-stack" data-open-entries data-cat="${cat.id}" data-group="${g.id}" data-student="${s.id}">${notePill(cls, a)}${overrideMark(cat, g, s)}</div></td>`;
-        cat.children.forEach(child => { html += catCell(child, g, s); });
+        let pillHtml = notePill(cls, a);
+        if(a === null || a === undefined || isNaN(a)){
+          const majoritySym = majoritySymbolForCategory(cat, s.id);
+          if(majoritySym) pillHtml = observationPill({observation: majoritySym});
+        }
+        const gesamtColor = ownColor ? lightenColor(ownColor, rowLighten !== undefined ? rowLighten : GRADIENT_STEP) : undefined;
+        const gesamtBgAttr = gesamtColor ? ` style="background:${gesamtColor};"` : '';
+        let html = `<td class="total-col"${gesamtBgAttr}><div class="cell-stack" data-open-entries data-cat="${cat.id}" data-group="${g.id}" data-student="${s.id}">${pillHtml}${overrideMark(cat, g, s)}</div></td>`;
+        cat.children.forEach(child => { html += catCell(child, g, s, depth+1, undefined, rowLighten); });
         return html;
       }
       if(cat.mode === 'observation' && !isContainerCat(cat)){
@@ -1690,7 +1727,7 @@ function renderGrid(main, cls, sem){
       }
       return `<td${bgAttr}><div class="cell-stack" data-open-entries data-cat="${cat.id}" data-group="${g.id}" data-student="${s.id}">${notePill(cls, a, subLabel, cat.displayScale)}${overrideMark(cat, g, s)}</div></td>`;
     }
-    visibleStudents.forEach(s => {
+    visibleStudents.forEach((s, rowIdx) => {
       const end = semesterEndnoteForStudent(cls, sem, s.id);
       const overridden = sem.endnoteOverrides && sem.endnoteOverrides[s.id] !== undefined && sem.endnoteOverrides[s.id] !== '';
       const isSelected = state.selectedStudentId === s.id;
@@ -1734,8 +1771,11 @@ function renderGrid(main, cls, sem){
           }
         }
         const groupColorBody = g.customColor || colorForGroupName(g.name);
-        row += `<td class="total-col" style="background:${groupColorBody};"><div class="cell-stack" data-open-group="${g.id}" data-student="${s.id}">${gPillHtml}${badge}${(borderlineEnabled && gOverridden) ? `<button class="reset-arrow" data-reset-group="${g.id}" data-student="${s.id}" title="Automatische Berechnung wiederherstellen"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style="display:block;"><rect x="4" y="2" width="16" height="20" rx="2" stroke="currentColor" stroke-width="2.2"/><rect x="7" y="5" width="10" height="4" rx="0.8" fill="currentColor"/><circle cx="7.6" cy="13.2" r="1.15" fill="currentColor"/><circle cx="12" cy="13.2" r="1.15" fill="currentColor"/><circle cx="16.4" cy="13.2" r="1.15" fill="currentColor"/><circle cx="7.6" cy="17.4" r="1.15" fill="currentColor"/><circle cx="12" cy="17.4" r="1.15" fill="currentColor"/><circle cx="16.4" cy="17.4" r="1.15" fill="currentColor"/></svg></button>` : ''}</div></td>`;
-        g.categories.forEach(cat => { row += catCell(cat, g, s); });
+        const rowProgress = visibleStudents.length > 1 ? rowIdx / (visibleStudents.length - 1) : 0;
+        const rowLighten = GRADIENT_STEP + rowProgress * ADDITIONAL_ROW_FADE;
+        const groupGesamtColorBody = lightenColor(groupColorBody, rowLighten);
+        row += `<td class="total-col" style="background:${groupGesamtColorBody};"><div class="cell-stack" data-open-group="${g.id}" data-student="${s.id}">${gPillHtml}${badge}${(borderlineEnabled && gOverridden) ? `<button class="reset-arrow" data-reset-group="${g.id}" data-student="${s.id}" title="Automatische Berechnung wiederherstellen"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style="display:block;"><rect x="4" y="2" width="16" height="20" rx="2" stroke="currentColor" stroke-width="2.2"/><rect x="7" y="5" width="10" height="4" rx="0.8" fill="currentColor"/><circle cx="7.6" cy="13.2" r="1.15" fill="currentColor"/><circle cx="12" cy="13.2" r="1.15" fill="currentColor"/><circle cx="16.4" cy="13.2" r="1.15" fill="currentColor"/><circle cx="7.6" cy="17.4" r="1.15" fill="currentColor"/><circle cx="12" cy="17.4" r="1.15" fill="currentColor"/><circle cx="16.4" cy="17.4" r="1.15" fill="currentColor"/></svg></button>` : ''}</div></td>`;
+        g.categories.forEach(cat => { row += catCell(cat, g, s, 0, undefined, rowLighten); });
       });
       body += row + `</tr>`;
     });
@@ -1987,8 +2027,12 @@ async function promptNewCategory(defaultWeight, autoWeight){
   const mode = await showChoice('Eingabeart', 'Wie soll die Note in dieser Kategorie erfasst werden?', [
     {label: 'Klausurpunkte (Note wird automatisch berechnet)', value: 'points'},
     {label: 'Note direkt eintragen (mit Tendenz)', value: 'grade'},
+    {label: 'Sammelkategorie hinzufügen (kein direkter Notenwert, nur Überbau für weitere Kategorien)', value: 'sammelkategorie'},
   ]);
   if(mode === null) return null;
+  if(mode === 'sammelkategorie'){
+    return {id: uid(), name: name.trim(), weight, containerOnly: true, children: [], entries: {}};
+  }
   let maxPoints;
   if(mode === 'points'){
     const maxStr = await showPrompt('Maximalpunktzahl', 'Übliche maximale Punktzahl einer Klausur in dieser Kategorie', '100', {inputType:'number', confirmLabel:'Weiter'});
@@ -2005,8 +2049,20 @@ async function promptNewSubcategory(defaultWeight, autoWeight){
   const mode = await showChoice('Notenschema', 'Wie soll dieser Eintrag bewertet werden?', [
     {label: 'Noten (gewertet, 1+ bis 6)', value: 'grade'},
     {label: 'Unterrichtsbeobachtung (− ○ +)', value: 'observation'},
+    {label: 'Sammelkategorie hinzufügen (kein direkter Notenwert, nur Überbau für weitere Kategorien)', value: 'sammelkategorie'},
   ]);
   if(mode === null) return null;
+  if(mode === 'sammelkategorie'){
+    let weight;
+    if(autoWeight){
+      weight = parseFloat(defaultWeight) || 0;
+    } else {
+      const weightStr = await showPrompt('Gewichtung', 'Gewichtung in %', defaultWeight, {inputType:'number', confirmLabel:'Weiter'});
+      if(weightStr===null) return null;
+      weight = parseFloat(weightStr) || 0;
+    }
+    return {id: uid(), name: name.trim(), weight, containerOnly: true, children: [], entries: {}};
+  }
   let ungraded = false;
   if(mode === 'observation'){
     const gradingChoice = await showChoice('Notenwertung', 'Soll dieser Beobachtungseintrag mit in die Berechnung einfließen?', [
@@ -2082,7 +2138,7 @@ async function addCategoryNear(cls, sem, groupId, catId){
 }
 function cloneCategoryForDuplicate(cat){
   return {
-    id: uid(), name: cat.name + ' Kopie', weight: cat.weight, mode: cat.mode, maxPoints: cat.maxPoints,
+    id: uid(), name: cat.name, weight: cat.weight, mode: cat.mode, maxPoints: cat.maxPoints,
     date: cat.date, containerOnly: cat.containerOnly || false, entries: {}, overrides: {},
     displayScale: cat.displayScale, bgColor: cat.bgColor,
     children: cat.children ? cat.children.map(cloneCategoryForDuplicate) : undefined
@@ -2105,9 +2161,14 @@ async function openCategoryMenu(cls, sem, groupId, catId){
   if(choice === 'edit'){
     editCategory(cls, sem, groupId, catId);
   } else if(choice === 'dup'){
-    const copy = cloneCategoryForDuplicate(ctx.cat);
+    const countStr = await showPrompt('Duplizieren', 'Wie viele Duplikate erstellen?', '1', {inputType:'number', confirmLabel:'Erstellen'});
+    if(countStr === null) return;
+    const count = Math.max(1, Math.round(parseFloat(countStr)) || 1);
     const idx = ctx.list.findIndex(c=>c.id===catId);
-    ctx.list.splice(idx+1, 0, copy);
+    for(let i=0; i<count; i++){
+      const copy = cloneCategoryForDuplicate(ctx.cat);
+      ctx.list.splice(idx+1+i, 0, copy);
+    }
     if(ctx.parentCat) rebalanceEqualWeights(ctx.list);
     saveState(); render();
   } else if(choice === 'del'){
