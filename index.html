@@ -269,7 +269,7 @@ function colorForGroupName(name){
 }
 
 function uid(){ return Math.random().toString(36).slice(2,10); }
-const APP_VERSION_INFO = 'v8.2 · Entwickler: G. Schulte';
+const APP_VERSION_INFO = 'v8.4 · Entwickler: G. Schulte';
 function setStatus(msg, isError){
   const el = document.getElementById('status');
   el.textContent = msg + ' · ' + APP_VERSION_INFO; el.style.color = isError ? 'var(--pen)' : 'var(--ink-soft)';
@@ -2855,6 +2855,97 @@ async function checkForAppUpdate(){
     await showAlert('Prüfung fehlgeschlagen', 'Es konnte keine Verbindung zum Server hergestellt werden. Internetverbindung erforderlich.');
   }
 }
+// ---------- Demomodus ----------
+const DEMO_FIRST_NAMES = ['Anna','Ben','Clara','David','Emma','Finn','Greta','Hannah','Ian','Jana','Kevin','Lea','Max','Nora','Oskar','Paula'];
+const DEMO_LAST_NAMES = ['Müller','Schmidt','Schneider','Fischer','Weber','Meyer','Wagner','Becker','Schulz','Hoffmann','Koch','Richter'];
+function demoRandomFrom(arr){ return arr[Math.floor(Math.random()*arr.length)]; }
+function demoRandomGradeStr(){
+  const base = Math.floor(Math.random()*6)+1;
+  const tend = base===6 ? '' : demoRandomFrom(['+','','-']);
+  return base + tend;
+}
+function demoRandomPoints(max){ return Math.round(Math.random()*max); }
+function demoRandomObservation(){ return demoRandomFrom(['+','○','-']); }
+function generateDemoStudents(count){
+  const students = [];
+  const usedNames = new Set();
+  for(let i=0; i<count; i++){
+    let name;
+    do { name = `${demoRandomFrom(DEMO_LAST_NAMES)}, ${demoRandomFrom(DEMO_FIRST_NAMES)}`; } while(usedNames.has(name));
+    usedNames.add(name);
+    students.push({id: uid(), name});
+  }
+  return students;
+}
+function demoFillEntries(cat, studentIds){
+  if(cat.children && cat.children.length){
+    cat.children.forEach(child => demoFillEntries(child, studentIds));
+    return;
+  }
+  if(!cat.mode) return; // pure Sammelkategorie without a mode yet
+  studentIds.forEach(sid => {
+    if(cat.mode === 'points'){
+      cat.entries[sid] = {points: demoRandomPoints(cat.maxPoints||100), maxPoints: cat.maxPoints||100};
+    } else if(cat.mode === 'observation'){
+      const entry = {observation: demoRandomObservation()};
+      if(!cat.ungraded) entry.hiddenGrade = demoRandomGradeStr();
+      if(Math.random() < 0.3) entry.note = 'Demo-Notiz';
+      cat.entries[sid] = entry;
+    } else {
+      cat.entries[sid] = {grade: demoRandomGradeStr()};
+    }
+  });
+}
+function buildDemoWrittenCategories(){
+  return [
+    {id: uid(), name:'KL1', weight:50, mode:'grade', date:'', entries:{}},
+    {id: uid(), name:'KL2', weight:50, mode:'points', maxPoints:100, date:'', entries:{}},
+  ];
+}
+function buildDemoOralCategories(){
+  const ubChildren = [
+    {id: uid(), name:'UB1', weight:0, mode:'observation', ungraded:true, date:'', entries:{}},
+    {id: uid(), name:'UB2', weight:0, mode:'observation', ungraded:true, date:'', entries:{}},
+    {id: uid(), name:'UB3', weight:0, mode:'observation', ungraded:true, date:'', entries:{}},
+  ];
+  const soMi1Children = [
+    {id: uid(), name:'Beitrag 1', weight:50, mode:'grade', date:'', entries:{}},
+    {id: uid(), name:'Beitrag 2', weight:50, mode:'grade', date:'', entries:{}},
+  ];
+  const soMi2Children = [
+    {id: uid(), name:'Beobachtung 1', weight:50, mode:'observation', ungraded:false, date:'', entries:{}},
+    {id: uid(), name:'Beobachtung 2', weight:50, mode:'observation', ungraded:false, date:'', entries:{}},
+  ];
+  return [
+    {id: uid(), name:'SoMi 1', weight:35, containerOnly:true, children: soMi1Children, entries:{}},
+    {id: uid(), name:'SoMi 2', weight:35, containerOnly:true, children: soMi2Children, entries:{}},
+    {id: uid(), name:'Unterrichtsbeobachtungen', weight:30, containerOnly:true, bgColor:'#CFE8FB', children: ubChildren, entries:{}},
+  ];
+}
+async function generateDemoClass(){
+  const students = generateDemoStudents(10);
+  const studentIds = students.map(s=>s.id);
+  function buildSemester(name){
+    const groups = [
+      {id: uid(), name:'Mündlich', color: GROUP_COLORS[0], weight:50, locked:true, categories: buildDemoOralCategories()},
+      {id: uid(), name:'Schriftlich', color: GROUP_COLORS[1], weight:50, locked:true, categories: buildDemoWrittenCategories()},
+    ];
+    groups.forEach(g => g.categories.forEach(cat => demoFillEntries(cat, studentIds)));
+    return {id: uid(), name, groups, studentIds: [...studentIds]};
+  }
+  const sem1 = buildSemester('1. HJ');
+  const sem2 = buildSemester('2. HJ');
+  const stamp = new Date().toLocaleTimeString('de-DE', {hour:'2-digit', minute:'2-digit'});
+  const cls = {
+    id: uid(), name: `Demo-Klasse ${stamp}`, students, semesters: [sem1, sem2], activeSemesterId: sem1.id,
+    gradingSystem: 'noten', gradeTableNoten: NOTEN_TABLE.map(r=>({...r})), gradeTablePunkte: PUNKTE_TABLE.map(r=>({...r}))
+  };
+  state.classes.push(cls);
+  state.activeClassId = cls.id;
+  saveState();
+  render();
+  setStatus('Demo-Klasse erstellt · ' + new Date().toLocaleTimeString('de-DE'));
+}
 async function resetAllData(){
   const typed = await showPrompt(
     'Alles zurücksetzen',
@@ -2916,6 +3007,7 @@ document.getElementById('dataManagementBtn').onclick = async () => {
     {label: 'Export für Excel', value: 'excel'},
     {label: 'Export für externe Tabelle (Zusatztool)', value: 'notennachweis'},
     {label: '🔒 Backup-Passwort', value: 'backuppw'},
+    {label: '🎲 Demomodus', value: 'demo'},
   ];
   const choice = await showChoice('Datenverwaltung', '', options);
   if(choice === null) return;
@@ -2924,6 +3016,7 @@ document.getElementById('dataManagementBtn').onclick = async () => {
   else if(choice === 'restore') document.getElementById('importFile').click();
   else if(choice === 'reset') resetAllData();
   else if(choice === 'backuppw'){ await openBackupPasswordSettings(); }
+  else if(choice === 'demo'){ await generateDemoClass(); }
   else if(choice === 'zeitraeume'){
     if(!cls){ await showAlert('Keine Lerngruppe', 'Bitte zuerst eine Lerngruppe auswählen.'); return; }
     openQuartaleModal(cls);
