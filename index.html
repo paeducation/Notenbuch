@@ -269,7 +269,7 @@ function colorForGroupName(name){
 }
 
 function uid(){ return Math.random().toString(36).slice(2,10); }
-const APP_VERSION_INFO = 'v8.1 · Entwickler: G. Schulte';
+const APP_VERSION_INFO = 'v8.2 · Entwickler: G. Schulte';
 function setStatus(msg, isError){
   const el = document.getElementById('status');
   el.textContent = msg + ' · ' + APP_VERSION_INFO; el.style.color = isError ? 'var(--pen)' : 'var(--ink-soft)';
@@ -2013,83 +2013,44 @@ function renderGrid(main, cls, sem){
   }
 }
 
-async function promptNewCategory(defaultWeight, autoWeight){
-  const name = await showPrompt('Kategorie hinzufügen', 'Name der Kategorie', '', {placeholder:'z.B. Klausur 1 oder Referat', confirmLabel:'Weiter'});
-  if(name===null || !name.trim()) return null;
-  let weight;
-  if(autoWeight){
-    weight = parseFloat(defaultWeight) || 0;
-  } else {
-    const weightStr = await showPrompt('Gewichtung', 'Gewichtung in %', defaultWeight, {inputType:'number', confirmLabel:'Weiter'});
-    if(weightStr===null) return null;
-    weight = parseFloat(weightStr) || 0;
-  }
-  const mode = await showChoice('Eingabeart', 'Wie soll die Note in dieser Kategorie erfasst werden?', [
-    {label: 'Klausurpunkte (Note wird automatisch berechnet)', value: 'points'},
-    {label: 'Note direkt eintragen (mit Tendenz)', value: 'grade'},
-    {label: 'Sammelkategorie hinzufügen (kein direkter Notenwert, nur Überbau für weitere Kategorien)', value: 'sammelkategorie'},
+async function promptNewFromTemplate(defaultWeight){
+  const template = await showChoice('Was hinzufügen?', '', [
+    {label: '📝 Note direkt eintragen', value: 'grade'},
+    {label: '🔢 Klausurpunkte', value: 'points'},
+    {label: '✓ Beobachtung (mit Wertung)', value: 'obs_graded'},
+    {label: '✓ Beobachtung (ohne Wertung)', value: 'obs_ungraded'},
+    {label: '📁 Sammelkategorie', value: 'container'},
   ]);
-  if(mode === null) return null;
-  if(mode === 'sammelkategorie'){
-    return {id: uid(), name: name.trim(), weight, containerOnly: true, children: [], entries: {}};
-  }
-  let maxPoints;
-  if(mode === 'points'){
-    const maxStr = await showPrompt('Maximalpunktzahl', 'Übliche maximale Punktzahl einer Klausur in dieser Kategorie', '100', {inputType:'number', confirmLabel:'Weiter'});
-    if(maxStr===null) return null;
-    maxPoints = parseFloat(maxStr) || 100;
-  }
-  const dateStr = await showPrompt('Datum', 'Datum dieser Kategorie (z.B. Schreibdatum der Klausur)', new Date().toISOString().slice(0,10), {inputType:'date', confirmLabel:'Anlegen'});
-  if(dateStr===null) return null;
-  return {id: uid(), name: name.trim(), weight, mode, maxPoints, date: dateStr || '', entries: {}};
-}
-async function promptNewSubcategory(defaultWeight, autoWeight){
-  const name = await showPrompt('Unterkategorie hinzufügen', 'Name der Unterkategorie', '', {placeholder:'z.B. Beitrag 12.03.', confirmLabel:'Weiter'});
+  if(template === null) return null;
+  const namePrompts = {
+    grade: ['Note direkt eintragen', 'z.B. Klausur 1 oder Beitrag 12.03.'],
+    points: ['Klausurpunkte', 'z.B. Klausur 1'],
+    obs_graded: ['Beobachtung (mit Wertung)', 'z.B. Beitrag 12.03.'],
+    obs_ungraded: ['Beobachtung (ohne Wertung)', 'z.B. Beitrag 12.03.'],
+    container: ['Sammelkategorie', 'z.B. Unterrichtsbeobachtungen'],
+  };
+  const [title, placeholder] = namePrompts[template];
+  const name = await showPrompt(title, 'Name', '', {placeholder, confirmLabel:'Anlegen'});
   if(name===null || !name.trim()) return null;
-  const mode = await showChoice('Notenschema', 'Wie soll dieser Eintrag bewertet werden?', [
-    {label: 'Noten (gewertet, 1+ bis 6)', value: 'grade'},
-    {label: 'Unterrichtsbeobachtung (− ○ +)', value: 'observation'},
-    {label: 'Sammelkategorie hinzufügen (kein direkter Notenwert, nur Überbau für weitere Kategorien)', value: 'sammelkategorie'},
-  ]);
-  if(mode === null) return null;
-  if(mode === 'sammelkategorie'){
-    let weight;
-    if(autoWeight){
-      weight = parseFloat(defaultWeight) || 0;
-    } else {
-      const weightStr = await showPrompt('Gewichtung', 'Gewichtung in %', defaultWeight, {inputType:'number', confirmLabel:'Weiter'});
-      if(weightStr===null) return null;
-      weight = parseFloat(weightStr) || 0;
-    }
-    return {id: uid(), name: name.trim(), weight, containerOnly: true, children: [], entries: {}};
+  const today = new Date().toISOString().slice(0,10);
+  const weight = parseFloat(defaultWeight) || 0;
+  switch(template){
+    case 'grade':
+      return {id: uid(), name: name.trim(), weight, mode:'grade', date: today, entries: {}};
+    case 'points':
+      return {id: uid(), name: name.trim(), weight, mode:'points', maxPoints: 100, date: today, entries: {}};
+    case 'obs_graded':
+      return {id: uid(), name: name.trim(), weight, mode:'observation', ungraded: false, date: today, entries: {}};
+    case 'obs_ungraded':
+      return {id: uid(), name: name.trim(), weight: 0, mode:'observation', ungraded: true, date: today, entries: {}};
+    case 'container':
+      return {id: uid(), name: name.trim(), weight, containerOnly: true, children: [], entries: {}};
   }
-  let ungraded = false;
-  if(mode === 'observation'){
-    const gradingChoice = await showChoice('Notenwertung', 'Soll dieser Beobachtungseintrag mit in die Berechnung einfließen?', [
-      {label: 'Mit Notenwertung (verdeckte Note zählt mit)', value: 'mit'},
-      {label: 'Ohne Notenwertung (nur Beobachtung, 0% Gewichtung)', value: 'ohne'},
-    ]);
-    if(gradingChoice === null) return null;
-    ungraded = gradingChoice === 'ohne';
-  }
-  let weight;
-  if(ungraded){
-    weight = 0;
-  } else if(autoWeight){
-    weight = parseFloat(defaultWeight) || 0;
-  } else {
-    const weightStr = await showPrompt('Gewichtung', 'Gewichtung in %', defaultWeight, {inputType:'number', confirmLabel:'Weiter'});
-    if(weightStr===null) return null;
-    weight = parseFloat(weightStr) || 0;
-  }
-  const dateStr = await showPrompt('Datum', 'Datum dieser Unterkategorie', new Date().toISOString().slice(0,10), {inputType:'date', confirmLabel:'Anlegen'});
-  if(dateStr===null) return null;
-  return {id: uid(), name: name.trim(), weight, mode, ungraded, date: dateStr || '', entries: {}};
 }
 async function addCategory(cls, sem, groupId){
   const g = sem.groups.find(x=>x.id===groupId);
   const defaultWeight = (g.name||'').trim().toLowerCase()==='schriftlich' ? '50' : '10';
-  const newCat = await promptNewCategory(defaultWeight);
+  const newCat = await promptNewFromTemplate(defaultWeight);
   if(!newCat) return;
   g.categories.push(newCat);
   saveState(); render();
@@ -2109,7 +2070,7 @@ async function addCategoryNear(cls, sem, groupId, catId){
   if(choice === 'unter'){
     if(!clickedCat.children) clickedCat.children = [];
     const suggested = String(Math.round(100/(clickedCat.children.length+1)));
-    const newChild = await promptNewSubcategory(suggested, true);
+    const newChild = await promptNewFromTemplate(suggested);
     if(!newChild) return;
     clickedCat.children.push(newChild);
     rebalanceEqualWeights(clickedCat.children);
@@ -2119,7 +2080,7 @@ async function addCategoryNear(cls, sem, groupId, catId){
 
   // 'neben' – sibling within the same list (top-level categories, or the same set of sub-categories)
   if(!list.length){
-    const newCat = parentCat ? await promptNewSubcategory(defaultWeight, true) : await promptNewCategory(defaultWeight, false);
+    const newCat = await promptNewFromTemplate(defaultWeight);
     if(!newCat) return;
     list.push(newCat);
     if(parentCat) rebalanceEqualWeights(list);
@@ -2130,7 +2091,7 @@ async function addCategoryNear(cls, sem, groupId, catId){
     list.map((c,i) => ({label: c.name, value: i}))
   );
   if(idx === null) return;
-  const newCat = parentCat ? await promptNewSubcategory(defaultWeight, true) : await promptNewCategory(defaultWeight, false);
+  const newCat = await promptNewFromTemplate(defaultWeight);
   if(!newCat) return;
   list.splice(idx+1, 0, newCat);
   if(parentCat) rebalanceEqualWeights(list);
