@@ -143,10 +143,28 @@
     border:3px solid #fff;box-shadow:0 1px 4px rgba(0,0,0,.4);cursor:pointer;}
   .note-pill.border-tie-pill{background:var(--danger-soft);color:var(--danger);cursor:pointer;font-size:0.78rem;padding:2px 8px;}
   .avg-sub{font-size:0.64rem;color:var(--ink-soft);font-family:ui-monospace,'SF Mono',Menlo,monospace;}
+  .mini-toggle{position:relative;display:inline-block;width:28px;height:16px;flex-shrink:0;}
+  .mini-toggle input{opacity:0;width:0;height:0;}
+  .mini-toggle .mini-slider{position:absolute;inset:0;background:var(--ink-soft);border-radius:16px;cursor:pointer;transition:.15s;}
+  .mini-toggle .mini-slider:before{content:'';position:absolute;width:12px;height:12px;left:2px;top:2px;background:#fff;border-radius:50%;transition:.15s;}
+  .mini-toggle input:checked + .mini-slider{background:var(--accent);}
+  .mini-toggle input:checked + .mini-slider:before{transform:translateX(12px);}
+  body.colorize-active .toolbar > button,
+  body.colorize-active table.grid button,
+  body.colorize-active table.grid input,
+  body.colorize-active [data-open-entries],
+  body.colorize-active [data-open-group],
+  body.colorize-active [data-open-endnote],
+  body.colorize-active [data-select-student]
+  { pointer-events:none!important; opacity:0.4; }
+  body.colorize-active #colorizeSammelBtn,
+  body.colorize-active .mini-toggle,
+  body.colorize-active .mini-toggle *
+  { pointer-events:auto!important; opacity:1!important; }
   .add-student-row td{background:var(--surface-soft);}
   .add-student-row input{width:100%;min-width:130px;}
   .name-cell-row{display:flex;align-items:center;gap:6px;justify-content:space-between;}
-  tr.student-selected td:not(.total-col):not(.endnote-col){background:var(--accent-soft)!important;}
+  tr.student-selected td:not(.total-col):not(.endnote-col):not(.has-custom-color){background:var(--accent-soft)!important;}
   .panel{margin-top:16px;background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);
     padding:16px;box-shadow:var(--shadow);}
   .form-title{font-size:0.76rem;color:var(--ink-soft);font-weight:700;margin-bottom:10px;
@@ -227,6 +245,13 @@
   <button class="ghost small" id="positionModeBtn">↕ Position</button>
   <button class="ghost small" id="copyStructureBtn">⇄ Struktur aus 1. HJ übernehmen</button>
   <button class="ghost small" id="toggleScaleBtn">Notenschema</button>
+  <span style="display:inline-flex;align-items:center;gap:8px;font-family:inherit;font-size:0.78rem;font-weight:600;padding:6px 8px 6px 14px;border-radius:20px;border:1px solid var(--line);background:var(--surface);color:var(--ink);box-shadow:var(--shadow);white-space:nowrap;">
+    <span id="colorizeSammelBtn" style="cursor:default;opacity:0.5;">🎨 Färben</span>
+    <label class="mini-toggle" title="Ein-/Ausschalten (Aus = Farben fixieren)">
+      <input type="checkbox" id="colorizeToggle">
+      <span class="mini-slider"></span>
+    </label>
+  </span>
   <button class="ghost small" id="quickBackupBtn" title="Backup jetzt herunterladen">💾</button>
   <button class="ghost small" id="borderlineToggleBtn">🎯 Grenzfälle</button>
   <button class="ghost small" id="dataManagementBtn">🗂 Datenverwaltung</button>
@@ -242,7 +267,7 @@
 
 <script>
 const STORAGE_KEY = 'classes';
-let state = { classes: [], activeClassId: null, scaleOpen: false, searchTerm: '', compareView: false, positionMode: false, selectedStudentId: null, incognito: false };
+let state = { classes: [], activeClassId: null, scaleOpen: false, searchTerm: '', compareView: false, positionMode: false, selectedStudentId: null, incognito: false, colorizeMode: false, colorizeSelection: [] };
 let pendingCsvStufe = 'SII';
 let searchWasFocused = false;
 
@@ -269,7 +294,7 @@ function colorForGroupName(name){
 }
 
 function uid(){ return Math.random().toString(36).slice(2,10); }
-const APP_VERSION_INFO = 'v11.5 · Entwickler: G. Schulte';
+const APP_VERSION_INFO = 'v12.8 · Entwickler: G. Schulte';
 function setStatus(msg, isError){
   const el = document.getElementById('status');
   el.textContent = msg + ' · ' + APP_VERSION_INFO; el.style.color = isError ? 'var(--pen)' : 'var(--ink-soft)';
@@ -1326,6 +1351,14 @@ function renderCompareGrid(main, cls){
   });
 }
 
+function isColorizeSelected(type, id){
+  return state.colorizeSelection.some(s => s.type===type && s.id===id);
+}
+function toggleColorizeSelection(type, id, groupId){
+  const idx = state.colorizeSelection.findIndex(s => s.type===type && s.id===id);
+  if(idx > -1) state.colorizeSelection.splice(idx,1);
+  else state.colorizeSelection.push({type, id, groupId});
+}
 function findCategoryContext(sem, groupId, catId){
   const g = sem.groups.find(x=>x.id===groupId);
   if(!g) return null;
@@ -1605,7 +1638,9 @@ function renderGrid(main, cls, sem){
   const maxDepth = maxCatDepth(groups);
   const topRowspan = maxDepth + 1;
 
-  let groupHeadRow = `<tr><th class="name-col" rowspan="${topRowspan}"><div class="colhead-wrap" style="min-height:100px;"><input type="text" id="searchStudent" placeholder="Suchen…" value="${escapeHtml(state.searchTerm||'')}" style="position:absolute;top:4px;left:50%;transform:translateX(-50%);width:90%;max-width:120px;font-size:0.72rem;padding:3px 6px;z-index:2;"><div style="min-height:100px;display:flex;flex-direction:column;justify-content:center;align-items:center;gap:2px;">Schüler${state.selectedStudentId ? `<button class="colx dark ${state.incognito?'active-toggle':''}" data-toggle-incognito title="${state.incognito?'Inkognito ausschalten':'Inkognito einschalten (nur markierten Schüler zeigen)'}" style="display:inline-flex;align-items:center;justify-content:center;padding:0 2px;margin-top:6px;width:auto;height:auto;">${personIconSvg()}</button>` : ''}</div></div></th><th class="endnote-col" rowspan="${topRowspan}" data-edit-endnote-color style="cursor:pointer;${sem.endnoteColor?`background:${sem.endnoteColor};`:''}"><div class="endnote-head">Endnote<br><span class="weight">${sem.name}</span></div></th>`;
+  const studentColSelected = state.colorizeMode && isColorizeSelected('studentcol', 'schueler');
+  const studentColSelectStyle = studentColSelected ? 'box-shadow:inset 0 0 0 3px var(--accent);' : '';
+  let groupHeadRow = `<tr><th class="name-col" rowspan="${topRowspan}" style="${sem.studentColColor?`background:${sem.studentColColor};`:''}${studentColSelectStyle}"><div class="colhead-wrap" style="min-height:100px;"><input type="text" id="searchStudent" placeholder="Suchen…" value="${escapeHtml(state.searchTerm||'')}" style="position:absolute;top:4px;left:50%;transform:translateX(-50%);width:90%;max-width:120px;font-size:0.72rem;padding:3px 6px;z-index:2;"><div data-select-student-col style="min-height:100px;display:flex;flex-direction:column;justify-content:center;align-items:center;gap:2px;cursor:${state.colorizeMode?'pointer':'default'};">Schüler${studentColSelected ? ' ✓' : ''}${state.selectedStudentId ? `<button class="colx dark ${state.incognito?'active-toggle':''}" data-toggle-incognito title="${state.incognito?'Inkognito ausschalten':'Inkognito einschalten (nur markierten Schüler zeigen)'}" style="display:inline-flex;align-items:center;justify-content:center;padding:0 2px;margin-top:6px;width:auto;height:auto;">${personIconSvg()}</button>` : ''}</div></div></th><th class="endnote-col" rowspan="${topRowspan}" data-edit-endnote-color style="cursor:pointer;${sem.endnoteColor?`background:${sem.endnoteColor};`:''}"><div class="endnote-head">Endnote<br><span class="weight">${sem.name}</span></div></th>`;
   groups.forEach(g => {
     if(g.collapsed){
       groupHeadRow += `<th class="grp-head collapsed-col" rowspan="${topRowspan}" style="background:${(g.customColor || colorForGroupName(g.name))};">
@@ -1617,11 +1652,13 @@ function renderGrid(main, cls, sem){
       return;
     }
     const span = g.categories.reduce((s,c)=>s+catWidth(c), 0) + 1;
-    groupHeadRow += `<th class="grp-head" colspan="${span}" style="background:${(g.customColor || colorForGroupName(g.name))};">
+    const groupSelected = state.colorizeMode && isColorizeSelected('group', g.id);
+    const groupSelectStyle = groupSelected ? 'box-shadow:inset 0 0 0 3px var(--accent);' : '';
+    groupHeadRow += `<th class="grp-head" colspan="${span}" style="background:${(g.customColor || colorForGroupName(g.name))};${groupSelectStyle}">
       <div class="grp-head-wrap">
         <div class="grp-inner">
           ${state.positionMode ? `<button class="colx" data-move-group="${g.id}" data-dir="-1">‹</button>` : ''}
-          <span data-rename-group="${g.id}" style="cursor:pointer;">${escapeHtml(g.name)} <span style="font-weight:400;opacity:0.85;">${g.weight}%</span></span>
+          <span data-rename-group="${g.id}" style="cursor:pointer;">${escapeHtml(g.name)}${groupSelected ? ' ✓' : ''} <span style="font-weight:400;opacity:0.85;">${g.weight}%</span></span>
           <button class="colx" data-add-cat="${g.id}">+</button>
           ${g.locked ? '' : `<button class="colx danger" data-del-group="${g.id}">✕</button>`}
           ${state.positionMode ? `<button class="colx" data-move-group="${g.id}" data-dir="1">›</button>` : ''}
@@ -1634,21 +1671,24 @@ function renderGrid(main, cls, sem){
   const GRADIENT_STEP = 0.4;
   const ADDITIONAL_ROW_FADE = 0.45;
   function catHeaderCell(cat, g, colspan, rowspan, depth, levelColor){
+    const isSelected = state.colorizeMode && isColorizeSelected('cat', cat.id);
+    const selectStyle = isSelected ? 'box-shadow:inset 0 0 0 3px var(--accent);' : '';
+    const selectMark = isSelected ? ' ✓' : '';
     const bgStyle = levelColor ? `background:${levelColor};` : '';
     const nameRow = `<div class="row" style="gap:4px;align-items:center;justify-content:center;">
-      <span data-edit-cat="${cat.id}" data-group="${g.id}" title="Antippen: bearbeiten, duplizieren oder löschen">${dateRangeDotHtml(cat)}${escapeHtml(cat.name)}</span>
+      <span data-edit-cat="${cat.id}" data-group="${g.id}" title="Antippen: bearbeiten, duplizieren oder löschen">${dateRangeDotHtml(cat)}${escapeHtml(cat.name)}${selectMark}</span>
     </div>`;
     if(cat.collapsed){
       const isContainer = cat.children && cat.children.length;
       const collapsedEye = isContainer ? `<button class="colx dark" data-toggle-cat-collapse="${cat.id}" data-group="${g.id}" title="Einblenden" style="display:inline-flex;align-items:center;justify-content:center;padding:0;width:16px;height:16px;">${eyeIconSvg(true)}</button>` : '';
-      return `<th class="cat-head collapsed-col" style="${bgStyle}" ${rowspan>1?`rowspan="${rowspan}"`:''} colspan="1">
+      return `<th class="cat-head collapsed-col" style="${bgStyle}${selectStyle}" ${rowspan>1?`rowspan="${rowspan}"`:''} colspan="1">
         <div class="colhead" style="flex-direction:column;gap:6px;padding:4px 0;width:32px;max-width:32px;overflow:hidden;margin:0 auto;">
-          <span data-edit-cat="${cat.id}" data-group="${g.id}" title="Antippen: bearbeiten, duplizieren oder löschen" style="writing-mode:vertical-rl;font-size:0.68rem;cursor:pointer;">${dateRangeDotHtml(cat)}${escapeHtml(cat.name)}</span>
+          <span data-edit-cat="${cat.id}" data-group="${g.id}" title="Antippen: bearbeiten, duplizieren oder löschen" style="writing-mode:vertical-rl;font-size:0.68rem;cursor:pointer;">${dateRangeDotHtml(cat)}${escapeHtml(cat.name)}${selectMark}</span>
           ${collapsedEye}
         </div>
       </th>`;
     }
-    return `<th class="cat-head" style="${bgStyle}" ${rowspan>1?`rowspan="${rowspan}"`:''} colspan="${colspan}">
+    return `<th class="cat-head" style="${bgStyle}${selectStyle}" ${rowspan>1?`rowspan="${rowspan}"`:''} colspan="${colspan}">
       <div class="colhead">
         ${nameRow}
         <span class="weight">${cat.weight}%${isContainerCat(cat) ? '' : ' · '+(cat.mode==='points'?'Punkte':'Note')}</span>
@@ -1722,6 +1762,7 @@ function renderGrid(main, cls, sem){
     }
     function catCell(cat, g, s, depth, baseColor, rowLighten){
       const ownColor = cat.bgColor || undefined;
+      const colorCls = ownColor ? ' class="has-custom-color"' : '';
       const bgAttr = ownColor ? ` style="background:${ownColor};"` : '';
       if(cat.collapsed){
         const collapsedVal = categoryAvgForStudent(cls, cat, s.id);
@@ -1749,21 +1790,21 @@ function renderGrid(main, cls, sem){
       if(cat.mode === 'observation' && !isContainerCat(cat)){
         const ov = cat.overrides && cat.overrides[s.id];
         const pillHtml = (ov !== undefined && ov !== null && ov !== '') ? notePill(cls, a) : observationPill(cat.entries[s.id]);
-        return `<td${bgAttr}><div class="cell-stack" data-open-entries data-cat="${cat.id}" data-group="${g.id}" data-student="${s.id}">${pillHtml}${overrideMark(cat, g, s)}</div></td>`;
+        return `<td${colorCls}${bgAttr}><div class="cell-stack" data-open-entries data-cat="${cat.id}" data-group="${g.id}" data-student="${s.id}">${pillHtml}${overrideMark(cat, g, s)}</div></td>`;
       }
       let subLabel;
       if(cat.mode === 'points' && !isContainerCat(cat)){
         const entry = cat.entries[s.id];
         if(entry) subLabel = `${entry.points ?? '?'}/${entry.maxPoints ?? '?'}`;
       }
-      return `<td${bgAttr}><div class="cell-stack" data-open-entries data-cat="${cat.id}" data-group="${g.id}" data-student="${s.id}">${notePill(cls, a, subLabel, cat.displayScale)}${overrideMark(cat, g, s)}</div></td>`;
+      return `<td${colorCls}${bgAttr}><div class="cell-stack" data-open-entries data-cat="${cat.id}" data-group="${g.id}" data-student="${s.id}">${notePill(cls, a, subLabel, cat.displayScale)}${overrideMark(cat, g, s)}</div></td>`;
     }
     visibleStudents.forEach((s, rowIdx) => {
       const end = semesterEndnoteForStudent(cls, sem, s.id);
       const overridden = sem.endnoteOverrides && sem.endnoteOverrides[s.id] !== undefined && sem.endnoteOverrides[s.id] !== '';
       const isSelected = state.selectedStudentId === s.id;
       const hasNotes = studentHasObservationNotes(sem, s.id);
-      let row = `<tr class="${isSelected?'student-selected':''}"><td class="name-col" data-select-student="${s.id}" style="cursor:pointer;"><div class="name-cell-row"><span>${escapeHtml(s.name)}</span>${hasNotes ? `<button class="colx dark" data-show-ub-notes="${s.id}" title="Unterrichtsbeobachtungen mit Notizen ansehen">📝</button>` : ''}<button class="colx dark" data-del-student="${s.id}" title="Aus ${escapeHtml(sem.name)} entfernen">✕</button></div></td>`;
+      let row = `<tr class="${isSelected?'student-selected':''}"><td class="name-col${sem.studentColColor?' has-custom-color':''}" data-select-student="${s.id}" style="cursor:pointer;${sem.studentColColor?`background:${sem.studentColColor};`:''}"><div class="name-cell-row"><span>${escapeHtml(s.name)}</span>${hasNotes ? `<button class="colx dark" data-show-ub-notes="${s.id}" title="Unterrichtsbeobachtungen mit Notizen ansehen">📝</button>` : ''}<button class="colx dark" data-del-student="${s.id}" title="Aus ${escapeHtml(sem.name)} entfernen">✕</button></div></td>`;
       let endPillHtml = notePill(cls, end);
       let endBadge = '';
       if(borderlineEnabled){
@@ -1947,8 +1988,21 @@ function renderGrid(main, cls, sem){
       saveState(); render();
     };
   });
+  main.querySelectorAll('[data-select-student-col]').forEach(el=>{
+    el.onclick = (e) => {
+      if(!state.colorizeMode) return;
+      if(e.target.closest('button')) return;
+      toggleColorizeSelection('studentcol', 'schueler', null);
+      render();
+    };
+  });
   main.querySelectorAll('[data-rename-group]').forEach(el=>{
     el.onclick = async () => {
+      if(state.colorizeMode){
+        toggleColorizeSelection('group', el.dataset.renameGroup, null);
+        render();
+        return;
+      }
       const g = sem.groups.find(x=>x.id===el.dataset.renameGroup);
       const name = await showPrompt('Gruppe bearbeiten', 'Name der Gruppe', g.name, {confirmLabel:'Weiter'});
       if(name===null || !name.trim()) return;
@@ -1970,7 +2024,14 @@ function renderGrid(main, cls, sem){
   main.querySelectorAll('[data-add-cat]').forEach(btn=>{ btn.onclick = () => addCategory(cls, sem, btn.dataset.addCat); });
   main.querySelectorAll('[data-add-near-cat]').forEach(btn=>{ btn.onclick = () => addCategoryNear(cls, sem, btn.dataset.group, btn.dataset.addNearCat); });
   main.querySelectorAll('[data-edit-cat]').forEach(el=>{
-    el.onclick = () => { openCategoryMenu(cls, sem, el.dataset.group, el.dataset.editCat); };
+    el.onclick = () => {
+      if(state.colorizeMode){
+        toggleColorizeSelection('cat', el.dataset.editCat, el.dataset.group);
+        render();
+        return;
+      }
+      openCategoryMenu(cls, sem, el.dataset.group, el.dataset.editCat);
+    };
   });
   main.querySelectorAll('[data-open-entries]').forEach(el=>{ el.onclick = () => openEntriesModal(cls, sem, el.dataset.group, el.dataset.cat, el.dataset.student); });
   main.querySelectorAll('[data-open-endnote]').forEach(el=>{ el.onclick = () => openEndnoteModal(cls, sem, el.dataset.openEndnote); });
@@ -2232,13 +2293,13 @@ async function editCategory(cls, sem, groupId, catId){
   ];
   if(colorSiblings.length) colorOptions.push({label: 'Wie bei…', value: 'like'});
   const colorChoice = await showChoice('Hintergrundfarbe der Spalte', cat.bgColor ? `Aktuell: eigene Farbe` : 'Aktuell: Standard', colorOptions);
-  if(colorChoice === 'default') cat.bgColor = undefined;
+  if(colorChoice === 'default') { cat.bgColor = undefined; delete cat.autoColored; }
   else if(colorChoice === 'custom'){
     const colorVal = await pickColorDialog('Farbe für diese Spalte wählen', cat.bgColor || '#cfe8fb');
-    if(colorVal !== null) cat.bgColor = colorVal;
+    if(colorVal !== null){ cat.bgColor = colorVal; delete cat.autoColored; }
   } else if(colorChoice === 'like'){
     const likeChoice = await showChoice('Wie bei…', 'Farbe von welcher Kategorie übernehmen?', colorSiblings.map(c => ({label: c.name, value: c.bgColor})));
-    if(likeChoice !== null) cat.bgColor = likeChoice;
+    if(likeChoice !== null){ cat.bgColor = likeChoice; delete cat.autoColored; }
   }
   if(isContainer){ saveState(); render(); return; }
   {
@@ -2843,6 +2904,90 @@ document.getElementById('copyStructureBtn').onclick = async () => {
   saveState(); render();
 };
 document.getElementById('toggleScaleBtn').onclick = () => { state.scaleOpen = !state.scaleOpen; render(); };
+const SUBTLE_PALETTE = ['#D9EAD3','#FCE5CD','#CFE8FB','#F4CCCC','#E6D6F5','#FFF2CC','#D0E8E4','#F9D9E7','#DDEBF7','#EAE3D2'];
+let colorizeAttempts = 0;
+function comboColorsForNumber(n){
+  const rot = n % SUBTLE_PALETTE.length;
+  return [...SUBTLE_PALETTE.slice(rot), ...SUBTLE_PALETTE.slice(0, rot)];
+}
+function parentReferenceColorFor(sem, sel){
+  if(sel.type === 'group'){
+    const g = sem.groups.find(x => x.id === sel.id);
+    return g ? (g.customColor || colorForGroupName(g.name)) : null;
+  }
+  if(sel.type === 'studentcol') return null;
+  const ctx = findCategoryContext(sem, sel.groupId, sel.id);
+  if(!ctx) return null;
+  if(ctx.parentCat && ctx.parentCat.bgColor) return ctx.parentCat.bgColor;
+  const g = sem.groups.find(x => x.id === sel.groupId);
+  return g ? (g.customColor || colorForGroupName(g.name)) : null;
+}
+document.getElementById('colorizeSammelBtn').onclick = () => {
+  if(!state.colorizeMode) return;
+  const cls = getActiveClass();
+  if(!cls) return;
+  if(!state.colorizeSelection.length){
+    setStatus('Bitte zuerst Notengruppen/Kategorien antippen, die gefärbt werden sollen.', true);
+    return;
+  }
+  const sem = getActiveSemester(cls);
+  colorizeAttempts++;
+  const familyKeyFor = (sel) => {
+    if(sel.type === 'group') return 'group:' + sel.id;
+    if(sel.type === 'studentcol') return 'studentcol';
+    const ctx = findCategoryContext(sem, sel.groupId, sel.id);
+    if(ctx && ctx.parentCat) return 'parent:' + ctx.parentCat.id;
+    return 'topgroup:' + sel.groupId;
+  };
+  const familyOrder = [];
+  const familyMembers = {};
+  state.colorizeSelection.forEach(sel => {
+    const key = familyKeyFor(sel);
+    if(!(key in familyMembers)){ familyMembers[key] = []; familyOrder.push(key); }
+    familyMembers[key].push(sel);
+  });
+  const combo = comboColorsForNumber(colorizeAttempts);
+  familyOrder.forEach((key, idx) => {
+    const members = familyMembers[key];
+    let color;
+    if(colorizeAttempts === 1){
+      const refColor = parentReferenceColorFor(sem, members[0]);
+      color = refColor ? lightenColor(refColor, 0.35) : combo[idx % combo.length];
+    } else {
+      color = combo[idx % combo.length];
+    }
+    members.forEach(sel => {
+      if(sel.type === 'group'){
+        const g = sem.groups.find(x => x.id === sel.id);
+        if(g) g.customColor = color;
+      } else if(sel.type === 'studentcol'){
+        sem.studentColColor = color;
+      } else {
+        const ctx = findCategoryContext(sem, sel.groupId, sel.id);
+        if(ctx) ctx.cat.bgColor = color;
+      }
+    });
+  });
+  saveState(); render();
+};
+document.getElementById('colorizeToggle').onchange = (e) => {
+  state.colorizeMode = e.target.checked;
+  document.body.classList.toggle('colorize-active', state.colorizeMode);
+  const label = document.getElementById('colorizeSammelBtn');
+  if(!state.colorizeMode){
+    state.colorizeSelection = [];
+    colorizeAttempts = 0;
+    label.textContent = '🎨 Färben';
+    label.style.opacity = '0.5';
+    label.style.cursor = 'default';
+    setStatus('Auswahlmodus beendet – Farben sind fixiert.');
+  } else {
+    label.style.opacity = '1';
+    label.style.cursor = 'pointer';
+    setStatus('Auswahlmodus aktiv – tippe Notengruppen/Kategorien an, dann auf "Färben".');
+  }
+  render();
+};
 document.getElementById('quickBackupBtn').onclick = exportBackup;
 document.getElementById('borderlineToggleBtn').onclick = () => {
   borderlineEnabled = !borderlineEnabled;
@@ -2968,8 +3113,8 @@ function buildDemoOralCategories(){
     {id: uid(), name:'Beobachtung 2', weight:50, mode:'observation', ungraded:false, date:'', entries:{}},
   ];
   return [
-    {id: uid(), name:'SoMi 1', weight:35, containerOnly:true, children: soMi1Children, entries:{}},
-    {id: uid(), name:'SoMi 2', weight:35, containerOnly:true, children: soMi2Children, entries:{}},
+    {id: uid(), name:'SoMi 1', weight:35, containerOnly:true, bgColor:'#D9EAD3', children: soMi1Children, entries:{}},
+    {id: uid(), name:'SoMi 2', weight:35, containerOnly:true, bgColor:'#FCE5CD', children: soMi2Children, entries:{}},
     {id: uid(), name:'Unterrichtsbeobachtungen', weight:30, containerOnly:true, bgColor:'#CFE8FB', children: ubChildren, entries:{}},
   ];
 }
