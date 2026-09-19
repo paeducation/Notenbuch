@@ -98,7 +98,8 @@
     padding:4px 8px;text-transform:uppercase;letter-spacing:0.03em;}
   .grp-head-wrap{position:relative;display:block;}
   .grp-head .grp-inner{display:flex;align-items:center;justify-content:center;gap:6px;}
-  .cat-head{background:var(--surface);min-width:78px;}
+  .cat-head{background:var(--surface);min-width:58px;padding-left:5px!important;padding-right:5px!important;}
+  .collapsed-col{width:56px!important;max-width:56px!important;min-width:56px!important;}
   .colhead-wrap{position:relative;display:block;}
   .colhead-wrap .colhead{position:relative;z-index:1;}
   .cat-head.total-head{background:var(--surface-soft);font-weight:700;}
@@ -268,7 +269,7 @@ function colorForGroupName(name){
 }
 
 function uid(){ return Math.random().toString(36).slice(2,10); }
-const APP_VERSION_INFO = 'v10.2 · Entwickler: G. Schulte';
+const APP_VERSION_INFO = 'v11.5 · Entwickler: G. Schulte';
 function setStatus(msg, isError){
   const el = document.getElementById('status');
   el.textContent = msg + ' · ' + APP_VERSION_INFO; el.style.color = isError ? 'var(--pen)' : 'var(--ink-soft)';
@@ -1607,9 +1608,9 @@ function renderGrid(main, cls, sem){
   let groupHeadRow = `<tr><th class="name-col" rowspan="${topRowspan}"><div class="colhead-wrap" style="min-height:100px;"><input type="text" id="searchStudent" placeholder="Suchen…" value="${escapeHtml(state.searchTerm||'')}" style="position:absolute;top:4px;left:50%;transform:translateX(-50%);width:90%;max-width:120px;font-size:0.72rem;padding:3px 6px;z-index:2;"><div style="min-height:100px;display:flex;flex-direction:column;justify-content:center;align-items:center;gap:2px;">Schüler${state.selectedStudentId ? `<button class="colx dark ${state.incognito?'active-toggle':''}" data-toggle-incognito title="${state.incognito?'Inkognito ausschalten':'Inkognito einschalten (nur markierten Schüler zeigen)'}" style="display:inline-flex;align-items:center;justify-content:center;padding:0 2px;margin-top:6px;width:auto;height:auto;">${personIconSvg()}</button>` : ''}</div></div></th><th class="endnote-col" rowspan="${topRowspan}" data-edit-endnote-color style="cursor:pointer;${sem.endnoteColor?`background:${sem.endnoteColor};`:''}"><div class="endnote-head">Endnote<br><span class="weight">${sem.name}</span></div></th>`;
   groups.forEach(g => {
     if(g.collapsed){
-      groupHeadRow += `<th class="grp-head" rowspan="${topRowspan}" style="background:${(g.customColor || colorForGroupName(g.name))};">
-        <div class="grp-inner" style="flex-direction:column;gap:6px;">
-          <span data-rename-group="${g.id}" style="cursor:pointer;writing-mode:vertical-rl;">${escapeHtml(g.name)}</span>
+      groupHeadRow += `<th class="grp-head collapsed-col" rowspan="${topRowspan}" style="background:${(g.customColor || colorForGroupName(g.name))};">
+        <div class="grp-inner" style="flex-direction:column;gap:6px;padding:4px 0;width:32px;max-width:32px;overflow:hidden;margin:0 auto;">
+          <span data-rename-group="${g.id}" style="cursor:pointer;writing-mode:vertical-rl;font-size:0.62rem;">${escapeHtml(g.name)}</span>
           <button class="colx" data-toggle-group-collapse="${g.id}" title="Einblenden" style="display:inline-flex;align-items:center;">${eyeIconSvg(true)}</button>
         </div>
       </th>`;
@@ -1640,9 +1641,9 @@ function renderGrid(main, cls, sem){
     if(cat.collapsed){
       const isContainer = cat.children && cat.children.length;
       const collapsedEye = isContainer ? `<button class="colx dark" data-toggle-cat-collapse="${cat.id}" data-group="${g.id}" title="Einblenden" style="display:inline-flex;align-items:center;justify-content:center;padding:0;width:16px;height:16px;">${eyeIconSvg(true)}</button>` : '';
-      return `<th class="cat-head" style="${bgStyle}" ${rowspan>1?`rowspan="${rowspan}"`:''} colspan="1">
-        <div class="colhead" style="gap:4px;">
-          ${nameRow}
+      return `<th class="cat-head collapsed-col" style="${bgStyle}" ${rowspan>1?`rowspan="${rowspan}"`:''} colspan="1">
+        <div class="colhead" style="flex-direction:column;gap:6px;padding:4px 0;width:32px;max-width:32px;overflow:hidden;margin:0 auto;">
+          <span data-edit-cat="${cat.id}" data-group="${g.id}" title="Antippen: bearbeiten, duplizieren oder löschen" style="writing-mode:vertical-rl;font-size:0.68rem;cursor:pointer;">${dateRangeDotHtml(cat)}${escapeHtml(cat.name)}</span>
           ${collapsedEye}
         </div>
       </th>`;
@@ -1729,7 +1730,7 @@ function renderGrid(main, cls, sem){
           const majoritySym = majoritySymbolForCategory(cat, s.id);
           if(majoritySym) collapsedPill = observationPill({observation: majoritySym});
         }
-        return `<td class="total-col" data-toggle-cat-collapse="${cat.id}" data-group="${g.id}" style="cursor:pointer;text-align:center;${ownColor?`background:${ownColor};`:''}" title="Einblenden"><div class="cell-stack">${collapsedPill}</div></td>`;
+        return `<td class="total-col collapsed-col" data-toggle-cat-collapse="${cat.id}" data-group="${g.id}" style="cursor:pointer;text-align:center;${ownColor?`background:${ownColor};`:''}" title="Einblenden"><div class="cell-stack" style="display:flex;justify-content:center;width:100%;">${collapsedPill}</div></td>`;
       }
       const hasKids = cat.children && cat.children.length;
       const a = categoryAvgForStudent(cls, cat, s.id);
@@ -1781,7 +1782,7 @@ function renderGrid(main, cls, sem){
       groups.forEach(g => {
         if(g.collapsed){
           const collapsedGt = groupGesamtForStudent(cls, g, s.id);
-          row += `<td class="total-col" data-toggle-group-collapse="${g.id}" style="cursor:pointer;text-align:center;" title="Einblenden"><div class="cell-stack">${notePill(cls, collapsedGt)}</div></td>`;
+          row += `<td class="total-col collapsed-col" data-toggle-group-collapse="${g.id}" style="cursor:pointer;text-align:center;" title="Einblenden"><div class="cell-stack" style="display:flex;justify-content:center;width:100%;">${notePill(cls, collapsedGt)}</div></td>`;
           return;
         }
         const gt = groupGesamtForStudent(cls, g, s.id);
@@ -2871,19 +2872,38 @@ async function checkForAppUpdate(){
       await showAlert('Aktuell', `Du nutzt bereits die neueste Version.\n${APP_VERSION_INFO}`);
       return;
     }
-    const choice = await showChoice('Update verfügbar', `Installiert: ${APP_VERSION_INFO}\nNeu: ${remoteVersion}\n\nEmpfehlung: Vor dem Update ein Backup erstellen.`, [
-      {label: '⬇ Backup jetzt erstellen', value: 'backup'},
-      {label: 'Update sofort ausführen', value: 'update'},
-    ]);
-    if(choice === 'backup'){
-      exportBackup();
-      const proceed = await showConfirm('Update jetzt ausführen?', 'Backup wurde heruntergeladen. Soll das Update jetzt ausgeführt werden?', {confirmLabel:'Update ausführen'});
-      if(proceed) await performAppUpdate();
-    } else if(choice === 'update'){
-      await performAppUpdate();
-    }
+    await offerAppUpdate(remoteVersion);
   }catch(e){
     await showAlert('Prüfung fehlgeschlagen', 'Es konnte keine Verbindung zum Server hergestellt werden. Internetverbindung erforderlich.');
+  }
+}
+async function offerAppUpdate(remoteVersion){
+  const choice = await showChoice('Update verfügbar', `Installiert: ${APP_VERSION_INFO}\nNeu: ${remoteVersion}\n\nEmpfehlung: Vor dem Update ein Backup erstellen.`, [
+    {label: '⬇ Backup jetzt erstellen', value: 'backup'},
+    {label: 'Update sofort ausführen', value: 'update'},
+    {label: 'Später erinnern', value: 'later'},
+  ]);
+  if(choice === 'backup'){
+    exportBackup();
+    const proceed = await showConfirm('Update jetzt ausführen?', 'Backup wurde heruntergeladen. Soll das Update jetzt ausgeführt werden?', {confirmLabel:'Update ausführen'});
+    if(proceed) await performAppUpdate();
+  } else if(choice === 'update'){
+    await performAppUpdate();
+  }
+}
+async function autoCheckForUpdateSilently(){
+  if(!navigator.onLine) return;
+  try{
+    const res = await fetch(window.location.pathname + '?cachebust=' + Date.now(), {cache: 'no-store'});
+    if(!res.ok) return;
+    const text = await res.text();
+    const match = text.match(/APP_VERSION_INFO\s*=\s*'([^']+)'/);
+    if(!match) return;
+    const remoteVersion = match[1];
+    if(remoteVersion === APP_VERSION_INFO) return; // already current, stay quiet
+    await offerAppUpdate(remoteVersion);
+  }catch(e){
+    // offline or unreachable: stay silent, no interruption
   }
 }
 // ---------- Demomodus ----------
@@ -3173,6 +3193,7 @@ window.addEventListener('resize', syncStickyOffsets);
   document.getElementById('schoolYearInput').value = state.schoolYear;
   render();
   syncStickyOffsets();
+  autoCheckForUpdateSilently();
 })();
 if('serviceWorker' in navigator){
   window.addEventListener('load', () => { navigator.serviceWorker.register('sw.js').catch(()=>{}); });
