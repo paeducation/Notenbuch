@@ -268,7 +268,7 @@ function colorForGroupName(name){
 }
 
 function uid(){ return Math.random().toString(36).slice(2,10); }
-const APP_VERSION_INFO = 'v9.9 · Entwickler: G. Schulte';
+const APP_VERSION_INFO = 'v10.2 · Entwickler: G. Schulte';
 function setStatus(msg, isError){
   const el = document.getElementById('status');
   el.textContent = msg + ' · ' + APP_VERSION_INFO; el.style.color = isError ? 'var(--pen)' : 'var(--ink-soft)';
@@ -666,18 +666,35 @@ function exportBackup(){
         if(!pw){ setStatus('Export abgebrochen (kein Passwort).', true); return; }
         try{
           const encryptedStr = await encryptBackupJson(data, pw);
-          downloadBlobAsFile(encryptedStr, `notenbuch-backup-verschluesselt-${stamp}.json`);
+          await downloadBlobAsFile(encryptedStr, `notenbuch-backup-verschluesselt-${stamp}.json`);
           setStatus('Verschlüsseltes Backup exportiert · ' + new Date().toLocaleTimeString('de-DE'));
         }catch(e){ setStatus('Verschlüsselung fehlgeschlagen.', true); }
       })();
       return;
     }
-    downloadBlobAsFile(data, `notenbuch-backup-${stamp}.json`);
-    setStatus('Backup exportiert · ' + new Date().toLocaleTimeString('de-DE'));
+    (async () => {
+      await downloadBlobAsFile(data, `notenbuch-backup-${stamp}.json`);
+      setStatus('Backup exportiert · ' + new Date().toLocaleTimeString('de-DE'));
+    })();
   }catch(e){ setStatus('Export fehlgeschlagen.', true); }
 }
-function downloadBlobAsFile(str, filename){
+async function downloadBlobAsFile(str, filename){
   const blob = new Blob([str], {type: 'application/json'});
+  try{
+    const plainFile = new File([blob], filename, {type: 'text/plain'});
+    if(navigator.canShare && navigator.canShare({files: [plainFile]})){
+      await navigator.share({files: [plainFile], title: filename});
+      return; // shared successfully (e.g. saved to IServ/Drive/etc.)
+    }
+    const jsonFile = new File([blob], filename, {type: 'application/json'});
+    if(navigator.canShare && navigator.canShare({files: [jsonFile]})){
+      await navigator.share({files: [jsonFile], title: filename});
+      return;
+    }
+  }catch(e){
+    if(e && e.name === 'AbortError') return; // user deliberately cancelled the share sheet
+    // any other share failure: fall through to the plain download below
+  }
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url; a.download = filename;
@@ -2598,32 +2615,32 @@ function computeBorderlineStatus(cls, value){
   if(value === null || value === undefined || isNaN(value)) return null;
   if(cls.gradingSystem === 'punkte'){
     const rounded = Math.round(value);
-    if(Math.abs(value - rounded) < BORDERLINE_EPS) return {exact: true, text: String(rounded)};
+    if(Math.abs(value - rounded) < BORDERLINE_EPS) return {exact: true, text: String(rounded), rawValue: value};
     const floor = Math.floor(value), ceil = Math.ceil(value);
     const diffFloor = value - floor, diffCeil = ceil - value;
     const isTie = Math.abs(diffFloor - diffCeil) < BORDERLINE_EPS;
     const recommendation = isTie ? `${floor} ↑ / ${ceil} ↓` : (diffFloor < diffCeil ? `${floor} ↑` : `${ceil} ↓`);
-    return {exact: false, isTie, floorText: String(floor), ceilText: String(ceil), recommendation};
+    return {exact: false, isTie, floorText: String(floor), ceilText: String(ceil), recommendation, rawValue: value};
   }
   const steps = gradeValuesList(cls).map(v => ({text: v, val: gradeStrToValue(v)})).sort((a,b)=>a.val-b.val);
   const exactStep = steps.find(s => Math.abs(s.val - value) < BORDERLINE_EPS);
-  if(exactStep) return {exact: true, text: exactStep.text};
+  if(exactStep) return {exact: true, text: exactStep.text, rawValue: value};
   let floor = null, ceil = null;
   for(const s of steps){
     if(s.val <= value) floor = s;
     if(s.val >= value && !ceil) ceil = s;
   }
-  if(!floor || !ceil) return {exact: true, text: valueToGradeStr(value)};
+  if(!floor || !ceil) return {exact: true, text: valueToGradeStr(value), rawValue: value};
   const diffFloor = value - floor.val, diffCeil = ceil.val - value;
   const isTie = Math.abs(diffFloor - diffCeil) < BORDERLINE_EPS;
   const recommendation = isTie ? `${floor.text} ↑ / ${ceil.text} ↓` : (diffFloor < diffCeil ? `${floor.text} ↑` : `${ceil.text} ↓`);
-  return {exact: false, isTie, floorText: floor.text, ceilText: ceil.text, recommendation};
+  return {exact: false, isTie, floorText: floor.text, ceilText: ceil.text, recommendation, rawValue: value};
 }
 function tieOnlyBadgeHtmlGroup(status, groupId, studentId){
-  return `<span class="note-pill border-tie-pill" data-borderline-resolve="${groupId}" data-student="${studentId}" data-floor="${escapeHtml(status.floorText)}" data-ceil="${escapeHtml(status.ceilText)}" title="Exakter Gleichstand – bitte selbst entscheiden">${escapeHtml(status.recommendation)}</span>`;
+  return `<span class="note-pill border-tie-pill" data-borderline-resolve="${groupId}" data-student="${studentId}" data-floor="${escapeHtml(status.floorText)}" data-ceil="${escapeHtml(status.ceilText)}" title="Exakter Gleichstand – bitte selbst entscheiden">${escapeHtml(status.recommendation)}</span><span class="avg-sub">${status.rawValue.toFixed(2)}</span>`;
 }
 function tieOnlyBadgeHtmlEndnote(status, studentId){
-  return `<span class="note-pill border-tie-pill" data-endnote-borderline-resolve="${studentId}" data-floor="${escapeHtml(status.floorText)}" data-ceil="${escapeHtml(status.ceilText)}" title="Exakter Gleichstand – bitte selbst entscheiden">${escapeHtml(status.recommendation)}</span>`;
+  return `<span class="note-pill border-tie-pill" data-endnote-borderline-resolve="${studentId}" data-floor="${escapeHtml(status.floorText)}" data-ceil="${escapeHtml(status.ceilText)}" title="Exakter Gleichstand – bitte selbst entscheiden">${escapeHtml(status.recommendation)}</span><span class="avg-sub">${status.rawValue.toFixed(2)}</span>`;
 }
 function borderlineBadgeHtml(status, groupId, studentId){
   if(!status) return '';
