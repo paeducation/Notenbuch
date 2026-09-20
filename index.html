@@ -106,7 +106,7 @@
   .cat-head .colhead{display:flex;flex-direction:column;align-items:center;gap:1px;cursor:pointer;padding:2px 0;}
   .cat-head .weight{font-weight:500;color:var(--ink-soft);font-size:0.66rem;}
   .cat-mode{font-size:0.6rem;color:var(--ink-soft);}
-  th.name-col, td.name-col{background:var(--surface);text-align:left;font-weight:600;min-width:120px;max-width:170px;width:170px;white-space:normal!important;word-break:break-word;}
+  th.name-col, td.name-col{background:var(--surface);text-align:left;font-weight:600;min-width:120px;max-width:230px;width:230px;white-space:normal!important;word-break:break-word;}
   th.endnote-col, td.endnote-col{background:var(--accent-soft);
     border-left:2px solid var(--accent);border-right:2px solid var(--accent);
     text-align:center;vertical-align:middle;}
@@ -300,7 +300,7 @@ function colorForGroupName(name){
 }
 
 function uid(){ return Math.random().toString(36).slice(2,10); }
-const APP_VERSION_INFO = 'v15.8 · Entwickler: G. Schulte';
+const APP_VERSION_INFO = 'v15.9 · Entwickler: G. Schulte';
 function setStatus(msg, isError){
   const el = document.getElementById('status');
   el.textContent = msg + ' · ' + APP_VERSION_INFO; el.style.color = isError ? 'var(--pen)' : 'var(--ink-soft)';
