@@ -221,10 +221,6 @@
     table.grid{font-size:10px!important;}
     .colx, .reset-arrow, [data-del-student], .add-student-row{display:none!important;}
     .compare-wrap{gap:12px!important;}
-    .konferenz-table{font-size:12px!important;width:100%!important;table-layout:auto!important;}
-    .konferenz-table th, .konferenz-table td{padding:4px 6px!important;}
-    .konferenz-table th.name-col, .konferenz-table td.name-col{text-align:left!important;width:auto!important;max-width:none!important;min-width:0!important;white-space:normal!important;}
-    .konferenz-wrap{max-width:100%!important;}
   }
 </style>
 </head>
@@ -304,7 +300,7 @@ function colorForGroupName(name){
 }
 
 function uid(){ return Math.random().toString(36).slice(2,10); }
-const APP_VERSION_INFO = 'v16.4 · Entwickler: G. Schulte';
+const APP_VERSION_INFO = 'v16.6 · Entwickler: G. Schulte';
 function setStatus(msg, isError){
   const el = document.getElementById('status');
   el.textContent = msg + ' · ' + APP_VERSION_INFO; el.style.color = isError ? 'var(--pen)' : 'var(--ink-soft)';
@@ -447,26 +443,10 @@ function categoryAvgForStudent(cls, cat, studentId){
   return auto;
 }
 function groupGesamtAutoForStudent(cls, group, studentId){
-  let weighted = 0, weightSum = 0;
-  group.children.forEach(cat => {
-    const a = categoryAvgForStudent(cls, cat, studentId);
-    if(a !== null){ weighted += a * (cat.weight||0); weightSum += (cat.weight||0); }
-  });
-  if(weightSum === 0) return null;
-  return weighted / weightSum;
+  return categoryAvgAutoForStudent(cls, group, studentId);
 }
 function groupGesamtForStudent(cls, group, studentId){
-  const auto = groupGesamtAutoForStudent(cls, group, studentId);
-  const override = group.overrides && group.overrides[studentId];
-  if(override !== undefined && override !== null && override !== ''){
-    if(cls.gradingSystem === 'punkte'){
-      const v = parseFloat(override);
-      return isNaN(v) ? auto : v;
-    }
-    const v = gradeStrToValue(override);
-    return v === null ? auto : v;
-  }
-  return auto;
+  return categoryAvgForStudent(cls, group, studentId);
 }
 function semesterEndnoteAutoForStudent(cls, semester, studentId){
   let weighted = 0, weightSum = 0;
