@@ -236,7 +236,6 @@
   <div class="sem-row" id="classRow"></div>
   <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
     <div class="sem-row" id="semRow" style="margin:0;"></div>
-    <span class="weight-warn" id="weightWarn" style="margin-left:0;"></span>
   </div>
 </header>
 
@@ -293,7 +292,7 @@ function colorForGroupName(name){
 }
 
 function uid(){ return Math.random().toString(36).slice(2,10); }
-const APP_VERSION_INFO = 'v13.6 · Entwickler: G. Schulte';
+const APP_VERSION_INFO = 'v15.1 · Entwickler: G. Schulte';
 function setStatus(msg, isError){
   const el = document.getElementById('status');
   el.textContent = msg + ' · ' + APP_VERSION_INFO; el.style.color = isError ? 'var(--pen)' : 'var(--ink-soft)';
@@ -391,10 +390,14 @@ function entryValue(cls, cat, entry){
 }
 function rebalanceEqualWeights(list){
   const graded = list.filter(item => !item.ungraded);
-  const n = graded.length;
-  if(n === 0) return;
-  const base = Math.floor(100/n);
-  graded.forEach((item,i) => { item.weight = (i === n-1) ? (100 - base*(n-1)) : base; });
+  const manual = graded.filter(item => item.manualWeight);
+  const auto = graded.filter(item => !item.manualWeight);
+  if(auto.length === 0) return;
+  const manualSum = manual.reduce((s,item) => s + (item.weight||0), 0);
+  const remaining = Math.max(0, 100 - manualSum);
+  const n = auto.length;
+  const base = Math.floor(remaining/n);
+  auto.forEach((item,i) => { item.weight = (i === n-1) ? (remaining - base*(n-1)) : base; });
 }
 function moveItem(arr, id, dir){
   const idx = arr.findIndex(x=>x.id===id);
@@ -474,8 +477,6 @@ function semesterEndnoteForStudent(cls, semester, studentId){
   }
   return semesterEndnoteAutoForStudent(cls, semester, studentId);
 }
-function catWeightSum(group){ return group.categories.reduce((s,c)=>s+(c.weight||0),0); }
-function groupWeightSum(semester){ return semester.groups.reduce((s,g)=>s+(g.weight||0),0); }
 
 // ---------- migration ----------
 function defaultOralCategories(){
@@ -846,6 +847,20 @@ function personIconSvg(){
     <circle cx="4.6" cy="10" r="2.6" fill="currentColor"/>
     <circle cx="11.4" cy="10" r="2.6" fill="currentColor"/>
     <rect x="6.6" y="9.2" width="2.8" height="1.4" fill="currentColor"/>
+  </svg>`;
+}
+function lockIconSvg(){
+  return `<svg width="10" height="10" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" style="display:inline-block;vertical-align:middle;margin-left:2px;">
+    <rect x="3" y="7" width="10" height="7.5" rx="1.3" fill="currentColor"/>
+    <path d="M5 7V4.8C5 2.7 6.5 1.2 8 1.2C9.5 1.2 11 2.7 11 4.8V7" stroke="currentColor" stroke-width="1.5" fill="none"/>
+    <circle cx="8" cy="10.5" r="1.1" fill="var(--surface)"/>
+  </svg>`;
+}
+function unlockIconSvg(){
+  return `<svg width="14" height="14" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" style="display:block;">
+    <rect x="3" y="7" width="10" height="7.5" rx="1.3" fill="currentColor"/>
+    <path d="M5 7V4.8C5 2.7 6.5 1.2 8 1.2C9.7 1.2 11 2.3 11.4 3.8" stroke="currentColor" stroke-width="1.5" fill="none" stroke-linecap="round"/>
+    <circle cx="8" cy="10.5" r="1.1" fill="var(--surface)"/>
   </svg>`;
 }
 function getActiveClass(){ return state.classes.find(c => c.id === state.activeClassId) || null; }
@@ -1285,16 +1300,6 @@ function render(){
     const showCopyBtn = cls && cls.semesters.length >= 2 && getActiveSemester(cls) !== cls.semesters[0];
     copyBtn.style.display = showCopyBtn ? '' : 'none';
   }
-  const warn = document.getElementById('weightWarn');
-  if(cls){
-    const sem = getActiveSemester(cls);
-    const gw = groupWeightSum(sem);
-    const catIssues = sem.groups.filter(g => g.categories.length && catWeightSum(g) !== 100);
-    let msgs = [];
-    if(sem.groups.length && gw !== 100) msgs.push(`Gruppen: ${gw}%`);
-    catIssues.forEach(g => msgs.push(`${g.name}: ${catWeightSum(g)}%`));
-    warn.textContent = msgs.length ? 'Gewichtung ≠ 100% — ' + msgs.join(' · ') : '';
-  } else warn.textContent = '';
   if(!cls){ main.innerHTML = `<div class="empty">Lege oben eine Lerngruppe an, um loszulegen.</div>`; document.getElementById('scalePanel').innerHTML=''; return; }
   if(state.compareView && cls.semesters.length >= 2){
     renderCompareGrid(main, cls);
@@ -1660,7 +1665,7 @@ function renderGrid(main, cls, sem){
     return `<th class="cat-head" style="${bgStyle}${selectStyle}" ${rowspan>1?`rowspan="${rowspan}"`:''} colspan="${colspan}">
       <div class="colhead">
         ${nameRow}
-        <span class="weight">${cat.weight}%${isContainerCat(cat) ? '' : ' · '+(cat.mode==='points'?'Punkte':'Note')}</span>
+        <span class="weight">${cat.weight}%${cat.manualWeight ? lockIconSvg() : ''}${isContainerCat(cat) ? '' : ' · '+(cat.mode==='points'?'Punkte':'Note')}</span>
         ${(cat.date && !isContainerCat(cat)) ? `<span class="weight">${formatDate(cat.date)}</span>` : ''}
         <div class="row" style="gap:2px;">
           ${state.positionMode ? `<button class="colx dark" data-move-cat="${cat.id}" data-group="${g.id}" data-dir="-1">‹</button>` : ''}
@@ -1921,6 +1926,7 @@ function renderGrid(main, cls, sem){
       const ok = await showConfirm('Gruppe löschen', 'Diese Gruppe inkl. aller Kategorien und Noten löschen?', {confirmLabel:'Löschen', danger:true});
       if(!ok) return;
       sem.groups = sem.groups.filter(g=>g.id!==btn.dataset.delGroup);
+      rebalanceEqualWeights(sem.groups);
       saveState(); render();
     };
   });
@@ -1984,9 +1990,34 @@ function renderGrid(main, cls, sem){
       const g = sem.groups.find(x=>x.id===el.dataset.renameGroup);
       const name = await showPrompt('Gruppe bearbeiten', 'Name der Gruppe', g.name, {confirmLabel:'Weiter'});
       if(name===null || !name.trim()) return;
-      const weightStr = await showPrompt('Gewichtung', 'Gewichtung dieser Gruppe in % (für die Endnote des Halbjahrs)', g.weight, {inputType:'number', confirmLabel:'Weiter'});
-      if(weightStr===null) return;
-      g.name = name.trim(); g.weight = parseFloat(weightStr) || 0;
+      let newGroupWeight = g.weight;
+      let skipWeightChange = false;
+      if(g.manualWeight){
+        const unlockChoice = await showChoice('Gewichtung', `Aktuell fixiert bei ${g.weight}%`, [
+          {label: 'Neuen Wert eingeben', value: 'set'},
+          {label: '🔓 Fixierung aufheben', value: 'unlock'},
+        ]);
+        if(unlockChoice === null) return;
+        if(unlockChoice === 'unlock'){
+          delete g.manualWeight;
+          rebalanceEqualWeights(sem.groups);
+          skipWeightChange = true;
+        }
+      }
+      if(!skipWeightChange){
+        const otherManualSum = sem.groups.filter(x => x.id !== g.id && x.manualWeight).reduce((s,x)=>s+(x.weight||0),0);
+        const maxAllowed = Math.max(0, 100 - otherManualSum);
+        const weightStr = await showPrompt('Gewichtung', `Gewichtung dieser Gruppe in % (für die Endnote des Halbjahrs)${otherManualSum>0?` – maximal ${maxAllowed}% möglich (andere fixierte Gruppen belegen bereits ${otherManualSum}%)`:''}`, g.weight, {inputType:'number', confirmLabel:'Weiter'});
+        if(weightStr===null) return;
+        newGroupWeight = parseFloat(weightStr) || 0;
+        if(newGroupWeight > maxAllowed){
+          await showAlert('Wert nicht möglich', `Maximal ${maxAllowed}% möglich, da andere fixierte Gruppen bereits ${otherManualSum}% belegen. Bitte einen kleineren Wert eingeben.`);
+          return;
+        }
+        g.weight = newGroupWeight; g.manualWeight = true;
+        rebalanceEqualWeights(sem.groups);
+      }
+      g.name = name.trim();
       const colorChoice = await showChoice('Farbe der Gruppenkopfzeile', g.customColor ? 'Aktuell: eigene Farbe' : 'Aktuell: Standard', [
         {label: 'Standardfarbe', value: 'default'},
         {label: g.customColor ? 'Farbe ändern' : 'Eigene Farbe wählen', value: 'custom'},
@@ -2107,27 +2138,25 @@ async function promptNewFromTemplate(defaultWeight, extraOptions){
   const [title, placeholder] = namePrompts[template];
   const name = await showPrompt(title, 'Name', '', {placeholder, confirmLabel:'Anlegen'});
   if(name===null || !name.trim()) return null;
-  const today = new Date().toISOString().slice(0,10);
   const weight = parseFloat(defaultWeight) || 0;
   switch(template){
     case 'grade':
-      return {id: uid(), name: name.trim(), weight, mode:'grade', date: today, entries: {}};
+      return {id: uid(), name: name.trim(), weight, mode:'grade', date: '', entries: {}};
     case 'points':
-      return {id: uid(), name: name.trim(), weight, mode:'points', maxPoints: 100, date: today, entries: {}};
+      return {id: uid(), name: name.trim(), weight, mode:'points', maxPoints: 100, date: '', entries: {}};
     case 'obs_graded':
-      return {id: uid(), name: name.trim(), weight, mode:'observation', ungraded: false, date: today, entries: {}};
+      return {id: uid(), name: name.trim(), weight, mode:'observation', ungraded: false, date: '', entries: {}};
     case 'obs_ungraded':
-      return {id: uid(), name: name.trim(), weight: 0, mode:'observation', ungraded: true, date: today, entries: {}};
+      return {id: uid(), name: name.trim(), weight: 0, mode:'observation', ungraded: true, date: '', entries: {}};
     case 'container':
       return {id: uid(), name: name.trim(), weight, containerOnly: true, children: [], entries: {}};
   }
 }
 async function addCategory(cls, sem, groupId){
-  const newName = await showPrompt('Neue Notengruppe', 'Name der neuen Gruppe', '', {placeholder:'z.B. Projekt', confirmLabel:'Weiter'});
+  const newName = await showPrompt('Neue Notengruppe', 'Name der neuen Gruppe', '', {placeholder:'z.B. Projekt', confirmLabel:'Anlegen'});
   if(newName === null || !newName.trim()) return;
-  const weightStr = await showPrompt('Gewichtung', 'Gewichtung dieser Gruppe in % (für die Endnote des Halbjahrs)', '20', {inputType:'number', confirmLabel:'Anlegen'});
-  if(weightStr === null) return;
-  sem.groups.push({id: uid(), name: newName.trim(), weight: parseFloat(weightStr) || 0, categories: []});
+  sem.groups.push({id: uid(), name: newName.trim(), weight: 0, categories: []});
+  rebalanceEqualWeights(sem.groups);
   saveState(); render();
 }
 async function addFirstCategoryToGroup(cls, sem, groupId){
@@ -2166,7 +2195,7 @@ async function addCategoryNear(cls, sem, groupId, catId){
     const newCat = await promptNewFromTemplate(defaultWeight);
     if(!newCat) return;
     list.push(newCat);
-    if(parentCat) rebalanceEqualWeights(list);
+    rebalanceEqualWeights(list);
     saveState(); render();
     return;
   }
@@ -2177,7 +2206,7 @@ async function addCategoryNear(cls, sem, groupId, catId){
   const newCat = await promptNewFromTemplate(defaultWeight);
   if(!newCat) return;
   list.splice(idx+1, 0, newCat);
-  if(parentCat) rebalanceEqualWeights(list);
+  rebalanceEqualWeights(list);
   saveState(); render();
 }
 function cloneCategoryForDuplicate(cat){
@@ -2191,15 +2220,18 @@ function cloneCategoryForDuplicate(cat){
 async function openCategoryMenu(cls, sem, groupId, catId){
   const ctx = findCategoryContext(sem, groupId, catId);
   if(!ctx) return;
+  const typeLabel = isContainerCat(ctx.cat) ? 'Sammelkategorie' : 'Leistungsdaten';
   let menuMessage = 'Was möchtest du tun?';
   if(ctx.cat.dateStart && ctx.cat.dateEnd){
     const active = isRangeActive(ctx.cat.dateStart, ctx.cat.dateEnd);
     menuMessage = `Quartal: ${formatDate(ctx.cat.dateStart)} – ${formatDate(ctx.cat.dateEnd)} (${active ? 'aktuell aktiv' : 'aktuell nicht aktiv'})\n${menuMessage}`;
+  } else if(!isContainerCat(ctx.cat) && ctx.cat.date){
+    menuMessage = `Datum: ${formatDate(ctx.cat.date)}\n${menuMessage}`;
   }
   const choice = await showChoice(ctx.cat.name, menuMessage, [
-    {label: 'Kategorie bearbeiten', value: 'edit'},
-    {label: 'Kategorie duplizieren', value: 'dup'},
-    {label: 'Kategorie löschen', value: 'del'},
+    {label: `${typeLabel} bearbeiten`, value: 'edit'},
+    {label: `${typeLabel} duplizieren`, value: 'dup'},
+    {label: `${typeLabel} löschen`, value: 'del'},
   ]);
   if(choice === null) return;
   if(choice === 'edit'){
@@ -2213,14 +2245,14 @@ async function openCategoryMenu(cls, sem, groupId, catId){
       const copy = cloneCategoryForDuplicate(ctx.cat);
       ctx.list.splice(idx+1+i, 0, copy);
     }
-    if(ctx.parentCat) rebalanceEqualWeights(ctx.list);
+    rebalanceEqualWeights(ctx.list);
     saveState(); render();
   } else if(choice === 'del'){
-    const ok = await showConfirm('Kategorie löschen', 'Diese Kategorie inkl. aller Noten löschen?', {confirmLabel:'Löschen', danger:true});
+    const ok = await showConfirm(`${typeLabel} löschen`, typeLabel === 'Sammelkategorie' ? 'Diese Sammelkategorie inkl. aller Unterkategorien und Noten löschen?' : 'Diese Leistungsdaten inkl. aller Noten löschen?', {confirmLabel:'Löschen', danger:true});
     if(!ok) return;
     const idx = ctx.list.findIndex(c=>c.id===catId);
     if(idx > -1) ctx.list.splice(idx, 1);
-    if(ctx.parentCat) rebalanceEqualWeights(ctx.list);
+    rebalanceEqualWeights(ctx.list);
     saveState(); render();
   }
 }
@@ -2268,55 +2300,99 @@ async function convertCategoryMode(cls, cat, newMode){
 async function editCategory(cls, sem, groupId, catId){
   const ctx = findCategoryContext(sem, groupId, catId);
   if(!ctx) return;
-  const { group: g, cat } = ctx;
-  const isContainer = isContainerCat(cat);
-  const name = await showPrompt('Kategorie bearbeiten', 'Name der Kategorie', cat.name, {confirmLabel:'Weiter'});
-  if(name===null) return;
-  const weightStr = await showPrompt('Gewichtung', `Gewichtung in % (innerhalb von "${g.name}")`, cat.weight, {inputType:'number', confirmLabel:'Weiter'});
-  if(weightStr===null) return;
-  cat.name = name.trim() || cat.name;
-  cat.weight = parseFloat(weightStr) || 0;
-  const colorSiblings = ctx.list.filter(c => c.id !== cat.id && c.bgColor);
-  const colorOptions = [
-    {label: 'Standardfarbe (kein Hintergrund)', value: 'default'},
-    {label: cat.bgColor ? 'Farbe ändern' : 'Eigene Farbe wählen', value: 'custom'},
-  ];
-  if(colorSiblings.length) colorOptions.push({label: 'Wie bei…', value: 'like'});
-  const colorChoice = await showChoice('Hintergrundfarbe der Spalte', cat.bgColor ? `Aktuell: eigene Farbe` : 'Aktuell: Standard', colorOptions);
-  if(colorChoice === 'default') { cat.bgColor = undefined; delete cat.autoColored; }
-  else if(colorChoice === 'custom'){
-    const colorVal = await pickColorDialog('Farbe für diese Spalte wählen', cat.bgColor || '#cfe8fb');
-    if(colorVal !== null){ cat.bgColor = colorVal; delete cat.autoColored; }
-  } else if(colorChoice === 'like'){
-    const likeChoice = await showChoice('Wie bei…', 'Farbe von welcher Kategorie übernehmen?', colorSiblings.map(c => ({label: c.name, value: c.bgColor})));
-    if(likeChoice !== null){ cat.bgColor = likeChoice; delete cat.autoColored; }
+  while(true){
+    const ctx2 = findCategoryContext(sem, groupId, catId);
+    if(!ctx2) return;
+    const { group: g, cat } = ctx2;
+    const isContainer = isContainerCat(cat);
+    const modeLabel = cat.mode==='points' ? 'Klausurpunkte' : cat.mode==='observation' ? 'Beobachtung' : 'Note';
+    const scaleLabel = cat.displayScale === 'noten' ? 'Noten' : cat.displayScale === 'punkte' ? 'Punkte' : 'wie Lerngruppe';
+    const options = [
+      ...(isContainer ? [] : [{label: `📅 Datum hinzufügen${cat.date ? ` (${formatDate(cat.date)})` : ''}`, value: 'date'}]),
+      {label: `Gewichtung ändern${cat.manualWeight?' 🔒':''}`, value: 'weight'},
+      {label: 'Name ändern', value: 'name'},
+      {label: `Farbe ändern${cat.bgColor?' (eigene Farbe)':''}`, value: 'color'},
+      ...(isContainer ? [] : [
+        {label: `Eingabeart ändern (Leistungsdaten)`, value: 'mode'},
+        ...(cat.mode==='points' ? [{label: `Maximalpunktzahl (${cat.maxPoints ?? 100})`, value: 'maxpoints'}] : []),
+        ...(cat.mode!=='observation' ? [{label: `Darstellung ändern (Leistungsdaten)`, value: 'scale'}] : []),
+      ]),
+      {label: 'Fertig', value: 'done'},
+    ];
+    const choice = await showChoice(isContainer ? 'Sammelkategorie bearbeiten' : 'Leistungsdaten bearbeiten', cat.name, options);
+    if(choice === null || choice === 'done') return;
+
+    if(choice === 'date'){
+      const dateStr = await showPrompt('Datum', 'Datum dieser Kategorie, leer lassen zum Entfernen', cat.date || '', {inputType:'date', confirmLabel:'Speichern'});
+      if(dateStr !== null){ cat.date = dateStr; saveState(); render(); }
+    } else if(choice === 'weight'){
+      if(cat.manualWeight){
+        const unlockChoice = await showChoice('Gewichtung', `Aktuell fixiert bei ${cat.weight}%`, [
+          {label: 'Neuen Wert eingeben', value: 'set'},
+          {label: '🔓 Fixierung aufheben', value: 'unlock'},
+        ]);
+        if(unlockChoice === null) continue;
+        if(unlockChoice === 'unlock'){
+          delete cat.manualWeight;
+          rebalanceEqualWeights(ctx2.list);
+          saveState(); render();
+          continue;
+        }
+      }
+      const otherManualSum = ctx2.list.filter(c => c.id !== cat.id && c.manualWeight && !c.ungraded).reduce((s,c)=>s+(c.weight||0),0);
+      const maxAllowed = Math.max(0, 100 - otherManualSum);
+      const weightStr = await showPrompt('Gewichtung', `Gewichtung in % (innerhalb von "${g.name}")${otherManualSum>0?` – maximal ${maxAllowed}% möglich (andere fixierte Spalten belegen bereits ${otherManualSum}%)`:''}`, cat.weight, {inputType:'number', confirmLabel:'Speichern'});
+      if(weightStr !== null){
+        const newWeight = parseFloat(weightStr) || 0;
+        if(newWeight > maxAllowed){
+          await showAlert('Wert nicht möglich', `Maximal ${maxAllowed}% möglich, da andere fixierte Spalten bereits ${otherManualSum}% belegen. Bitte einen kleineren Wert eingeben.`);
+        } else {
+          cat.weight = newWeight;
+          cat.manualWeight = true;
+          rebalanceEqualWeights(ctx2.list);
+          saveState(); render();
+        }
+      }
+    } else if(choice === 'name'){
+      const name = await showPrompt('Name', 'Name der Kategorie', cat.name, {confirmLabel:'Speichern'});
+      if(name !== null && name.trim()){ cat.name = name.trim(); saveState(); render(); }
+    } else if(choice === 'color'){
+      const colorSiblings = ctx2.list.filter(c => c.id !== cat.id && c.bgColor);
+      const colorOptions = [
+        {label: 'Standardfarbe (kein Hintergrund)', value: 'default'},
+        {label: cat.bgColor ? 'Farbe ändern' : 'Eigene Farbe wählen', value: 'custom'},
+      ];
+      if(colorSiblings.length) colorOptions.push({label: 'Wie bei…', value: 'like'});
+      const colorChoice = await showChoice('Hintergrundfarbe der Spalte', cat.bgColor ? 'Aktuell: eigene Farbe' : 'Aktuell: Standard', colorOptions);
+      if(colorChoice === 'default') { cat.bgColor = undefined; delete cat.autoColored; saveState(); render(); }
+      else if(colorChoice === 'custom'){
+        const colorVal = await pickColorDialog('Farbe für diese Spalte wählen', cat.bgColor || '#cfe8fb');
+        if(colorVal !== null){ cat.bgColor = colorVal; delete cat.autoColored; saveState(); render(); }
+      } else if(colorChoice === 'like'){
+        const likeChoice = await showChoice('Wie bei…', 'Farbe von welcher Kategorie übernehmen?', colorSiblings.map(c => ({label: c.name, value: c.bgColor})));
+        if(likeChoice !== null){ cat.bgColor = likeChoice; delete cat.autoColored; saveState(); render(); }
+      }
+    } else if(choice === 'mode'){
+      const currentModeLabel = cat.mode==='points' ? 'Klausurpunkte (automatisch berechnet)' : cat.mode==='observation' ? 'Unterrichtsbeobachtung (− ○ +)' : 'Note direkt eintragen';
+      const modeChoice = await showChoice('Eingabeart', `Aktuell: ${currentModeLabel}`, [
+        {label: 'Note direkt eintragen (mit Tendenz)', value: 'grade'},
+        {label: 'Klausurpunkte (Note wird automatisch berechnet)', value: 'points'},
+        {label: 'Unterrichtsbeobachtung (− ○ +)', value: 'observation'},
+      ]);
+      if(modeChoice !== null){ await convertCategoryMode(cls, cat, modeChoice); saveState(); render(); }
+    } else if(choice === 'maxpoints'){
+      const maxStr = await showPrompt('Maximalpunktzahl', 'Übliche maximale Punktzahl einer Klausur in dieser Kategorie', cat.maxPoints ?? 100, {inputType:'number', confirmLabel:'Speichern'});
+      if(maxStr !== null){ cat.maxPoints = parseFloat(maxStr) || cat.maxPoints; saveState(); render(); }
+    } else if(choice === 'scale'){
+      const currentLabel = cls.gradingSystem === 'punkte' ? 'Notenpunkte' : 'Noten mit Tendenz';
+      const scaleChoice = await showChoice('Darstellung (Leistungsdaten)', 'Unabhängig vom Notenschema der Lerngruppe wählbar.', [
+        {label: `Wie Lerngruppe (aktuell: ${currentLabel})`, value: ''},
+        {label: 'Noten mit Tendenz (1+ bis 6)', value: 'noten'},
+        {label: 'Notenpunkte (0-15)', value: 'punkte'},
+      ]);
+      if(scaleChoice !== null){ cat.displayScale = scaleChoice || undefined; saveState(); render(); }
+    }
   }
-  if(isContainer){ saveState(); render(); return; }
-  {
-    const currentModeLabel = cat.mode==='points' ? 'Klausurpunkte (automatisch berechnet)' : cat.mode==='observation' ? 'Unterrichtsbeobachtung (− ○ +)' : 'Note direkt eintragen';
-    const modeChoice = await showChoice('Eingabeart', `Aktuell: ${currentModeLabel}`, [
-      {label: 'Note direkt eintragen (mit Tendenz)', value: 'grade'},
-      {label: 'Klausurpunkte (Note wird automatisch berechnet)', value: 'points'},
-      {label: 'Unterrichtsbeobachtung (− ○ +)', value: 'observation'},
-    ]);
-    if(modeChoice !== null) await convertCategoryMode(cls, cat, modeChoice);
-  }
-  if(cat.mode === 'points'){
-    const maxStr = await showPrompt('Maximalpunktzahl', 'Übliche maximale Punktzahl einer Klausur in dieser Kategorie', cat.maxPoints ?? 100, {inputType:'number', confirmLabel:'Weiter'});
-    if(maxStr !== null) cat.maxPoints = parseFloat(maxStr) || cat.maxPoints;
-  }
-  if(cat.mode !== 'observation'){
-    const currentLabel = cls.gradingSystem === 'punkte' ? 'Notenpunkte' : 'Noten mit Tendenz';
-    const scaleChoice = await showChoice('Darstellung dieser Spalte', 'Unabhängig vom Notenschema der Lerngruppe wählbar', [
-      {label: `Wie Lerngruppe (aktuell: ${currentLabel})`, value: ''},
-      {label: 'Noten mit Tendenz (1+ bis 6)', value: 'noten'},
-      {label: 'Notenpunkte (0-15)', value: 'punkte'},
-    ]);
-    if(scaleChoice !== null) cat.displayScale = scaleChoice || undefined;
-  }
-  const dateStr = await showPrompt('Datum', 'Datum dieser Kategorie, leer lassen zum Entfernen', cat.date || '', {inputType:'date', confirmLabel:'Speichern'});
-  if(dateStr !== null){ cat.date = dateStr; }
-  saveState(); render();
 }
 
 // ---------- entries modal ----------
