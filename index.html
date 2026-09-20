@@ -221,6 +221,10 @@
     table.grid{font-size:10px!important;}
     .colx, .reset-arrow, [data-del-student], .add-student-row{display:none!important;}
     .compare-wrap{gap:12px!important;}
+    .konferenz-table{font-size:12px!important;width:100%!important;table-layout:auto!important;}
+    .konferenz-table th, .konferenz-table td{padding:4px 6px!important;}
+    .konferenz-table th.name-col, .konferenz-table td.name-col{text-align:left!important;width:auto!important;max-width:none!important;min-width:0!important;white-space:normal!important;}
+    .konferenz-wrap{max-width:100%!important;}
   }
 </style>
 </head>
@@ -300,7 +304,7 @@ function colorForGroupName(name){
 }
 
 function uid(){ return Math.random().toString(36).slice(2,10); }
-const APP_VERSION_INFO = 'v16.1 · Entwickler: G. Schulte';
+const APP_VERSION_INFO = 'v16.2 · Entwickler: G. Schulte';
 function setStatus(msg, isError){
   const el = document.getElementById('status');
   el.textContent = msg + ' · ' + APP_VERSION_INFO; el.style.color = isError ? 'var(--pen)' : 'var(--ink-soft)';
@@ -1607,14 +1611,14 @@ function renderKonferenztabelleHtml(cls, sem){
   const schriftlichCats = schriftlich ? schriftlich.children : [];
   let headerRow = `<tr><th class="name-col">Schüler</th>`;
   schriftlichCats.forEach(c => { headerRow += `<th class="cat-head"><div class="colhead"><span>${escapeHtml(c.name)}</span></div></th>`; });
-  headerRow += `<th class="cat-head total-head">Gesamt Schriftlich</th>`;
+  headerRow += `<th class="cat-head total-head">G</th>`;
   if(soMi1) headerRow += `<th class="cat-head"><div class="colhead"><span>SoMi 1</span></div></th>`;
   if(soMi2) headerRow += `<th class="cat-head"><div class="colhead"><span>SoMi 2</span></div></th>`;
-  headerRow += `<th class="cat-head total-head">Gesamt Mündlich</th>`;
+  headerRow += `<th class="cat-head total-head">G</th>`;
   headerRow += `<th class="endnote-col">Endnote (NT)</th></tr>`;
   let body = '';
   students.forEach(s => {
-    let row = `<tr><td class="name-col">${escapeHtml(s.name)}</td>`;
+    let row = `<tr><td class="name-col" style="text-align:left;">${escapeHtml(s.name)}</td>`;
     schriftlichCats.forEach(c => {
       const v = categoryAvgForStudent(cls, c, s.id);
       row += `<td>${notePill(cls, v, undefined, c.displayScale)}</td>`;
@@ -1629,7 +1633,7 @@ function renderKonferenztabelleHtml(cls, sem){
     row += `<td class="endnote-col">${notePill(cls, end)}</td>`;
     body += row + `</tr>`;
   });
-  return `<div class="grid-wrap"><table class="grid"><thead>${headerRow}</thead><tbody>${body}</tbody></table></div>`;
+  return `<div class="grid-wrap konferenz-wrap"><table class="grid konferenz-table"><thead>${headerRow}</thead><tbody>${body}</tbody></table></div>`;
 }
 function getSemesterStudents(cls, sem){
   if(!sem.studentIds) return cls.students.slice();
