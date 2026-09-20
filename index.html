@@ -213,7 +213,7 @@
   .print-header{display:none;}
   @media print{
     .titlebar, header.app, .toolbar, #scalePanel, #modalRoot, .status{display:none!important;}
-    body{padding-bottom:0!important;background:#fff!important;}
+    body{padding-bottom:0!important;background:#fff!important;filter:grayscale(100%);}
     main{padding:0!important;}
     .print-header{display:flex!important;gap:18px;flex-wrap:wrap;font-size:11px;margin-bottom:10px;padding-bottom:6px;border-bottom:1px solid #999;}
     table.grid th, table.grid td{white-space:normal!important;word-break:break-word;}
@@ -304,7 +304,7 @@ function colorForGroupName(name){
 }
 
 function uid(){ return Math.random().toString(36).slice(2,10); }
-const APP_VERSION_INFO = 'v16.2 · Entwickler: G. Schulte';
+const APP_VERSION_INFO = 'v16.3 · Entwickler: G. Schulte';
 function setStatus(msg, isError){
   const el = document.getElementById('status');
   el.textContent = msg + ' · ' + APP_VERSION_INFO; el.style.color = isError ? 'var(--pen)' : 'var(--ink-soft)';
@@ -1601,6 +1601,31 @@ async function downloadAsExcel(filename, sheetName, headers, rows, infoLines){
   a.href = url; a.download = filename;
   document.body.appendChild(a); a.click(); document.body.removeChild(a);
   URL.revokeObjectURL(url);
+}
+function printKonferenztabelleIsolated(cls, sem){
+  const styleEl = document.querySelector('style');
+  const styleContent = styleEl ? styleEl.innerHTML : '';
+  const bodyHtml = printHeaderHtml(cls, sem) + renderKonferenztabelleHtml(cls, sem);
+  const win = window.open('', '_blank');
+  if(!win){
+    showAlert('Fehler', 'Popup wurde blockiert. Bitte Popups für diese Seite erlauben und erneut versuchen.');
+    return false;
+  }
+  win.document.open();
+  win.document.write(`<!DOCTYPE html><html><head><meta charset="utf-8"><title>Konferenztabelle</title>
+    <style>${styleContent}
+      @page{size:A4 portrait;margin:10mm;}
+      html, body{background:#fff!important;filter:grayscale(100%);-webkit-print-color-adjust:exact;print-color-adjust:exact;}
+      .konferenz-table{font-size:12px!important;width:100%!important;table-layout:auto!important;}
+      .konferenz-table th, .konferenz-table td{padding:4px 6px!important;}
+      .konferenz-table th.name-col, .konferenz-table td.name-col{text-align:left!important;width:auto!important;max-width:none!important;min-width:0!important;white-space:normal!important;}
+      .konferenz-wrap{max-width:100%!important;max-height:none!important;overflow:visible!important;box-shadow:none!important;border:none!important;}
+      .print-header{display:flex;gap:18px;flex-wrap:wrap;font-size:11px;margin-bottom:10px;padding-bottom:6px;border-bottom:1px solid #999;}
+    </style>
+  </head><body>${bodyHtml}</body></html>`);
+  win.document.close();
+  win.onload = () => { win.focus(); win.print(); };
+  return true;
 }
 function renderKonferenztabelleHtml(cls, sem){
   const schriftlich = findGroupByName(sem, 'schriftlich');
@@ -3415,17 +3440,16 @@ document.getElementById('printBtn').onclick = async () => {
   if(methodChoice === 'pdf'){
     await showAlert('Als PDF speichern', 'Im nächsten Fenster als Ziel/Drucker "Als PDF sichern" (bzw. "Auf iPad sichern" o.ä.) auswählen statt eines echten Druckers.');
   }
-  const main = document.getElementById('main');
   if(reportChoice === 'konferenz'){
     try{
-      main.innerHTML = printHeaderHtml(cls, sem) + renderKonferenztabelleHtml(cls, sem);
+      printKonferenztabelleIsolated(cls, sem);
     }catch(err){
       await showAlert('Fehler', 'Konferenztabelle konnte nicht erzeugt werden: ' + err.message);
-      return;
     }
-  } else {
-    main.insertAdjacentHTML('afterbegin', printHeaderHtml(cls, sem));
+    return;
   }
+  const main = document.getElementById('main');
+  main.insertAdjacentHTML('afterbegin', printHeaderHtml(cls, sem));
   scaleTablesForPrint();
   window.print();
   let restored = false;
