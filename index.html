@@ -57,7 +57,7 @@
     background:var(--surface);position:sticky;top:38px;z-index:30;
   }
   .class-row{display:flex;gap:8px;align-items:center;}
-  select, input[type=text], input[type=number], input[type=date], textarea{
+  select, input[type=text], input[type=number], input[type=date], input[type=password], textarea{
     font-family:inherit;font-size:0.92rem;padding:8px 12px;border:1px solid var(--line);
     border-radius:9px;background:var(--surface-soft);color:var(--ink);
   }
@@ -180,10 +180,10 @@
     padding:7px;background:var(--surface);border-top:1px solid var(--line);}
   .overlay{position:fixed;inset:0;background:rgba(20,20,22,0.5);z-index:50;display:flex;align-items:flex-end;justify-content:center;
     backdrop-filter:blur(2px);-webkit-backdrop-filter:blur(2px);}
-  @media(min-width:640px){.overlay{align-items:center;}}
+  @media(min-width:480px){.overlay{align-items:center;}}
   .modal{background:var(--surface);border-radius:16px 16px 0 0;width:100%;max-width:420px;max-height:80vh;
     overflow-y:auto;padding:20px;box-shadow:0 10px 40px rgba(0,0,0,.25);}
-  @media(min-width:640px){.modal{border-radius:16px;}}
+  @media(min-width:480px){.modal{border-radius:16px;}}
   .modal h3{font-size:1.05rem;margin-bottom:4px;}
   .modal .sub{color:var(--ink-soft);font-size:0.82rem;margin-bottom:12px;white-space:pre-line;}
   .entry-row{display:flex;gap:8px;align-items:center;padding:7px 0;border-bottom:1px solid var(--line);}
@@ -241,7 +241,6 @@
 </header>
 
 <div class="toolbar">
-  <button class="ghost small" id="addGroupBtn">+Notengruppe</button>
   <button class="ghost small" id="positionModeBtn">↕ Position</button>
   <button class="ghost small" id="copyStructureBtn">⇄ Struktur aus 1. HJ übernehmen</button>
   <button class="ghost small" id="toggleScaleBtn">Notenschema</button>
@@ -294,7 +293,7 @@ function colorForGroupName(name){
 }
 
 function uid(){ return Math.random().toString(36).slice(2,10); }
-const APP_VERSION_INFO = 'v12.8 · Entwickler: G. Schulte';
+const APP_VERSION_INFO = 'v13.6 · Entwickler: G. Schulte';
 function setStatus(msg, isError){
   const el = document.getElementById('status');
   el.textContent = msg + ' · ' + APP_VERSION_INFO; el.style.color = isError ? 'var(--pen)' : 'var(--ink-soft)';
@@ -609,16 +608,7 @@ function saveState(){
     }catch(e){ setStatus('Speichern fehlgeschlagen – Speicher evtl. voll.', true); }
   }, 250);
 }
-// ---------- Backup-Verschlüsselung (Web Crypto, Passwort nur im Arbeitsspeicher) ----------
-let backupPassword = null; // nur für diese Sitzung, wird nie gespeichert
-const BACKUP_ENCRYPTION_KEY = 'notenbuch-backup-encryption-enabled';
-function loadBackupEncryptionEnabled(){
-  try{ return localStorage.getItem(BACKUP_ENCRYPTION_KEY) === '1'; }catch(e){ return false; }
-}
-function saveBackupEncryptionEnabled(on){
-  try{ localStorage.setItem(BACKUP_ENCRYPTION_KEY, on ? '1' : '0'); }catch(e){}
-}
-let backupEncryptionEnabled = loadBackupEncryptionEnabled();
+// ---------- Backup-Verschlüsselung (Web Crypto, Passwort wird bei jedem Backup neu abgefragt) ----------
 function bufToBase64(buf){
   let binary = '';
   const bytes = new Uint8Array(buf);
@@ -653,56 +643,23 @@ async function decryptBackupJson(encryptedObj, password){
   const plainBuf = await crypto.subtle.decrypt({name:'AES-GCM', iv}, key, base64ToBuf(encryptedObj.data));
   return new TextDecoder().decode(plainBuf);
 }
-async function ensureBackupPassword(promptIfMissing){
-  if(backupPassword) return backupPassword;
-  if(!promptIfMissing) return null;
-  const pw = await showPrompt('Backup-Passwort', 'Passwort für die Backup-Verschlüsselung eingeben (gilt für diese Sitzung)', '', {inputType:'password', confirmLabel:'Weiter'});
-  if(pw === null || !pw) return null;
-  backupPassword = pw;
-  return pw;
-}
-async function openBackupPasswordSettings(){
-  const status = backupEncryptionEnabled ? 'Verschlüsselung: An' : 'Verschlüsselung: Aus';
-  const passwordStatus = backupPassword ? ' (Passwort für diese Sitzung gesetzt)' : (backupEncryptionEnabled ? ' (Passwort wird beim nächsten Backup abgefragt)' : '');
-  const choice = await showChoice('Backup-Passwort', status + passwordStatus, [
-    {label: backupEncryptionEnabled ? 'Passwort ändern' : 'Verschlüsselung einschalten', value: 'set'},
-    ...(backupEncryptionEnabled ? [{label: 'Verschlüsselung ausschalten', value: 'off'}] : []),
-  ]);
-  if(choice === null) return;
-  if(choice === 'set'){
-    const pw = await showPrompt('Backup-Passwort', 'Neues Passwort eingeben (gilt nur für diese Sitzung, wird nirgends gespeichert)', '', {inputType:'password', confirmLabel:'Speichern'});
-    if(pw === null || !pw) return;
-    backupPassword = pw;
-    backupEncryptionEnabled = true;
-    saveBackupEncryptionEnabled(true);
-    await showAlert('Gespeichert', 'Backups werden ab jetzt automatisch verschlüsselt, solange diese Sitzung läuft. Nach einem Neuladen der Seite musst du das Passwort einmal neu eingeben.');
-  } else if(choice === 'off'){
-    backupEncryptionEnabled = false;
-    backupPassword = null;
-    saveBackupEncryptionEnabled(false);
-  }
-}
 function exportBackup(){
-  try{
-    const data = JSON.stringify({classes: state.classes, exportedAt: new Date().toISOString()}, null, 2);
-    const stamp = new Date().toISOString().slice(0,10);
-    if(backupEncryptionEnabled){
-      (async () => {
-        const pw = await ensureBackupPassword(true);
-        if(!pw){ setStatus('Export abgebrochen (kein Passwort).', true); return; }
-        try{
-          const encryptedStr = await encryptBackupJson(data, pw);
-          await downloadBlobAsFile(encryptedStr, `notenbuch-backup-verschluesselt-${stamp}.json`);
-          setStatus('Verschlüsseltes Backup exportiert · ' + new Date().toLocaleTimeString('de-DE'));
-        }catch(e){ setStatus('Verschlüsselung fehlgeschlagen.', true); }
-      })();
-      return;
-    }
-    (async () => {
-      await downloadBlobAsFile(data, `notenbuch-backup-${stamp}.json`);
-      setStatus('Backup exportiert · ' + new Date().toLocaleTimeString('de-DE'));
-    })();
-  }catch(e){ setStatus('Export fehlgeschlagen.', true); }
+  (async () => {
+    const pw = await showPrompt('Backup erstellen', 'Passwort eingeben für verschlüsseltes Backup. Optional frei lassen (NICHT empfohlen!!!)', '', {inputType:'password', confirmLabel:'Backup erstellen'});
+    if(pw === null) return;
+    try{
+      const data = JSON.stringify({classes: state.classes, exportedAt: new Date().toISOString()}, null, 2);
+      const stamp = new Date().toISOString().slice(0,10);
+      if(pw && pw.trim()){
+        const encryptedStr = await encryptBackupJson(data, pw.trim());
+        await downloadBlobAsFile(encryptedStr, `notenbuch-backup-verschluesselt-${stamp}.json`);
+        setStatus('Verschlüsseltes Backup exportiert · ' + new Date().toLocaleTimeString('de-DE'));
+      } else {
+        await downloadBlobAsFile(data, `notenbuch-backup-${stamp}.json`);
+        setStatus('Backup exportiert · ' + new Date().toLocaleTimeString('de-DE'));
+      }
+    }catch(e){ setStatus('Export fehlgeschlagen.', true); }
+  })();
 }
 async function downloadBlobAsFile(str, filename){
   const blob = new Blob([str], {type: 'application/json'});
@@ -763,16 +720,15 @@ function importBackup(file){
       let rawObj = JSON.parse(reader.result);
       if(rawObj && rawObj.encrypted){
         let decrypted = null;
-        let pw = await ensureBackupPassword(true);
-        while(pw && !decrypted){
+        let pw = await showPrompt('Backup-Passwort', 'Dieses Backup ist verschlüsselt. Passwort eingeben.', '', {inputType:'password', confirmLabel:'Entschlüsseln'});
+        while(pw !== null && pw && !decrypted){
           try{
             const plainStr = await decryptBackupJson(rawObj, pw);
             decrypted = JSON.parse(plainStr);
           }catch(e){
-            backupPassword = null;
             const retry = await showConfirm('Falsches Passwort', 'Entschlüsselung fehlgeschlagen. Erneut versuchen?', {confirmLabel:'Erneut versuchen'});
             if(!retry) return;
-            pw = await ensureBackupPassword(true);
+            pw = await showPrompt('Backup-Passwort', 'Passwort erneut eingeben.', '', {inputType:'password', confirmLabel:'Entschlüsseln'});
           }
         }
         if(!decrypted) return;
@@ -905,7 +861,11 @@ function showDialog(opts){
     let body = '';
     if(message) body += `<div class="sub">${escapeHtml(message)}</div>`;
     if(type === 'prompt'){
-      body += `<div style="margin-top:12px;"><input type="${inputType}" id="dlgInput" style="width:100%;" value="${escapeHtml(String(defaultValue))}" placeholder="${escapeHtml(placeholder)}"></div>`;
+      if(inputType === 'password'){
+        body += `<div style="margin-top:12px;position:relative;"><input type="password" id="dlgInput" style="width:100%;padding-right:36px;" value="${escapeHtml(String(defaultValue))}" placeholder="${escapeHtml(placeholder)}"><button type="button" id="dlgPwToggle" title="Passwort anzeigen" style="position:absolute;right:4px;top:50%;transform:translateY(-50%);width:26px;height:26px;padding:0;display:inline-flex;align-items:center;justify-content:center;background:transparent;border:none;color:var(--ink-soft);">${eyeIconSvg(false)}</button></div>`;
+      } else {
+        body += `<div style="margin-top:12px;"><input type="${inputType}" id="dlgInput" style="width:100%;" value="${escapeHtml(String(defaultValue))}" placeholder="${escapeHtml(placeholder)}"></div>`;
+      }
     }
     if(type === 'choice'){
       body += `<div class="dlg-choices">${options.map((o,i) => `<button type="button" class="dlg-choice-btn" data-choice-idx="${i}">${escapeHtml(o.label)}</button>`).join('')}</div>`;
@@ -931,6 +891,16 @@ function showDialog(opts){
       const inp = document.getElementById('dlgInput');
       setTimeout(() => { inp.focus(); inp.select(); }, 30);
       inp.addEventListener('keydown', (e) => { if(e.key==='Enter') okBtn.click(); });
+      const pwToggle = document.getElementById('dlgPwToggle');
+      if(pwToggle){
+        let visible = false;
+        pwToggle.onclick = () => {
+          visible = !visible;
+          inp.type = visible ? 'text' : 'password';
+          pwToggle.innerHTML = eyeIconSvg(!visible);
+          pwToggle.title = visible ? 'Passwort verbergen' : 'Passwort anzeigen';
+        };
+      }
     }
     if(type === 'choice'){
       root.querySelectorAll('[data-choice-idx]').forEach(btn => {
@@ -1306,7 +1276,6 @@ function render(){
   const main = document.getElementById('main');
   const prevWraps = Array.from(main.querySelectorAll('.grid-wrap'));
   const prevScrolls = prevWraps.map(w => w.scrollLeft);
-  document.getElementById('addGroupBtn').disabled = !cls;
   document.getElementById('toggleScaleBtn').disabled = !cls;
   document.getElementById('positionModeBtn').disabled = !cls;
   document.getElementById('positionModeBtn').classList.toggle('active-toggle', state.positionMode);
@@ -1651,7 +1620,7 @@ function renderGrid(main, cls, sem){
       </th>`;
       return;
     }
-    const span = g.categories.reduce((s,c)=>s+catWidth(c), 0) + 1;
+    const span = g.categories.length === 0 ? 2 : g.categories.reduce((s,c)=>s+catWidth(c), 0) + 1;
     const groupSelected = state.colorizeMode && isColorizeSelected('group', g.id);
     const groupSelectStyle = groupSelected ? 'box-shadow:inset 0 0 0 3px var(--accent);' : '';
     groupHeadRow += `<th class="grp-head" colspan="${span}" style="background:${(g.customColor || colorForGroupName(g.name))};${groupSelectStyle}">
@@ -1734,15 +1703,20 @@ function renderGrid(main, cls, sem){
     for(let r=0; r<maxDepth; r++){
       catRowStrings[r] += (r===0 ? groupRowSets[0] : '');
     }
-    g.categories.forEach(cat => {
-      const rowSet = buildCatRows(cat, g, 0, undefined);
-      for(let r=0; r<maxDepth; r++){ catRowStrings[r] += rowSet[r] || ''; }
-    });
+    if(g.categories.length === 0){
+      const placeholderCell = `<th class="cat-head" ${maxDepth>1?`rowspan="${maxDepth}"`:''}><div class="colhead"><button class="colx dark" data-add-first-cat="${g.id}" style="width:auto;height:auto;padding:6px 10px;border-radius:14px;white-space:nowrap;">+ Kategorie hinzufügen</button></div></th>`;
+      catRowStrings[0] += placeholderCell;
+    } else {
+      g.categories.forEach(cat => {
+        const rowSet = buildCatRows(cat, g, 0, undefined);
+        for(let r=0; r<maxDepth; r++){ catRowStrings[r] += rowSet[r] || ''; }
+      });
+    }
   });
   const catHeaderRows = catRowStrings.map(r => `<tr>${r}</tr>`).join('');
 
   let body = '';
-  const colCount = 2 + groups.reduce((s,g)=>s+(g.collapsed ? 1 : g.categories.reduce((s2,c)=>s2+catWidth(c),0)+1),0);
+  const colCount = 2 + groups.reduce((s,g)=>s+(g.collapsed ? 1 : (g.categories.length === 0 ? 2 : g.categories.reduce((s2,c)=>s2+catWidth(c),0)+1)),0);
   const term = state.searchTerm.trim().toLowerCase();
   const semStudents = getSemesterStudents(cls, sem);
   let visibleStudents = term ? semStudents.filter(s=>s.name.toLowerCase().includes(term)) : semStudents;
@@ -1848,7 +1822,11 @@ function renderGrid(main, cls, sem){
         const rowLighten = GRADIENT_STEP + rowProgress * ADDITIONAL_ROW_FADE;
         const groupGesamtColorBody = lightenColor(groupColorBody, rowLighten);
         row += `<td class="total-col" style="background:${groupGesamtColorBody};"><div class="cell-stack" data-open-group="${g.id}" data-student="${s.id}">${gPillHtml}${badge}${(borderlineEnabled && gOverridden) ? `<button class="reset-arrow" data-reset-group="${g.id}" data-student="${s.id}" title="Automatische Berechnung wiederherstellen"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style="display:block;"><rect x="4" y="2" width="16" height="20" rx="2" stroke="currentColor" stroke-width="2.2"/><rect x="7" y="5" width="10" height="4" rx="0.8" fill="currentColor"/><circle cx="7.6" cy="13.2" r="1.15" fill="currentColor"/><circle cx="12" cy="13.2" r="1.15" fill="currentColor"/><circle cx="16.4" cy="13.2" r="1.15" fill="currentColor"/><circle cx="7.6" cy="17.4" r="1.15" fill="currentColor"/><circle cx="12" cy="17.4" r="1.15" fill="currentColor"/><circle cx="16.4" cy="17.4" r="1.15" fill="currentColor"/></svg></button>` : ''}</div></td>`;
-        g.categories.forEach(cat => { row += catCell(cat, g, s, 0, undefined, rowLighten); });
+        if(g.categories.length === 0){
+          row += `<td></td>`;
+        } else {
+          g.categories.forEach(cat => { row += catCell(cat, g, s, 0, undefined, rowLighten); });
+        }
       });
       body += row + `</tr>`;
     });
@@ -2022,6 +2000,7 @@ function renderGrid(main, cls, sem){
     };
   });
   main.querySelectorAll('[data-add-cat]').forEach(btn=>{ btn.onclick = () => addCategory(cls, sem, btn.dataset.addCat); });
+  main.querySelectorAll('[data-add-first-cat]').forEach(btn=>{ btn.onclick = () => addFirstCategoryToGroup(cls, sem, btn.dataset.addFirstCat); });
   main.querySelectorAll('[data-add-near-cat]').forEach(btn=>{ btn.onclick = () => addCategoryNear(cls, sem, btn.dataset.group, btn.dataset.addNearCat); });
   main.querySelectorAll('[data-edit-cat]').forEach(el=>{
     el.onclick = () => {
@@ -2106,15 +2085,18 @@ function renderGrid(main, cls, sem){
   }
 }
 
-async function promptNewFromTemplate(defaultWeight){
-  const template = await showChoice('Was hinzufügen?', '', [
+async function promptNewFromTemplate(defaultWeight, extraOptions){
+  const options = [
     {label: '📝 Note direkt eintragen', value: 'grade'},
     {label: '🔢 Klausurpunkte', value: 'points'},
     {label: '✓ Beobachtung (mit Wertung)', value: 'obs_graded'},
     {label: '✓ Beobachtung (ohne Wertung)', value: 'obs_ungraded'},
     {label: '📁 Sammelkategorie', value: 'container'},
-  ]);
+    ...(extraOptions || []),
+  ];
+  const template = await showChoice('Was hinzufügen?', '', options);
   if(template === null) return null;
+  if(template === 'newgroup') return {special: 'newgroup'};
   const namePrompts = {
     grade: ['Note direkt eintragen', 'z.B. Klausur 1 oder Beitrag 12.03.'],
     points: ['Klausurpunkte', 'z.B. Klausur 1'],
@@ -2141,11 +2123,19 @@ async function promptNewFromTemplate(defaultWeight){
   }
 }
 async function addCategory(cls, sem, groupId){
+  const newName = await showPrompt('Neue Notengruppe', 'Name der neuen Gruppe', '', {placeholder:'z.B. Projekt', confirmLabel:'Weiter'});
+  if(newName === null || !newName.trim()) return;
+  const weightStr = await showPrompt('Gewichtung', 'Gewichtung dieser Gruppe in % (für die Endnote des Halbjahrs)', '20', {inputType:'number', confirmLabel:'Anlegen'});
+  if(weightStr === null) return;
+  sem.groups.push({id: uid(), name: newName.trim(), weight: parseFloat(weightStr) || 0, categories: []});
+  saveState(); render();
+}
+async function addFirstCategoryToGroup(cls, sem, groupId){
   const g = sem.groups.find(x=>x.id===groupId);
   const defaultWeight = (g.name||'').trim().toLowerCase()==='schriftlich' ? '50' : '10';
-  const newCat = await promptNewFromTemplate(defaultWeight);
-  if(!newCat) return;
-  g.categories.push(newCat);
+  const result = await promptNewFromTemplate(defaultWeight);
+  if(!result) return;
+  g.categories.push(result);
   saveState(); render();
 }
 async function addCategoryNear(cls, sem, groupId, catId){
@@ -2871,18 +2861,6 @@ function renderScalePanel(cls){
 }
 
 // ---------- global wiring ----------
-document.getElementById('addGroupBtn').onclick = async () => {
-  const cls = getActiveClass(); if(!cls) return;
-  const sem = getActiveSemester(cls);
-  const name = await showPrompt('Neue Gruppe', 'Name der Gruppe', '', {placeholder:'z.B. Praxis', confirmLabel:'Weiter'});
-  if(name===null || !name.trim()) return;
-  const weightStr = await showPrompt('Gewichtung', `Gewichtung dieser Gruppe in % (für die Endnote von "${sem.name}")`, '50', {inputType:'number', confirmLabel:'Anlegen'});
-  if(weightStr===null) return;
-  const weight = parseFloat(weightStr) || 0;
-  const color = GROUP_COLORS[sem.groups.length % GROUP_COLORS.length];
-  sem.groups.push({id: uid(), name: name.trim(), color, weight, categories: []});
-  saveState(); render();
-};
 function cloneCategoryStructure(c){
   return {id: uid(), name: c.name, weight: c.weight, mode: c.mode, maxPoints: c.maxPoints, date: c.date, entries: {}, bgColor: c.bgColor, displayScale: c.displayScale,
     children: c.children ? c.children.map(cloneCategoryStructure) : undefined};
@@ -3151,12 +3129,9 @@ async function resetAllData(){
   );
   if(typed !== 'RESET') return;
   try{ localStorage.removeItem(STORAGE_KEY); }catch(e){}
-  try{ localStorage.removeItem(BACKUP_ENCRYPTION_KEY); }catch(e){}
   try{ localStorage.removeItem(BORDERLINE_KEY); }catch(e){}
   try{ localStorage.removeItem(SECURITY_INFO_HIDE_KEY); }catch(e){}
   try{ localStorage.removeItem(NN_MAP_KEY); }catch(e){}
-  backupPassword = null;
-  backupEncryptionEnabled = false;
   borderlineEnabled = false;
   state.classes = [];
   state.activeClassId = null;
@@ -3202,7 +3177,6 @@ document.getElementById('dataManagementBtn').onclick = async () => {
     {label: '⟲ Alles zurücksetzen', value: 'reset'},
     {label: 'Export für Excel', value: 'excel'},
     {label: 'Export für externe Tabelle (Zusatztool)', value: 'notennachweis'},
-    {label: '🔒 Backup-Passwort', value: 'backuppw'},
     {label: '🎲 Demomodus', value: 'demo'},
   ];
   const choice = await showChoice('Datenverwaltung', '', options);
@@ -3211,7 +3185,6 @@ document.getElementById('dataManagementBtn').onclick = async () => {
   else if(choice === 'backup') exportBackup();
   else if(choice === 'restore') document.getElementById('importFile').click();
   else if(choice === 'reset') resetAllData();
-  else if(choice === 'backuppw'){ await openBackupPasswordSettings(); }
   else if(choice === 'demo'){ await generateDemoClass(); }
   else if(choice === 'zeitraeume'){
     if(!cls){ await showAlert('Keine Lerngruppe', 'Bitte zuerst eine Lerngruppe auswählen.'); return; }
