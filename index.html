@@ -304,7 +304,7 @@ function colorForGroupName(name){
 }
 
 function uid(){ return Math.random().toString(36).slice(2,10); }
-const APP_VERSION_INFO = 'v16.3 · Entwickler: G. Schulte';
+const APP_VERSION_INFO = 'v16.4 · Entwickler: G. Schulte';
 function setStatus(msg, isError){
   const el = document.getElementById('status');
   el.textContent = msg + ' · ' + APP_VERSION_INFO; el.style.color = isError ? 'var(--pen)' : 'var(--ink-soft)';
@@ -1624,7 +1624,7 @@ function printKonferenztabelleIsolated(cls, sem){
     </style>
   </head><body>${bodyHtml}</body></html>`);
   win.document.close();
-  win.onload = () => { win.focus(); win.print(); };
+  setTimeout(() => { win.focus(); win.print(); }, 300);
   return true;
 }
 function renderKonferenztabelleHtml(cls, sem){
