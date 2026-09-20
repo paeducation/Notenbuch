@@ -251,10 +251,12 @@
     </label>
   </span>
   <button class="ghost small" id="quickBackupBtn" title="Backup jetzt herunterladen">💾</button>
+  <button class="ghost small" id="undoBtn" title="Letzte Änderung rückgängig machen" disabled>↩️ Rückgängig</button>
   <button class="ghost small" id="borderlineToggleBtn">🎯 Grenzfälle</button>
   <button class="ghost small" id="dataManagementBtn">🗂 Datenverwaltung</button>
   <input type="file" id="csvImportFile" accept=".csv,text/csv" style="position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0;">
   <button class="ghost small" id="printBtn">🖨 Drucken</button>
+  <button class="ghost small icon-btn" id="helpBtn" title="Begriffe erklärt">?</button>
   <input type="file" id="importFile" accept=".json,application/json" style="position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0;">
 </div>
 
@@ -292,7 +294,7 @@ function colorForGroupName(name){
 }
 
 function uid(){ return Math.random().toString(36).slice(2,10); }
-const APP_VERSION_INFO = 'v15.1 · Entwickler: G. Schulte';
+const APP_VERSION_INFO = 'v15.5 · Entwickler: G. Schulte';
 function setStatus(msg, isError){
   const el = document.getElementById('status');
   el.textContent = msg + ' · ' + APP_VERSION_INFO; el.style.color = isError ? 'var(--pen)' : 'var(--ink-soft)';
@@ -436,7 +438,7 @@ function categoryAvgForStudent(cls, cat, studentId){
 }
 function groupGesamtAutoForStudent(cls, group, studentId){
   let weighted = 0, weightSum = 0;
-  group.categories.forEach(cat => {
+  group.children.forEach(cat => {
     const a = categoryAvgForStudent(cls, cat, studentId);
     if(a !== null){ weighted += a * (cat.weight||0); weightSum += (cat.weight||0); }
   });
@@ -500,15 +502,15 @@ function defaultWrittenCategories(stufe){
 }
 function defaultGroups(stufe){
   return [
-    {id: uid(), name: 'Mündlich', color: GROUP_COLORS[0], customColor: '#A8BDCC', weight: 50, locked: true, categories: defaultOralCategories()},
-    {id: uid(), name: 'Schriftlich', color: GROUP_COLORS[1], weight: 50, locked: true, categories: defaultWrittenCategories(stufe)},
+    {id: uid(), name: 'Mündlich', color: GROUP_COLORS[0], bgColor: '#A8BDCC', weight: 50, locked: true, children: defaultOralCategories()},
+    {id: uid(), name: 'Schriftlich', color: GROUP_COLORS[1], weight: 50, locked: true, children: defaultWrittenCategories(stufe)},
   ];
 }
 function ensureDefaultGroups(sem){
   const names = sem.groups.map(g => (g.name||'').trim().toLowerCase());
   const toAdd = [];
-  if(!names.includes('mündlich')) toAdd.push({id: uid(), name: 'Mündlich', color: GROUP_COLORS[0], customColor: '#A8BDCC', weight: 50, locked: true, categories: defaultOralCategories()});
-  if(!names.includes('schriftlich')) toAdd.push({id: uid(), name: 'Schriftlich', color: GROUP_COLORS[1], weight: 50, locked: true, categories: defaultWrittenCategories()});
+  if(!names.includes('mündlich')) toAdd.push({id: uid(), name: 'Mündlich', color: GROUP_COLORS[0], bgColor: '#A8BDCC', weight: 50, locked: true, children: defaultOralCategories()});
+  if(!names.includes('schriftlich')) toAdd.push({id: uid(), name: 'Schriftlich', color: GROUP_COLORS[1], weight: 50, locked: true, children: defaultWrittenCategories()});
   sem.groups = [...toAdd, ...sem.groups];
 }
 function ensureSemesterShape(sem, cls){
@@ -527,8 +529,11 @@ function ensureSemesterShape(sem, cls){
     if(c.children) c.children.forEach(fixCat);
   }
   sem.groups.forEach(g => {
+    if(g.categories && !g.children){ g.children = g.categories; delete g.categories; }
+    if(g.customColor !== undefined && g.bgColor === undefined){ g.bgColor = g.customColor; delete g.customColor; }
+    if(!g.children) g.children = [];
     if(g.weight === undefined) g.weight = Math.round(100/Math.max(sem.groups.length,1));
-    g.categories.forEach(fixCat);
+    g.children.forEach(fixCat);
   });
   if(!sem.studentIds) sem.studentIds = cls.students.map(s=>s.id);
   if(!sem.endnoteOverrides) sem.endnoteOverrides = {};
@@ -559,7 +564,7 @@ function migrateClass(cls){
       });
       return {id: uid(), name: ex.title, weight: w, mode: 'points', maxPoints: 100, date: ex.date||'', entries};
     });
-    legacyGroups.push({id: uid(), name: 'Klausuren', color: GROUP_COLORS[0], weight: 50, categories: cats});
+    legacyGroups.push({id: uid(), name: 'Klausuren', color: GROUP_COLORS[0], weight: 50, children: cats});
   }
   if(Array.isArray(cls.oralCategories) && cls.oralCategories.length){
     const w = Math.round(100/Math.max(cls.oralCategories.length,1));
@@ -571,7 +576,7 @@ function migrateClass(cls){
       });
       return {id: uid(), name: oc.name, weight: w, mode: 'grade', entries};
     });
-    legacyGroups.push({id: uid(), name: 'Mündlich', color: GROUP_COLORS[1], weight: 50, categories: cats});
+    legacyGroups.push({id: uid(), name: 'Mündlich', color: GROUP_COLORS[1], weight: 50, children: cats});
   }
   legacyGroups.forEach(g => { if(g.weight===undefined) g.weight = Math.round(100/Math.max(legacyGroups.length,1)); });
   const sem1 = {id: uid(), name: '1. HJ', groups: legacyGroups, studentIds: cls.students.map(s=>s.id), endnoteColor: '#F2F2F2'};
@@ -597,17 +602,49 @@ async function loadState(){
   }catch(e){ state.classes = []; }
   if(state.schoolYear === undefined) state.schoolYear = '';
   if(state.classes.length && !state.activeClassId) state.activeClassId = state.classes[0].id;
+  lastSnapshot = JSON.stringify({classes: state.classes, activeClassId: state.activeClassId, schoolYear: state.schoolYear});
   setStatus('Zuletzt gespeichert: ' + new Date().toLocaleTimeString('de-DE'));
 }
 let saveTimer = null;
+let lastSnapshot = null;
+const undoStack = [];
+const MAX_UNDO = 20;
 function saveState(){
   clearTimeout(saveTimer);
   saveTimer = setTimeout(() => {
     try{
-      localStorage.setItem(STORAGE_KEY, JSON.stringify({classes: state.classes, activeClassId: state.activeClassId, schoolYear: state.schoolYear}));
+      const newSnapshot = JSON.stringify({classes: state.classes, activeClassId: state.activeClassId, schoolYear: state.schoolYear});
+      if(lastSnapshot !== null && lastSnapshot !== newSnapshot){
+        undoStack.push(lastSnapshot);
+        if(undoStack.length > MAX_UNDO) undoStack.shift();
+        updateUndoButtonState();
+      }
+      lastSnapshot = newSnapshot;
+      localStorage.setItem(STORAGE_KEY, newSnapshot);
       setStatus('Gespeichert · ' + new Date().toLocaleTimeString('de-DE'));
     }catch(e){ setStatus('Speichern fehlgeschlagen – Speicher evtl. voll.', true); }
   }, 250);
+}
+function undoLastChange(){
+  if(!undoStack.length) return;
+  const prevSnapshot = undoStack.pop();
+  try{
+    const parsed = JSON.parse(prevSnapshot);
+    state.classes = parsed.classes || [];
+    state.activeClassId = parsed.activeClassId;
+    state.schoolYear = parsed.schoolYear || '';
+    lastSnapshot = prevSnapshot;
+    localStorage.setItem(STORAGE_KEY, prevSnapshot);
+    const schoolYearInput = document.getElementById('schoolYearInput');
+    if(schoolYearInput) schoolYearInput.value = state.schoolYear;
+    render();
+    updateUndoButtonState();
+    setStatus('Rückgängig gemacht · ' + new Date().toLocaleTimeString('de-DE'));
+  }catch(e){ setStatus('Rückgängig machen fehlgeschlagen.', true); }
+}
+function updateUndoButtonState(){
+  const btn = document.getElementById('undoBtn');
+  if(btn) btn.disabled = undoStack.length === 0;
 }
 // ---------- Backup-Verschlüsselung (Web Crypto, Passwort wird bei jedem Backup neu abgefragt) ----------
 function bufToBase64(buf){
@@ -695,7 +732,7 @@ function stripCategoryToStructure(c){
 function stripGroupToStructure(g){
   return {
     id: uid(), name: g.name, color: g.color, weight: g.weight, locked: g.locked || false,
-    overrides: {}, categories: (g.categories || []).map(stripCategoryToStructure)
+    overrides: {}, children: (g.children || []).map(stripCategoryToStructure)
   };
 }
 function stripSemesterToStructure(sem){
@@ -1346,13 +1383,13 @@ function findCategoryContext(sem, groupId, catId){
     }
     return null;
   }
-  return search(g.categories, null);
+  return search(g.children, null);
 }
 function findGroupByName(sem, name){
   return sem.groups.find(g => (g.name||'').trim().toLowerCase() === name.toLowerCase());
 }
 function findCategoryByName(group, name){
-  return group ? group.categories.find(c => (c.name||'').trim().toLowerCase() === name.toLowerCase()) : null;
+  return group ? group.children.find(c => (c.name||'').trim().toLowerCase() === name.toLowerCase()) : null;
 }
 function findSomiCategoriesForClass(cls){
   const sem1 = cls.semesters[0], sem2 = cls.semesters[1];
@@ -1458,7 +1495,7 @@ function buildKonferenzExportData(cls, sem){
   const soMi1 = findCategoryByName(muendlich, 'somi 1');
   const soMi2 = findCategoryByName(muendlich, 'somi 2');
   const students = getSemesterStudents(cls, sem);
-  const schriftlichCats = schriftlich ? schriftlich.categories : [];
+  const schriftlichCats = schriftlich ? schriftlich.children : [];
   const headers = ['Schüler'];
   schriftlichCats.forEach(c => headers.push(c.name));
   headers.push('Gesamt Schriftlich');
@@ -1489,7 +1526,7 @@ function buildFullExportData(cls, sem){
       colDefs.push({type:'cat', cat});
       if(cat.children) cat.children.forEach(ch => walk(ch, `${label} - ${ch.name}`));
     }
-    g.categories.forEach(cat => walk(cat, cat.name));
+    g.children.forEach(cat => walk(cat, cat.name));
   });
   const rows = students.map(s => {
     const row = [s.name, excelCellForValue(cls, semesterEndnoteForStudent(cls, sem, s.id))];
@@ -1554,7 +1591,7 @@ function renderKonferenztabelleHtml(cls, sem){
   const soMi1 = findCategoryByName(muendlich, 'somi 1');
   const soMi2 = findCategoryByName(muendlich, 'somi 2');
   const students = getSemesterStudents(cls, sem);
-  const schriftlichCats = schriftlich ? schriftlich.categories : [];
+  const schriftlichCats = schriftlich ? schriftlich.children : [];
   let headerRow = `<tr><th class="name-col">Schüler</th>`;
   schriftlichCats.forEach(c => { headerRow += `<th class="cat-head"><div class="colhead"><span>${escapeHtml(c.name)}</span></div></th>`; });
   headerRow += `<th class="cat-head total-head">Gesamt Schriftlich</th>`;
@@ -1602,7 +1639,7 @@ function catDepth(cat){
 }
 function maxCatDepth(groups){
   let d = 1;
-  groups.forEach(g => g.categories.forEach(c => { d = Math.max(d, catDepth(c)); }));
+  groups.forEach(g => g.children.forEach(c => { d = Math.max(d, catDepth(c)); }));
   return d;
 }
 
@@ -1617,7 +1654,7 @@ function renderGrid(main, cls, sem){
   let groupHeadRow = `<tr><th class="name-col" rowspan="${topRowspan}" style="${sem.studentColColor?`background:${sem.studentColColor};`:''}${studentColSelectStyle}"><div class="colhead-wrap" style="min-height:100px;"><input type="text" id="searchStudent" placeholder="Suchen…" value="${escapeHtml(state.searchTerm||'')}" style="position:absolute;top:4px;left:50%;transform:translateX(-50%);width:90%;max-width:120px;font-size:0.72rem;padding:3px 6px;z-index:2;"><div data-select-student-col style="min-height:100px;display:flex;flex-direction:column;justify-content:center;align-items:center;gap:2px;cursor:${state.colorizeMode?'pointer':'default'};">Schüler${studentColSelected ? ' ✓' : ''}${state.selectedStudentId ? `<button class="colx dark ${state.incognito?'active-toggle':''}" data-toggle-incognito title="${state.incognito?'Inkognito ausschalten':'Inkognito einschalten (nur markierten Schüler zeigen)'}" style="display:inline-flex;align-items:center;justify-content:center;padding:0 2px;margin-top:6px;width:auto;height:auto;">${personIconSvg()}</button>` : ''}</div></div></th><th class="endnote-col" rowspan="${topRowspan}" data-edit-endnote-color style="cursor:pointer;${sem.endnoteColor?`background:${sem.endnoteColor};`:''}"><div class="endnote-head">Endnote<br><span class="weight">${sem.name}</span></div></th>`;
   groups.forEach(g => {
     if(g.collapsed){
-      groupHeadRow += `<th class="grp-head collapsed-col" rowspan="${topRowspan}" style="background:${(g.customColor || colorForGroupName(g.name))};">
+      groupHeadRow += `<th class="grp-head collapsed-col" rowspan="${topRowspan}" style="background:${(g.bgColor || colorForGroupName(g.name))};">
         <div class="grp-inner" style="flex-direction:column;gap:6px;padding:4px 0;width:32px;max-width:32px;overflow:hidden;margin:0 auto;">
           <span data-rename-group="${g.id}" style="cursor:pointer;writing-mode:vertical-rl;font-size:0.62rem;">${escapeHtml(g.name)}</span>
           <button class="colx" data-toggle-group-collapse="${g.id}" title="Einblenden" style="display:inline-flex;align-items:center;">${eyeIconSvg(true)}</button>
@@ -1625,10 +1662,10 @@ function renderGrid(main, cls, sem){
       </th>`;
       return;
     }
-    const span = g.categories.length === 0 ? 2 : g.categories.reduce((s,c)=>s+catWidth(c), 0) + 1;
+    const span = g.children.length === 0 ? 2 : g.children.reduce((s,c)=>s+catWidth(c), 0) + 1;
     const groupSelected = state.colorizeMode && isColorizeSelected('group', g.id);
     const groupSelectStyle = groupSelected ? 'box-shadow:inset 0 0 0 3px var(--accent);' : '';
-    groupHeadRow += `<th class="grp-head" colspan="${span}" style="background:${(g.customColor || colorForGroupName(g.name))};${groupSelectStyle}">
+    groupHeadRow += `<th class="grp-head" colspan="${span}" style="background:${(g.bgColor || colorForGroupName(g.name))};${groupSelectStyle}">
       <div class="grp-head-wrap">
         <div class="grp-inner">
           ${state.positionMode ? `<button class="colx" data-move-group="${g.id}" data-dir="-1">‹</button>` : ''}
@@ -1702,17 +1739,17 @@ function renderGrid(main, cls, sem){
   const catRowStrings = new Array(maxDepth).fill('');
   groups.forEach(g => {
     if(g.collapsed) return;
-    const groupColor = g.customColor || colorForGroupName(g.name);
+    const groupColor = g.bgColor || colorForGroupName(g.name);
     const groupGesamtColor = lightenColor(groupColor, GRADIENT_STEP);
     const groupRowSets = [`<th class="cat-head total-head" style="background:${groupGesamtColor};position:relative;" ${maxDepth>1?`rowspan="${maxDepth}"`:''}><button class="colx" data-toggle-group-collapse="${g.id}" title="Ausblenden" style="position:absolute;left:50%;top:8px;transform:translateX(-50%);display:inline-flex;align-items:center;justify-content:center;width:16px;height:16px;padding:0;background:#fff;border:1px solid var(--line);box-shadow:0 1px 2px rgba(0,0,0,.15);border-radius:4px;color:var(--ink);">${eyeIconSvg(false)}</button></th>`];
     for(let r=0; r<maxDepth; r++){
       catRowStrings[r] += (r===0 ? groupRowSets[0] : '');
     }
-    if(g.categories.length === 0){
+    if(g.children.length === 0){
       const placeholderCell = `<th class="cat-head" ${maxDepth>1?`rowspan="${maxDepth}"`:''}><div class="colhead"><button class="colx dark" data-add-first-cat="${g.id}" style="width:auto;height:auto;padding:6px 10px;border-radius:14px;white-space:nowrap;">+ Kategorie hinzufügen</button></div></th>`;
       catRowStrings[0] += placeholderCell;
     } else {
-      g.categories.forEach(cat => {
+      g.children.forEach(cat => {
         const rowSet = buildCatRows(cat, g, 0, undefined);
         for(let r=0; r<maxDepth; r++){ catRowStrings[r] += rowSet[r] || ''; }
       });
@@ -1721,7 +1758,7 @@ function renderGrid(main, cls, sem){
   const catHeaderRows = catRowStrings.map(r => `<tr>${r}</tr>`).join('');
 
   let body = '';
-  const colCount = 2 + groups.reduce((s,g)=>s+(g.collapsed ? 1 : (g.categories.length === 0 ? 2 : g.categories.reduce((s2,c)=>s2+catWidth(c),0)+1)),0);
+  const colCount = 2 + groups.reduce((s,g)=>s+(g.collapsed ? 1 : (g.children.length === 0 ? 2 : g.children.reduce((s2,c)=>s2+catWidth(c),0)+1)),0);
   const term = state.searchTerm.trim().toLowerCase();
   const semStudents = getSemesterStudents(cls, sem);
   let visibleStudents = term ? semStudents.filter(s=>s.name.toLowerCase().includes(term)) : semStudents;
@@ -1822,15 +1859,15 @@ function renderGrid(main, cls, sem){
             }
           }
         }
-        const groupColorBody = g.customColor || colorForGroupName(g.name);
+        const groupColorBody = g.bgColor || colorForGroupName(g.name);
         const rowProgress = visibleStudents.length > 1 ? rowIdx / (visibleStudents.length - 1) : 0;
         const rowLighten = GRADIENT_STEP + rowProgress * ADDITIONAL_ROW_FADE;
         const groupGesamtColorBody = lightenColor(groupColorBody, rowLighten);
         row += `<td class="total-col" style="background:${groupGesamtColorBody};"><div class="cell-stack" data-open-group="${g.id}" data-student="${s.id}">${gPillHtml}${badge}${(borderlineEnabled && gOverridden) ? `<button class="reset-arrow" data-reset-group="${g.id}" data-student="${s.id}" title="Automatische Berechnung wiederherstellen"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style="display:block;"><rect x="4" y="2" width="16" height="20" rx="2" stroke="currentColor" stroke-width="2.2"/><rect x="7" y="5" width="10" height="4" rx="0.8" fill="currentColor"/><circle cx="7.6" cy="13.2" r="1.15" fill="currentColor"/><circle cx="12" cy="13.2" r="1.15" fill="currentColor"/><circle cx="16.4" cy="13.2" r="1.15" fill="currentColor"/><circle cx="7.6" cy="17.4" r="1.15" fill="currentColor"/><circle cx="12" cy="17.4" r="1.15" fill="currentColor"/><circle cx="16.4" cy="17.4" r="1.15" fill="currentColor"/></svg></button>` : ''}</div></td>`;
-        if(g.categories.length === 0){
+        if(g.children.length === 0){
           row += `<td></td>`;
         } else {
-          g.categories.forEach(cat => { row += catCell(cat, g, s, 0, undefined, rowLighten); });
+          g.children.forEach(cat => { row += catCell(cat, g, s, 0, undefined, rowLighten); });
         }
       });
       body += row + `</tr>`;
@@ -1911,7 +1948,7 @@ function renderGrid(main, cls, sem){
         cls.semesters.forEach(sm => {
           sm.groups.forEach(g => {
             if(g.overrides) delete g.overrides[id];
-            g.categories.forEach(purge);
+            g.children.forEach(purge);
           });
           if(sm.endnoteOverrides) delete sm.endnoteOverrides[id];
         });
@@ -2018,14 +2055,14 @@ function renderGrid(main, cls, sem){
         rebalanceEqualWeights(sem.groups);
       }
       g.name = name.trim();
-      const colorChoice = await showChoice('Farbe der Gruppenkopfzeile', g.customColor ? 'Aktuell: eigene Farbe' : 'Aktuell: Standard', [
+      const colorChoice = await showChoice('Farbe der Gruppenkopfzeile', g.bgColor ? 'Aktuell: eigene Farbe' : 'Aktuell: Standard', [
         {label: 'Standardfarbe', value: 'default'},
-        {label: g.customColor ? 'Farbe ändern' : 'Eigene Farbe wählen', value: 'custom'},
+        {label: g.bgColor ? 'Farbe ändern' : 'Eigene Farbe wählen', value: 'custom'},
       ]);
-      if(colorChoice === 'default') g.customColor = undefined;
+      if(colorChoice === 'default') g.bgColor = undefined;
       else if(colorChoice === 'custom'){
-        const colorVal = await pickColorDialog('Farbe für diese Gruppe wählen', g.customColor || colorForGroupName(g.name));
-        if(colorVal !== null) g.customColor = colorVal;
+        const colorVal = await pickColorDialog('Farbe für diese Gruppe wählen', g.bgColor || colorForGroupName(g.name));
+        if(colorVal !== null) g.bgColor = colorVal;
       }
       saveState(); render();
     };
@@ -2155,7 +2192,7 @@ async function promptNewFromTemplate(defaultWeight, extraOptions){
 async function addCategory(cls, sem, groupId){
   const newName = await showPrompt('Neue Notengruppe', 'Name der neuen Gruppe', '', {placeholder:'z.B. Projekt', confirmLabel:'Anlegen'});
   if(newName === null || !newName.trim()) return;
-  sem.groups.push({id: uid(), name: newName.trim(), weight: 0, categories: []});
+  sem.groups.push({id: uid(), name: newName.trim(), weight: 0, children: []});
   rebalanceEqualWeights(sem.groups);
   saveState(); render();
 }
@@ -2164,7 +2201,7 @@ async function addFirstCategoryToGroup(cls, sem, groupId){
   const defaultWeight = (g.name||'').trim().toLowerCase()==='schriftlich' ? '50' : '10';
   const result = await promptNewFromTemplate(defaultWeight);
   if(!result) return;
-  g.categories.push(result);
+  g.children.push(result);
   saveState(); render();
 }
 async function addCategoryNear(cls, sem, groupId, catId){
@@ -2190,7 +2227,7 @@ async function addCategoryNear(cls, sem, groupId, catId){
     return;
   }
 
-  // 'neben' – sibling within the same list (top-level categories, or the same set of sub-categories)
+  // 'neben' – sibling within the same list (top-level children, or the same set of sub-children)
   if(!list.length){
     const newCat = await promptNewFromTemplate(defaultWeight);
     if(!newCat) return;
@@ -2494,7 +2531,7 @@ function collectSelectableCategories(sem){
     list.push({id: cat.id, label});
     if(cat.children) cat.children.forEach(child => walk(child, group, label));
   }
-  sem.groups.forEach(g => { g.categories.forEach(cat => walk(cat, g, null)); });
+  sem.groups.forEach(g => { g.children.forEach(cat => walk(cat, g, null)); });
   return list;
 }
 function collectObservationEntriesForStudent(sem, studentId){
@@ -2508,7 +2545,7 @@ function collectObservationEntriesForStudent(sem, studentId){
     }
     if(cat.children) cat.children.forEach(child => walk(child, `${pathLabel} → ${child.name}`));
   }
-  sem.groups.forEach(g => { g.categories.forEach(cat => walk(cat, `${g.name} → ${cat.name}`)); });
+  sem.groups.forEach(g => { g.children.forEach(cat => walk(cat, `${g.name} → ${cat.name}`)); });
   return results;
 }
 function studentHasObservationNotes(sem, studentId){
@@ -2552,7 +2589,7 @@ function findCatByIdInSemester(sem, catId){
     if(cat.id === catId){ found = cat; return; }
     if(cat.children) cat.children.forEach(walk);
   }
-  sem.groups.forEach(g => g.categories.forEach(walk));
+  sem.groups.forEach(g => g.children.forEach(walk));
   return found;
 }
 function punkteValueToNoteText(punkteVal){
@@ -2943,8 +2980,8 @@ function cloneCategoryStructure(c){
 }
 function cloneGroupsStructure(groups){
   return groups.map(g => ({
-    id: uid(), name: g.name, color: g.color, customColor: g.customColor, weight: g.weight, locked: g.locked || false,
-    categories: g.categories.map(cloneCategoryStructure)
+    id: uid(), name: g.name, color: g.color, bgColor: g.bgColor, weight: g.weight, locked: g.locked || false,
+    children: g.children.map(cloneCategoryStructure)
   }));
 }
 document.getElementById('copyStructureBtn').onclick = async () => {
@@ -2967,14 +3004,14 @@ function comboColorsForNumber(n){
 function parentReferenceColorFor(sem, sel){
   if(sel.type === 'group'){
     const g = sem.groups.find(x => x.id === sel.id);
-    return g ? (g.customColor || colorForGroupName(g.name)) : null;
+    return g ? (g.bgColor || colorForGroupName(g.name)) : null;
   }
   if(sel.type === 'studentcol') return null;
   const ctx = findCategoryContext(sem, sel.groupId, sel.id);
   if(!ctx) return null;
   if(ctx.parentCat && ctx.parentCat.bgColor) return ctx.parentCat.bgColor;
   const g = sem.groups.find(x => x.id === sel.groupId);
-  return g ? (g.customColor || colorForGroupName(g.name)) : null;
+  return g ? (g.bgColor || colorForGroupName(g.name)) : null;
 }
 document.getElementById('colorizeSammelBtn').onclick = () => {
   if(!state.colorizeMode) return;
@@ -3013,7 +3050,7 @@ document.getElementById('colorizeSammelBtn').onclick = () => {
     members.forEach(sel => {
       if(sel.type === 'group'){
         const g = sem.groups.find(x => x.id === sel.id);
-        if(g) g.customColor = color;
+        if(g) g.bgColor = color;
       } else if(sel.type === 'studentcol'){
         sem.studentColColor = color;
       } else {
@@ -3043,6 +3080,18 @@ document.getElementById('colorizeToggle').onchange = (e) => {
   render();
 };
 document.getElementById('quickBackupBtn').onclick = exportBackup;
+document.getElementById('undoBtn').onclick = undoLastChange;
+document.getElementById('helpBtn').onclick = async () => {
+  await showAlert('Begriffe erklärt',
+    'Notengruppe – oberste Ebene (Mündlich/Schriftlich/eigene). Fließt direkt in die Endnote ein.\n\n' +
+    'Sammelkategorie – reiner Überbau innerhalb einer Notengruppe, zeigt nur eine berechnete Note, nie direkt eingetragen.\n\n' +
+    'Leistungsdaten – eine einzelne, echte Notenspalte (Note, Klausurpunkte oder Beobachtung).\n\n' +
+    'Eingabeart – wie eine Note eingegeben wird (Note/Punkte/Beobachtung).\n\n' +
+    'Darstellung – wie eine Note nur angezeigt wird, unabhängig von der Eingabe.\n\n' +
+    'Notenschema – die Skala der ganzen Lerngruppe (Noten 1-6 oder Notenpunkte 0-15).\n\n' +
+    'Grenzfälle – zeigt bei knappen Ergebnissen eine Empfehlung statt einer festen Note an.'
+  );
+};
 document.getElementById('borderlineToggleBtn').onclick = () => {
   borderlineEnabled = !borderlineEnabled;
   saveBorderlineToggle(borderlineEnabled);
@@ -3177,10 +3226,10 @@ async function generateDemoClass(){
   const studentIds = students.map(s=>s.id);
   function buildSemester(name){
     const groups = [
-      {id: uid(), name:'Mündlich', color: GROUP_COLORS[0], customColor: '#A8BDCC', weight:50, locked:true, categories: buildDemoOralCategories()},
-      {id: uid(), name:'Schriftlich', color: GROUP_COLORS[1], weight:50, locked:true, categories: buildDemoWrittenCategories()},
+      {id: uid(), name:'Mündlich', color: GROUP_COLORS[0], bgColor: '#A8BDCC', weight:50, locked:true, children: buildDemoOralCategories()},
+      {id: uid(), name:'Schriftlich', color: GROUP_COLORS[1], weight:50, locked:true, children: buildDemoWrittenCategories()},
     ];
-    groups.forEach(g => g.categories.forEach(cat => demoFillEntries(cat, studentIds)));
+    groups.forEach(g => g.children.forEach(cat => demoFillEntries(cat, studentIds)));
     return {id: uid(), name, groups, studentIds: [...studentIds], endnoteColor: '#F2F2F2'};
   }
   const sem1 = buildSemester('1. HJ');
