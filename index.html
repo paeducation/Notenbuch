@@ -251,7 +251,13 @@
     </label>
   </span>
   <button class="ghost small" id="quickBackupBtn" title="Backup jetzt herunterladen">💾</button>
-  <button class="ghost small" id="undoBtn" title="Letzte Änderung rückgängig machen" disabled>↩️ Rückgängig</button>
+  <span style="display:inline-flex;align-items:center;gap:8px;font-family:inherit;font-size:0.78rem;font-weight:600;padding:6px 8px 6px 14px;border-radius:20px;border:1px solid var(--line);background:var(--surface);color:var(--ink);box-shadow:var(--shadow);white-space:nowrap;">
+    <span id="undoBtn" style="cursor:default;opacity:0.5;">↩️ Rückgängig</span>
+    <label class="mini-toggle" title="Ein-/Ausschalten (Sicherung gegen versehentliches Tippen)">
+      <input type="checkbox" id="undoToggle">
+      <span class="mini-slider"></span>
+    </label>
+  </span>
   <button class="ghost small" id="borderlineToggleBtn">🎯 Grenzfälle</button>
   <button class="ghost small" id="dataManagementBtn">🗂 Datenverwaltung</button>
   <input type="file" id="csvImportFile" accept=".csv,text/csv" style="position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0;">
@@ -294,7 +300,7 @@ function colorForGroupName(name){
 }
 
 function uid(){ return Math.random().toString(36).slice(2,10); }
-const APP_VERSION_INFO = 'v15.5 · Entwickler: G. Schulte';
+const APP_VERSION_INFO = 'v15.7 · Entwickler: G. Schulte';
 function setStatus(msg, isError){
   const el = document.getElementById('status');
   el.textContent = msg + ' · ' + APP_VERSION_INFO; el.style.color = isError ? 'var(--pen)' : 'var(--ink-soft)';
@@ -638,13 +644,20 @@ function undoLastChange(){
     const schoolYearInput = document.getElementById('schoolYearInput');
     if(schoolYearInput) schoolYearInput.value = state.schoolYear;
     render();
+    undoArmed = false;
+    const toggle = document.getElementById('undoToggle');
+    if(toggle) toggle.checked = false;
     updateUndoButtonState();
     setStatus('Rückgängig gemacht · ' + new Date().toLocaleTimeString('de-DE'));
   }catch(e){ setStatus('Rückgängig machen fehlgeschlagen.', true); }
 }
+let undoArmed = false;
 function updateUndoButtonState(){
   const btn = document.getElementById('undoBtn');
-  if(btn) btn.disabled = undoStack.length === 0;
+  if(!btn) return;
+  const active = undoArmed && undoStack.length > 0;
+  btn.style.opacity = active ? '1' : '0.5';
+  btn.style.cursor = active ? 'pointer' : 'default';
 }
 // ---------- Backup-Verschlüsselung (Web Crypto, Passwort wird bei jedem Backup neu abgefragt) ----------
 function bufToBase64(buf){
@@ -1665,7 +1678,7 @@ function renderGrid(main, cls, sem){
     const span = g.children.length === 0 ? 2 : g.children.reduce((s,c)=>s+catWidth(c), 0) + 1;
     const groupSelected = state.colorizeMode && isColorizeSelected('group', g.id);
     const groupSelectStyle = groupSelected ? 'box-shadow:inset 0 0 0 3px var(--accent);' : '';
-    groupHeadRow += `<th class="grp-head" colspan="${span}" style="background:${(g.bgColor || colorForGroupName(g.name))};${groupSelectStyle}">
+    groupHeadRow += `<th class="grp-head" colspan="${span}" data-select-group="${g.id}" style="background:${(g.bgColor || colorForGroupName(g.name))};${groupSelectStyle}">
       <div class="grp-head-wrap">
         <div class="grp-inner">
           ${state.positionMode ? `<button class="colx" data-move-group="${g.id}" data-dir="-1">‹</button>` : ''}
@@ -1693,14 +1706,14 @@ function renderGrid(main, cls, sem){
       const isContainer = cat.children && cat.children.length;
       const collapsedEye = isContainer ? `<button class="colx dark" data-toggle-cat-collapse="${cat.id}" data-group="${g.id}" title="Einblenden" style="display:inline-flex;align-items:center;justify-content:center;padding:0;width:16px;height:16px;">${eyeIconSvg(true)}</button>` : '';
       return `<th class="cat-head collapsed-col" style="${bgStyle}${selectStyle}" ${rowspan>1?`rowspan="${rowspan}"`:''} colspan="1">
-        <div class="colhead" style="flex-direction:column;gap:6px;padding:4px 0;width:32px;max-width:32px;overflow:hidden;margin:0 auto;">
+        <div class="colhead" data-select-cat="${cat.id}" data-group="${g.id}" style="flex-direction:column;gap:6px;padding:4px 0;width:32px;max-width:32px;overflow:hidden;margin:0 auto;">
           <span data-edit-cat="${cat.id}" data-group="${g.id}" title="Antippen: bearbeiten, duplizieren oder löschen" style="writing-mode:vertical-rl;font-size:0.68rem;cursor:pointer;">${dateRangeDotHtml(cat)}${escapeHtml(cat.name)}${selectMark}</span>
           ${collapsedEye}
         </div>
       </th>`;
     }
     return `<th class="cat-head" style="${bgStyle}${selectStyle}" ${rowspan>1?`rowspan="${rowspan}"`:''} colspan="${colspan}">
-      <div class="colhead">
+      <div class="colhead" data-select-cat="${cat.id}" data-group="${g.id}">
         ${nameRow}
         <span class="weight">${cat.weight}%${cat.manualWeight ? lockIconSvg() : ''}${isContainerCat(cat) ? '' : ' · '+(cat.mode==='points'?'Punkte':'Note')}</span>
         ${(cat.date && !isContainerCat(cat)) ? `<span class="weight">${formatDate(cat.date)}</span>` : ''}
@@ -2019,11 +2032,7 @@ function renderGrid(main, cls, sem){
   });
   main.querySelectorAll('[data-rename-group]').forEach(el=>{
     el.onclick = async () => {
-      if(state.colorizeMode){
-        toggleColorizeSelection('group', el.dataset.renameGroup, null);
-        render();
-        return;
-      }
+      if(state.colorizeMode) return;
       const g = sem.groups.find(x=>x.id===el.dataset.renameGroup);
       const name = await showPrompt('Gruppe bearbeiten', 'Name der Gruppe', g.name, {confirmLabel:'Weiter'});
       if(name===null || !name.trim()) return;
@@ -2072,12 +2081,24 @@ function renderGrid(main, cls, sem){
   main.querySelectorAll('[data-add-near-cat]').forEach(btn=>{ btn.onclick = () => addCategoryNear(cls, sem, btn.dataset.group, btn.dataset.addNearCat); });
   main.querySelectorAll('[data-edit-cat]').forEach(el=>{
     el.onclick = () => {
-      if(state.colorizeMode){
-        toggleColorizeSelection('cat', el.dataset.editCat, el.dataset.group);
-        render();
-        return;
-      }
+      if(state.colorizeMode) return;
       openCategoryMenu(cls, sem, el.dataset.group, el.dataset.editCat);
+    };
+  });
+  main.querySelectorAll('[data-select-cat]').forEach(el=>{
+    el.onclick = (e) => {
+      if(!state.colorizeMode) return;
+      if(e.target.closest('button')) return;
+      toggleColorizeSelection('cat', el.dataset.selectCat, el.dataset.group);
+      render();
+    };
+  });
+  main.querySelectorAll('[data-select-group]').forEach(el=>{
+    el.onclick = (e) => {
+      if(!state.colorizeMode) return;
+      if(e.target.closest('button')) return;
+      toggleColorizeSelection('group', el.dataset.selectGroup, null);
+      render();
     };
   });
   main.querySelectorAll('[data-open-entries]').forEach(el=>{ el.onclick = () => openEntriesModal(cls, sem, el.dataset.group, el.dataset.cat, el.dataset.student); });
@@ -3080,7 +3101,14 @@ document.getElementById('colorizeToggle').onchange = (e) => {
   render();
 };
 document.getElementById('quickBackupBtn').onclick = exportBackup;
-document.getElementById('undoBtn').onclick = undoLastChange;
+document.getElementById('undoBtn').onclick = () => {
+  if(!undoArmed || !undoStack.length) return;
+  undoLastChange();
+};
+document.getElementById('undoToggle').onchange = (e) => {
+  undoArmed = e.target.checked;
+  updateUndoButtonState();
+};
 document.getElementById('helpBtn').onclick = async () => {
   await showAlert('Begriffe erklärt',
     'Notengruppe – oberste Ebene (Mündlich/Schriftlich/eigene). Fließt direkt in die Endnote ein.\n\n' +
