@@ -30,6 +30,7 @@
   h1,h2,h3{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;font-weight:700;margin:0;letter-spacing:-0.01em;}
   .mono{font-family:ui-monospace,'SF Mono',Menlo,monospace;}
 
+  #appRoot.idle-blurred{filter:blur(22px);pointer-events:none;user-select:none;transition:filter .3s;}
   .titlebar{
     display:flex;align-items:center;justify-content:center;gap:8px;
     padding:9px 14px;background:linear-gradient(#FBFBFC,#F1F1F3);
@@ -235,6 +236,7 @@
   <span id="pinForgotLink" style="font-size:0.78rem;color:var(--ink-soft);cursor:pointer;text-decoration:underline;margin-top:10px;">PIN vergessen?</span>
 </div>
 
+<div id="appRoot">
 <div class="titlebar">
   <div class="dots"><span class="dot" style="background:#FF5F57;"></span><span class="dot" style="background:#FEBC2E;"></span><span class="dot" style="background:#28C840;"></span></div>
   <h1>Notenbuch</h1>
@@ -280,6 +282,7 @@
 <div id="scalePanel"></div>
 <div id="modalRoot"></div>
 <div class="status" id="status">Wird geladen …</div>
+</div>
 
 <script>
 const STORAGE_KEY = 'classes';
@@ -310,7 +313,7 @@ function colorForGroupName(name){
 }
 
 function uid(){ return Math.random().toString(36).slice(2,10); }
-const APP_VERSION_INFO = 'v17.2 · Entwickler: G. Schulte';
+const APP_VERSION_INFO = 'v17.3 · Entwickler: G. Schulte';
 function setStatus(msg, isError){
   const el = document.getElementById('status');
   el.textContent = msg + ' · ' + APP_VERSION_INFO; el.style.color = isError ? 'var(--pen)' : 'var(--ink-soft)';
@@ -677,13 +680,15 @@ async function hashPin(pin){
 function getPinHash(){
   try{ return localStorage.getItem(PIN_HASH_KEY); }catch(e){ return null; }
 }
-async function checkPinLockOnStart(){
+async function showPinLockScreen(){
   const hash = getPinHash();
   if(!hash) return;
   const overlay = document.getElementById('pinLockOverlay');
   overlay.style.display = 'flex';
   const input = document.getElementById('pinLockInput');
   const errorEl = document.getElementById('pinLockError');
+  input.value = '';
+  errorEl.textContent = '';
   await new Promise(resolve => {
     const tryUnlock = async () => {
       const entered = input.value.trim();
@@ -705,6 +710,43 @@ async function checkPinLockOnStart(){
     };
     setTimeout(() => input.focus(), 100);
   });
+}
+async function checkPinLockOnStart(){
+  await showPinLockScreen();
+}
+// ---------- Automatisches Verschwommen-Machen bei Inaktivität (Beamer-Schutz) ----------
+const IDLE_BLUR_MS = 60000;
+let idleBlurTimer = null;
+let isBlurredNow = false;
+function applyIdleBlur(){
+  if(isBlurredNow) return;
+  isBlurredNow = true;
+  document.getElementById('appRoot').classList.add('idle-blurred');
+  (async () => {
+    if(getPinHash()){
+      await showPinLockScreen();
+    } else {
+      await new Promise(resolve => {
+        const clear = () => { document.removeEventListener('click', clear); document.removeEventListener('touchstart', clear); resolve(); };
+        document.addEventListener('click', clear, {once:true});
+        document.addEventListener('touchstart', clear, {once:true});
+      });
+    }
+    document.getElementById('appRoot').classList.remove('idle-blurred');
+    isBlurredNow = false;
+    resetIdleBlurTimer();
+  })();
+}
+function resetIdleBlurTimer(){
+  clearTimeout(idleBlurTimer);
+  if(isBlurredNow) return;
+  idleBlurTimer = setTimeout(applyIdleBlur, IDLE_BLUR_MS);
+}
+function initIdleBlurWatcher(){
+  ['click','touchstart','keydown','mousemove','scroll'].forEach(evt => {
+    document.addEventListener(evt, () => { if(!isBlurredNow) resetIdleBlurTimer(); }, {passive:true});
+  });
+  resetIdleBlurTimer();
 }
 async function setupPinLock(){
   const hasPin = !!getPinHash();
@@ -3552,6 +3594,7 @@ window.addEventListener('resize', syncStickyOffsets);
   render();
   syncStickyOffsets();
   autoCheckForUpdateSilently();
+  initIdleBlurWatcher();
 })();
 if('serviceWorker' in navigator){
   window.addEventListener('load', () => { navigator.serviceWorker.register('sw.js').catch(()=>{}); });
