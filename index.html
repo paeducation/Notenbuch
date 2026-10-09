@@ -271,7 +271,7 @@
     </label>
   </span>
   <button class="ghost small" id="borderlineToggleBtn">🎯 Grenzfälle</button>
-  <button class="ghost small" id="dataManagementBtn">🗂 Datenverwaltung</button>
+  <button class="ghost small" id="dataManagementBtn">🗂 Verwaltung</button>
   <input type="file" id="csvImportFile" accept=".csv,text/csv" style="position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0;">
   <button class="ghost small" id="printBtn">🖨 Drucken</button>
   <button class="ghost small icon-btn" id="helpBtn" title="Begriffe erklärt">?</button>
@@ -313,7 +313,7 @@ function colorForGroupName(name){
 }
 
 function uid(){ return Math.random().toString(36).slice(2,10); }
-const APP_VERSION_INFO = 'v17.3 · Entwickler: G. Schulte';
+const APP_VERSION_INFO = 'v17.4 · Entwickler: G. Schulte';
 function setStatus(msg, isError){
   const el = document.getElementById('status');
   el.textContent = msg + ' · ' + APP_VERSION_INFO; el.style.color = isError ? 'var(--pen)' : 'var(--ink-soft)';
@@ -715,7 +715,29 @@ async function checkPinLockOnStart(){
   await showPinLockScreen();
 }
 // ---------- Automatisches Verschwommen-Machen bei Inaktivität (Beamer-Schutz) ----------
-const IDLE_BLUR_MS = 60000;
+const IDLE_BLUR_SECONDS_KEY = 'notenbuch-idle-blur-seconds';
+function getIdleBlurSeconds(){
+  try{
+    const v = parseInt(localStorage.getItem(IDLE_BLUR_SECONDS_KEY), 10);
+    return (v && v > 0) ? v : 60;
+  }catch(e){ return 60; }
+}
+function setIdleBlurSeconds(sec){
+  try{ localStorage.setItem(IDLE_BLUR_SECONDS_KEY, String(sec)); }catch(e){}
+}
+async function setupIdleBlurTime(){
+  const current = getIdleBlurSeconds();
+  const secStr = await showPrompt('Sperr-Zeit', 'Nach wie vielen Sekunden Inaktivität soll die App unscharf werden?', current, {inputType:'number', confirmLabel:'Speichern'});
+  if(secStr === null) return;
+  const sec = parseInt(secStr, 10);
+  if(!sec || sec < 5){
+    await showAlert('Ungültiger Wert', 'Bitte mindestens 5 Sekunden angeben.');
+    return;
+  }
+  setIdleBlurSeconds(sec);
+  resetIdleBlurTimer();
+  await showAlert('Gespeichert', `Die App wird jetzt nach ${sec} Sekunden Inaktivität unscharf.`);
+}
 let idleBlurTimer = null;
 let isBlurredNow = false;
 function applyIdleBlur(){
@@ -740,7 +762,7 @@ function applyIdleBlur(){
 function resetIdleBlurTimer(){
   clearTimeout(idleBlurTimer);
   if(isBlurredNow) return;
-  idleBlurTimer = setTimeout(applyIdleBlur, IDLE_BLUR_MS);
+  idleBlurTimer = setTimeout(applyIdleBlur, getIdleBlurSeconds() * 1000);
 }
 function initIdleBlurWatcher(){
   ['click','touchstart','keydown','mousemove','scroll'].forEach(evt => {
@@ -1095,7 +1117,7 @@ Das bedeutet aber auch: Es gibt keine Kopie im Internet. Deine Daten können ver
 – du das Gerät wechselst, zurücksetzt oder es beschädigt/verloren wird
 – die App in einem anderen Browser oder im privaten Modus geöffnet wird
 
-Deshalb: Bitte regelmäßig ein Backup erstellen (über "Datenverwaltung → Backup"). Ohne Backup sind die Noten im Ernstfall unwiederbringlich weg.
+Deshalb: Bitte regelmäßig ein Backup erstellen (über "Verwaltung → Backup"). Ohne Backup sind die Noten im Ernstfall unwiederbringlich weg.
 
 Zusätzlich verpflichtend: Dieses iPad muss mit einer Sperre gesichert sein (Code, Touch ID oder Face ID). Da personenbezogene Schülerdaten (Namen, Noten) auf diesem Gerät gespeichert werden, könnten Unbefugte sonst ungehindert darauf zugreifen, wenn das Gerät verloren geht, gestohlen wird oder unbeaufsichtigt liegen bleibt.
 
@@ -3459,8 +3481,9 @@ document.getElementById('dataManagementBtn').onclick = async () => {
     {label: 'Export für externe Tabelle (Zusatztool)', value: 'notennachweis'},
     {label: '🎲 Demomodus', value: 'demo'},
     {label: '🔒 PIN-Sperre', value: 'pinlock'},
+    {label: `⏱ Sperr-Zeit (${getIdleBlurSeconds()}s)`, value: 'idletime'},
   ];
-  const choice = await showChoice('Datenverwaltung', '', options);
+  const choice = await showChoice('Verwaltung', '', options);
   if(choice === null) return;
   if(choice === 'update'){ await checkForAppUpdate(); }
   else if(choice === 'backup') exportBackup();
@@ -3468,6 +3491,7 @@ document.getElementById('dataManagementBtn').onclick = async () => {
   else if(choice === 'reset') resetAllData();
   else if(choice === 'demo'){ await generateDemoClass(); }
   else if(choice === 'pinlock'){ await setupPinLock(); }
+  else if(choice === 'idletime'){ await setupIdleBlurTime(); }
   else if(choice === 'zeitraeume'){
     if(!cls){ await showAlert('Keine Lerngruppe', 'Bitte zuerst eine Lerngruppe auswählen.'); return; }
     openQuartaleModal(cls);
