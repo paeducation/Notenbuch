@@ -107,7 +107,9 @@
   .cat-head .colhead{display:flex;flex-direction:column;align-items:center;gap:1px;cursor:pointer;padding:2px 0;}
   .cat-head .weight{font-weight:500;color:var(--ink-soft);font-size:0.66rem;}
   .cat-mode{font-size:0.6rem;color:var(--ink-soft);}
-  th.name-col, td.name-col{background:var(--surface);text-align:left;font-weight:600;min-width:120px;max-width:290px;width:290px;white-space:normal!important;word-break:break-word;}
+  th.name-col, td.name-col{background:var(--surface);text-align:left;font-weight:600;min-width:80px;max-width:var(--name-col-w,290px);width:var(--name-col-w,290px);white-space:normal!important;word-break:break-word;}
+  .name-resize-handle{position:absolute;right:-32.5px;top:50%;transform:translateY(-50%);width:48px;height:46px;background:transparent;color:var(--ink);display:flex;align-items:center;justify-content:space-between;font-weight:700;font-size:1.3rem;line-height:1;cursor:col-resize;touch-action:none;user-select:none;-webkit-user-select:none;z-index:5;}
+  .name-resize-handle .nr-line{width:2px;height:100%;background:var(--ink);border-radius:1px;}
   th.endnote-col, td.endnote-col{background:var(--accent-soft);
     border-left:2px solid var(--accent);border-right:2px solid var(--accent);
     text-align:center;vertical-align:middle;}
@@ -313,7 +315,7 @@ function colorForGroupName(name){
 }
 
 function uid(){ return Math.random().toString(36).slice(2,10); }
-const APP_VERSION_INFO = 'v17.4 · Entwickler: G. Schulte';
+const APP_VERSION_INFO = 'v17.7 · Entwickler: G. Schulte';
 function setStatus(msg, isError){
   const el = document.getElementById('status');
   el.textContent = msg + ' · ' + APP_VERSION_INFO; el.style.color = isError ? 'var(--pen)' : 'var(--ink-soft)';
@@ -1459,6 +1461,7 @@ function renderSemRow(cls){
 function render(){
   renderClassRow();
   const cls = getActiveClass();
+  document.documentElement.style.setProperty('--name-col-w', ((cls && cls.nameColWidth) || 290) + 'px');
   renderSemRow(cls);
   syncStickyOffsets();
   const main = document.getElementById('main');
@@ -1812,7 +1815,7 @@ function renderGrid(main, cls, sem){
 
   const studentColSelected = state.colorizeMode && isColorizeSelected('studentcol', 'schueler');
   const studentColSelectStyle = studentColSelected ? 'box-shadow:inset 0 0 0 3px var(--accent);' : '';
-  let groupHeadRow = `<tr><th class="name-col" rowspan="${topRowspan}" style="${sem.studentColColor?`background:${sem.studentColColor};`:''}${studentColSelectStyle}"><div class="colhead-wrap" style="min-height:100px;"><input type="text" id="searchStudent" placeholder="Suchen…" value="${escapeHtml(state.searchTerm||'')}" style="position:absolute;top:4px;left:50%;transform:translateX(-50%);width:90%;max-width:120px;font-size:0.72rem;padding:3px 6px;z-index:2;"><div data-select-student-col style="min-height:100px;display:flex;flex-direction:column;justify-content:center;align-items:center;gap:2px;cursor:${state.colorizeMode?'pointer':'default'};">Schüler${studentColSelected ? ' ✓' : ''}${state.selectedStudentId ? `<button class="colx dark ${state.incognito?'active-toggle':''}" data-toggle-incognito title="${state.incognito?'Inkognito ausschalten':'Inkognito einschalten (nur markierten Schüler zeigen)'}" style="display:inline-flex;align-items:center;justify-content:center;padding:0 2px;margin-top:6px;width:auto;height:auto;">${personIconSvg()}</button>` : ''}</div></div></th><th class="endnote-col" rowspan="${topRowspan}" data-edit-endnote-color style="cursor:pointer;${sem.endnoteColor?`background:${sem.endnoteColor};`:''}"><div class="endnote-head">Endnote<br><span class="weight">${sem.name}</span></div></th>`;
+  let groupHeadRow = `<tr><th class="name-col" rowspan="${topRowspan}" style="${sem.studentColColor?`background:${sem.studentColColor};`:''}${studentColSelectStyle}"><div class="colhead-wrap" style="min-height:100px;">${state.positionMode ? `<div class="name-resize-handle" data-name-resize title="Zum Anpassen der Namensspalte nach links/rechts ziehen"><span>‹</span><span class="nr-line"></span><span>›</span></div>` : ''}<input type="text" id="searchStudent" placeholder="Suchen…" value="${escapeHtml(state.searchTerm||'')}" style="position:absolute;top:4px;left:50%;transform:translateX(-50%);width:90%;max-width:120px;font-size:0.72rem;padding:3px 6px;z-index:2;"><div data-select-student-col style="min-height:100px;display:flex;flex-direction:column;justify-content:center;align-items:center;gap:2px;cursor:${state.colorizeMode?'pointer':'default'};">Schüler${studentColSelected ? ' ✓' : ''}${state.selectedStudentId ? `<button class="colx dark ${state.incognito?'active-toggle':''}" data-toggle-incognito title="${state.incognito?'Inkognito ausschalten':'Inkognito einschalten (nur markierten Schüler zeigen)'}" style="display:inline-flex;align-items:center;justify-content:center;padding:0 2px;margin-top:6px;width:auto;height:auto;">${personIconSvg()}</button>` : ''}</div></div></th><th class="endnote-col" rowspan="${topRowspan}" data-edit-endnote-color style="cursor:pointer;${sem.endnoteColor?`background:${sem.endnoteColor};`:''}"><div class="endnote-head">Endnote<br><span class="weight">${sem.name}</span></div></th>`;
   groups.forEach(g => {
     if(g.collapsed){
       groupHeadRow += `<th class="grp-head collapsed-col" rowspan="${topRowspan}" style="background:${(g.bgColor || colorForGroupName(g.name))};">
@@ -2169,6 +2172,30 @@ function renderGrid(main, cls, sem){
       }
       saveState(); render();
     };
+  });
+  main.querySelectorAll('[data-name-resize]').forEach(h => {
+    h.onpointerdown = (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      try{ h.setPointerCapture(e.pointerId); }catch(err){}
+      const startX = e.clientX;
+      const startW = cls.nameColWidth || 290;
+      const move = (ev) => {
+        const w = Math.max(100, Math.min(420, Math.round(startW + (ev.clientX - startX))));
+        cls.nameColWidth = w;
+        document.documentElement.style.setProperty('--name-col-w', w + 'px');
+      };
+      const up = () => {
+        h.removeEventListener('pointermove', move);
+        h.removeEventListener('pointerup', up);
+        h.removeEventListener('pointercancel', up);
+        saveState();
+      };
+      h.addEventListener('pointermove', move);
+      h.addEventListener('pointerup', up);
+      h.addEventListener('pointercancel', up);
+    };
+    h.onclick = (e) => e.stopPropagation();
   });
   main.querySelectorAll('[data-select-student-col]').forEach(el=>{
     el.onclick = (e) => {
