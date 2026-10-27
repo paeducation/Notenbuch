@@ -88,7 +88,7 @@
   .compare-wrap{display:flex;flex-direction:column;gap:24px;}
   .compare-col{width:100%;}
   .compare-col h3{margin-bottom:8px;font-size:0.95rem;color:var(--ink-soft);}
-  .grid-wrap{overflow:auto;border:1px solid var(--line);border-radius:var(--radius);
+  .grid-wrap{position:relative;overflow:auto;border:1px solid var(--line);border-radius:var(--radius);
     background:var(--surface);max-width:100%;box-shadow:var(--shadow);}
   table.grid{border-collapse:separate;border-spacing:0;font-size:0.84rem;min-width:100%;}
   table.grid th, table.grid td{border-bottom:1px solid var(--line);border-right:1px solid var(--line);
@@ -107,9 +107,11 @@
   .cat-head .colhead{display:flex;flex-direction:column;align-items:center;gap:1px;cursor:pointer;padding:2px 0;}
   .cat-head .weight{font-weight:500;color:var(--ink-soft);font-size:0.66rem;}
   .cat-mode{font-size:0.6rem;color:var(--ink-soft);}
-  th.name-col, td.name-col{background:var(--surface);text-align:left;font-weight:600;min-width:80px;max-width:var(--name-col-w,290px);width:var(--name-col-w,290px);white-space:normal!important;word-break:break-word;}
-  .name-resize-handle{position:absolute;right:-32.5px;top:50%;transform:translateY(-50%);width:48px;height:46px;background:transparent;color:var(--ink);display:flex;align-items:center;justify-content:space-between;font-weight:700;font-size:1.3rem;line-height:1;cursor:col-resize;touch-action:none;user-select:none;-webkit-user-select:none;z-index:5;}
-  .name-resize-handle .nr-line{width:2px;height:100%;background:var(--ink);border-radius:1px;}
+  th.name-col, td.name-col{background:var(--surface);text-align:left;font-weight:600;min-width:var(--name-col-w,290px);max-width:var(--name-col-w,290px);width:var(--name-col-w,290px);white-space:normal!important;word-break:break-word;}
+  .name-resize-handle{position:absolute;left:0;top:0;width:64px;height:64px;display:flex;align-items:stretch;z-index:20;}
+  .name-resize-handle .nr-step{width:22px;height:100%;padding:0;margin:0;background:transparent!important;border:none!important;box-shadow:none!important;border-radius:0!important;color:var(--ink)!important;font-size:1.5rem;font-weight:700;line-height:1;display:flex;align-items:center;justify-content:center;cursor:pointer;touch-action:manipulation;}
+  .name-resize-handle .nr-drag{width:20px;display:flex;justify-content:center;cursor:col-resize;touch-action:none;user-select:none;-webkit-user-select:none;}
+  .name-resize-handle .nr-line{width:2px;height:100%;background:var(--ink);border-radius:1px;pointer-events:none;}
   th.endnote-col, td.endnote-col{background:var(--accent-soft);
     border-left:2px solid var(--accent);border-right:2px solid var(--accent);
     text-align:center;vertical-align:middle;}
@@ -217,6 +219,7 @@
   @media print{
     .titlebar, header.app, .toolbar, #scalePanel, #modalRoot, .status{display:none!important;}
     body{padding-bottom:0!important;background:#fff!important;filter:grayscale(100%);}
+    th.name-col, td.name-col{min-width:120px!important;}
     main{padding:0!important;}
     .print-header{display:flex!important;gap:18px;flex-wrap:wrap;font-size:11px;margin-bottom:10px;padding-bottom:6px;border-bottom:1px solid #999;}
     table.grid th, table.grid td{white-space:normal!important;word-break:break-word;}
@@ -315,7 +318,7 @@ function colorForGroupName(name){
 }
 
 function uid(){ return Math.random().toString(36).slice(2,10); }
-const APP_VERSION_INFO = 'v17.7 · Entwickler: G. Schulte';
+const APP_VERSION_INFO = 'v18.3 · Entwickler: G. Schulte';
 function setStatus(msg, isError){
   const el = document.getElementById('status');
   el.textContent = msg + ' · ' + APP_VERSION_INFO; el.style.color = isError ? 'var(--pen)' : 'var(--ink-soft)';
@@ -1807,6 +1810,20 @@ function maxCatDepth(groups){
   return d;
 }
 
+function positionNameHandle(){
+  document.querySelectorAll('.grid-wrap').forEach(wrap => {
+    const h = wrap.querySelector('.name-resize-handle');
+    const th = wrap.querySelector('th.name-col');
+    if(!h || !th) return;
+    const wr = wrap.getBoundingClientRect();
+    const tr = th.getBoundingClientRect();
+    const left = tr.right - 0.5 - (wr.left + wrap.clientLeft) + wrap.scrollLeft - 32;
+    const top = tr.top - (wr.top + wrap.clientTop) + wrap.scrollTop + tr.height / 2 - 32;
+    h.style.left = left + 'px';
+    h.style.top = top + 'px';
+  });
+}
+window.addEventListener('resize', positionNameHandle);
 function renderGrid(main, cls, sem){
   sem = sem || getActiveSemester(cls);
   const groups = sem.groups;
@@ -1815,7 +1832,7 @@ function renderGrid(main, cls, sem){
 
   const studentColSelected = state.colorizeMode && isColorizeSelected('studentcol', 'schueler');
   const studentColSelectStyle = studentColSelected ? 'box-shadow:inset 0 0 0 3px var(--accent);' : '';
-  let groupHeadRow = `<tr><th class="name-col" rowspan="${topRowspan}" style="${sem.studentColColor?`background:${sem.studentColColor};`:''}${studentColSelectStyle}"><div class="colhead-wrap" style="min-height:100px;">${state.positionMode ? `<div class="name-resize-handle" data-name-resize title="Zum Anpassen der Namensspalte nach links/rechts ziehen"><span>‹</span><span class="nr-line"></span><span>›</span></div>` : ''}<input type="text" id="searchStudent" placeholder="Suchen…" value="${escapeHtml(state.searchTerm||'')}" style="position:absolute;top:4px;left:50%;transform:translateX(-50%);width:90%;max-width:120px;font-size:0.72rem;padding:3px 6px;z-index:2;"><div data-select-student-col style="min-height:100px;display:flex;flex-direction:column;justify-content:center;align-items:center;gap:2px;cursor:${state.colorizeMode?'pointer':'default'};">Schüler${studentColSelected ? ' ✓' : ''}${state.selectedStudentId ? `<button class="colx dark ${state.incognito?'active-toggle':''}" data-toggle-incognito title="${state.incognito?'Inkognito ausschalten':'Inkognito einschalten (nur markierten Schüler zeigen)'}" style="display:inline-flex;align-items:center;justify-content:center;padding:0 2px;margin-top:6px;width:auto;height:auto;">${personIconSvg()}</button>` : ''}</div></div></th><th class="endnote-col" rowspan="${topRowspan}" data-edit-endnote-color style="cursor:pointer;${sem.endnoteColor?`background:${sem.endnoteColor};`:''}"><div class="endnote-head">Endnote<br><span class="weight">${sem.name}</span></div></th>`;
+  let groupHeadRow = `<tr><th class="name-col" rowspan="${topRowspan}" style="${sem.studentColColor?`background:${sem.studentColColor};`:''}${studentColSelectStyle}"><div class="colhead-wrap" style="min-height:100px;"><input type="text" id="searchStudent" placeholder="Suchen…" value="${escapeHtml(state.searchTerm||'')}" style="position:absolute;top:4px;left:50%;transform:translateX(-50%);width:90%;max-width:120px;font-size:0.72rem;padding:3px 6px;z-index:2;"><div data-select-student-col style="min-height:100px;display:flex;flex-direction:column;justify-content:center;align-items:center;gap:2px;cursor:${state.colorizeMode?'pointer':'default'};">Schüler${studentColSelected ? ' ✓' : ''}${state.selectedStudentId ? `<button class="colx dark ${state.incognito?'active-toggle':''}" data-toggle-incognito title="${state.incognito?'Inkognito ausschalten':'Inkognito einschalten (nur markierten Schüler zeigen)'}" style="display:inline-flex;align-items:center;justify-content:center;padding:0 2px;margin-top:6px;width:auto;height:auto;">${personIconSvg()}</button>` : ''}</div></div></th><th class="endnote-col" rowspan="${topRowspan}" data-edit-endnote-color style="cursor:pointer;${sem.endnoteColor?`background:${sem.endnoteColor};`:''}"><div class="endnote-head">Endnote<br><span class="weight">${sem.name}</span></div></th>`;
   groups.forEach(g => {
     if(g.collapsed){
       groupHeadRow += `<th class="grp-head collapsed-col" rowspan="${topRowspan}" style="background:${(g.bgColor || colorForGroupName(g.name))};">
@@ -2041,7 +2058,7 @@ function renderGrid(main, cls, sem){
   const addRow = `<tr class="add-student-row"><td class="name-col"><input type="text" id="newStudentName" placeholder="Nachname, Vorname"></td>
     <td colspan="${colCount-1}" style="text-align:left;"><button class="small" id="addStudentBtn">Hinzufügen</button></td></tr>`;
 
-  main.innerHTML = `<div class="grid-wrap"><table class="grid"><thead>${groupHeadRow}${catHeaderRows}</thead><tbody>${body}${addRow}</tbody></table></div>`;
+  main.innerHTML = `<div class="grid-wrap"><table class="grid"><thead>${groupHeadRow}${catHeaderRows}</thead><tbody>${body}${addRow}</tbody></table>${state.positionMode ? `<div class="name-resize-handle" title="Namensspalte schmaler/breiter: Pfeile antippen oder Strich ziehen"><button type="button" class="nr-step" data-name-step="-1">‹</button><span class="nr-drag" data-name-resize><span class="nr-line"></span></span><button type="button" class="nr-step" data-name-step="1">›</button></div>` : ''}</div>`;
 
   main.querySelectorAll('[data-select-student]').forEach(el=>{
     let pressTimer = null, longPressed = false, startX = 0, startY = 0;
@@ -2161,6 +2178,7 @@ function renderGrid(main, cls, sem){
   });
   main.querySelectorAll('[data-edit-endnote-color]').forEach(el=>{
     el.onclick = async () => {
+      if(state.positionMode || state.colorizeMode) return;
       const colorChoice = await showChoice('Farbe der Endnote-Spalte', sem.endnoteColor ? 'Aktuell: eigene Farbe' : 'Aktuell: Standard', [
         {label: 'Standardfarbe', value: 'default'},
         {label: sem.endnoteColor ? 'Farbe ändern' : 'Eigene Farbe wählen', value: 'custom'},
@@ -2173,18 +2191,37 @@ function renderGrid(main, cls, sem){
       saveState(); render();
     };
   });
+  main.querySelectorAll('[data-name-step]').forEach(b => {
+    b.onclick = (e) => {
+      e.stopPropagation();
+      const dir = parseInt(b.dataset.nameStep, 10);
+      const w = Math.max(100, Math.min(420, (cls.nameColWidth || 290) + dir * 16));
+      cls.nameColWidth = w;
+      document.documentElement.style.setProperty('--name-col-w', w + 'px');
+      positionNameHandle();
+      setStatus('Namensspalte: ' + w + ' px');
+      saveState();
+    };
+  });
   main.querySelectorAll('[data-name-resize]').forEach(h => {
+    const makeApply = (startX) => {
+      const startW = cls.nameColWidth || 290;
+      return (clientX) => {
+        const w = Math.max(100, Math.min(420, Math.round(startW + (clientX - startX))));
+        cls.nameColWidth = w;
+        document.documentElement.style.setProperty('--name-col-w', w + 'px');
+        positionNameHandle();
+        setStatus('Namensspalte: ' + w + ' px');
+      };
+    };
+    // Maus / Stift
     h.onpointerdown = (e) => {
+      if(e.pointerType === 'touch') return;
       e.preventDefault();
       e.stopPropagation();
       try{ h.setPointerCapture(e.pointerId); }catch(err){}
-      const startX = e.clientX;
-      const startW = cls.nameColWidth || 290;
-      const move = (ev) => {
-        const w = Math.max(100, Math.min(420, Math.round(startW + (ev.clientX - startX))));
-        cls.nameColWidth = w;
-        document.documentElement.style.setProperty('--name-col-w', w + 'px');
-      };
+      const apply = makeApply(e.clientX);
+      const move = (ev) => apply(ev.clientX);
       const up = () => {
         h.removeEventListener('pointermove', move);
         h.removeEventListener('pointerup', up);
@@ -2195,8 +2232,31 @@ function renderGrid(main, cls, sem){
       h.addEventListener('pointerup', up);
       h.addEventListener('pointercancel', up);
     };
+    // Touchdisplay (Android/iPad): eigene Touch-Events, damit das Scrollen der Tabelle sicher unterdrückt wird
+    h.addEventListener('touchstart', (e) => {
+      if(e.touches.length !== 1) return;
+      e.preventDefault();
+      e.stopPropagation();
+      const apply = makeApply(e.touches[0].clientX);
+      const move = (ev) => {
+        if(!ev.touches.length) return;
+        ev.preventDefault();
+        apply(ev.touches[0].clientX);
+      };
+      const end = () => {
+        h.removeEventListener('touchmove', move);
+        h.removeEventListener('touchend', end);
+        h.removeEventListener('touchcancel', end);
+        saveState();
+      };
+      h.addEventListener('touchmove', move, {passive:false});
+      h.addEventListener('touchend', end);
+      h.addEventListener('touchcancel', end);
+    }, {passive:false});
     h.onclick = (e) => e.stopPropagation();
   });
+  positionNameHandle();
+  requestAnimationFrame(positionNameHandle);
   main.querySelectorAll('[data-select-student-col]').forEach(el=>{
     el.onclick = (e) => {
       if(!state.colorizeMode) return;
