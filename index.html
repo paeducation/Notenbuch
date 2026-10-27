@@ -318,7 +318,7 @@ function colorForGroupName(name){
 }
 
 function uid(){ return Math.random().toString(36).slice(2,10); }
-const APP_VERSION_INFO = 'v18.3 · Entwickler: G. Schulte';
+const APP_VERSION_INFO = 'v18.4 · Entwickler: G. Schulte';
 function setStatus(msg, isError){
   const el = document.getElementById('status');
   el.textContent = msg + ' · ' + APP_VERSION_INFO; el.style.color = isError ? 'var(--pen)' : 'var(--ink-soft)';
@@ -1818,7 +1818,8 @@ function positionNameHandle(){
     const wr = wrap.getBoundingClientRect();
     const tr = th.getBoundingClientRect();
     const left = tr.right - 0.5 - (wr.left + wrap.clientLeft) + wrap.scrollLeft - 32;
-    const top = tr.top - (wr.top + wrap.clientTop) + wrap.scrollTop + tr.height / 2 - 32;
+    const thTop = tr.top - (wr.top + wrap.clientTop) + wrap.scrollTop;
+    const top = Math.max(thTop, thTop + tr.height - 64 - 6);
     h.style.left = left + 'px';
     h.style.top = top + 'px';
   });
