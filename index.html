@@ -320,7 +320,7 @@ function colorForGroupName(name){
 }
 
 function uid(){ return Math.random().toString(36).slice(2,10); }
-const APP_VERSION_INFO = 'v19.8 · Entwickler: G. Schulte';
+const APP_VERSION_INFO = 'v19.9 · Entwickler: G. Schulte';
 function setStatus(msg, isError){
   const el = document.getElementById('status');
   el.textContent = msg + ' · ' + APP_VERSION_INFO; el.style.color = isError ? 'var(--pen)' : 'var(--ink-soft)';
@@ -769,12 +769,16 @@ function applyIdleBlur(){
     if(getPinHash()){
       await showPinLockScreen();
     } else {
+      // Erst beim abgeschlossenen Tipp (click) entsperren, nicht schon bei touchstart – sonst landet der Tipp
+      // anschließend auf dem darunterliegenden Feld und öffnet dort den Noteneditor.
       await new Promise(resolve => {
-        const clear = () => { document.removeEventListener('click', clear); document.removeEventListener('touchstart', clear); resolve(); };
-        document.addEventListener('click', clear, {once:true});
-        document.addEventListener('touchstart', clear, {once:true});
+        document.addEventListener('click', (e) => { e.preventDefault(); e.stopPropagation(); resolve(); }, {once:true, capture:true});
       });
     }
+    // Sicherheitsnetz: Klicks unmittelbar nach dem Entsperren schlucken
+    const swallowClick = (e) => { e.preventDefault(); e.stopPropagation(); };
+    document.addEventListener('click', swallowClick, true);
+    setTimeout(() => document.removeEventListener('click', swallowClick, true), 450);
     document.getElementById('appRoot').classList.remove('idle-blurred');
     isBlurredNow = false;
     resetIdleBlurTimer();
