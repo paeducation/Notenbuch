@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1, user-scalable=no">
 <title>Notenbuch</title>
 <script src="https://cdn.jsdelivr.net/npm/exceljs@4.4.0/dist/exceljs.min.js"></script>
+<script>try{if(localStorage.getItem('notenbuch-theme')==='dark')document.documentElement.setAttribute('data-theme','dark');}catch(e){}</script>
 <meta name="theme-color" content="#1D1D1F">
 <link rel="manifest" href="manifest.json">
 <link rel="apple-touch-icon" href="icon-192.png">
@@ -21,6 +22,24 @@
     --danger:#E5484D; --danger-soft:#FBE7E8;
     --radius:12px;
     --shadow:0 1px 2px rgba(0,0,0,.05), 0 4px 14px rgba(0,0,0,.06);
+  }
+  @media screen{
+    :root[data-theme="dark"]{
+      color-scheme:dark;
+      --bg:#111113; --surface:#1C1C1F; --surface-soft:#26262A;
+      --ink:#ECECEF; --ink-soft:#9D9DA6; --line:#35353B;
+      --accent:#4C94F0; --accent-soft:#1D3557;
+      --pass:#4CC688; --pass-soft:#143222;
+      --warn:#E6AC4B; --warn-soft:#3A2F15;
+      --danger:#F2696E; --danger-soft:#3D1B1D;
+      --shadow:0 1px 2px rgba(0,0,0,.45), 0 4px 14px rgba(0,0,0,.45);
+    }
+    :root[data-theme="dark"] .titlebar{background:linear-gradient(#27272B,#1C1C1F);}
+    :root[data-theme="dark"] .schoolyear-label{background:#35353B;}
+    :root[data-theme="dark"] .schoolyear-input{background:var(--surface-soft);}
+    /* Zellen/Köpfe mit eigener (heller) Hintergrundfarbe behalten dunkle Schrift */
+    :root[data-theme="dark"] [style*="background:#"]:not(.grp-head):not(.dot){--ink:#1D1D1F;--ink-soft:#55555B;color:#1D1D1F;}
+    :root[data-theme="dark"] #appRoot.idle-blurred{filter:blur(22px) brightness(.8);}
   }
   *{box-sizing:border-box;}
   button, input:not([type=checkbox]):not([type=radio]):not([type=color]), select, textarea{-webkit-appearance:none;appearance:none;}
@@ -71,6 +90,9 @@
   button:active{opacity:0.7;}
   button:disabled{opacity:0.35;cursor:default;}
   .icon-btn{width:34px;height:34px;padding:0;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;font-size:0.95rem;}
+  /* button.small setzt sonst 12px Innenabstand und quetscht das Symbol zusammen */
+  #darkToggle{padding:0!important;flex:none;width:34px;min-width:34px;height:34px;}
+  #darkToggle svg{width:18px;height:18px;flex:none;}
 
   .sem-row{display:inline-flex;gap:2px;margin-top:10px;background:var(--surface-soft);
     border:1px solid var(--line);border-radius:10px;padding:3px;flex-wrap:wrap;}
@@ -281,6 +303,7 @@
   <input type="file" id="csvImportFile" accept=".csv,text/csv" style="position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0;">
   <button class="ghost small" id="printBtn">🖨 Drucken</button>
   <button class="ghost small icon-btn" id="helpBtn" title="Begriffe erklärt">?</button>
+  <button class="ghost small icon-btn" id="darkToggle" title="Dunkelmodus ein-/ausschalten" aria-pressed="false"><svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor" xmlns="http://www.w3.org/2000/svg" style="display:block;"><path d="M20.5 14.6A8.6 8.6 0 0 1 9.4 3.5a.7.7 0 0 0-.9-.9A10 10 0 1 0 21.4 15.5a.7.7 0 0 0-.9-.9z"/></svg></button>
   <input type="file" id="importFile" accept=".json,application/json" style="position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0;">
 </div>
 
@@ -320,7 +343,7 @@ function colorForGroupName(name){
 }
 
 function uid(){ return Math.random().toString(36).slice(2,10); }
-const APP_VERSION_INFO = 'v19.9 · Entwickler: G. Schulte';
+const APP_VERSION_INFO = 'v20.5 · Entwickler: G. Schulte';
 function setStatus(msg, isError){
   const el = document.getElementById('status');
   el.textContent = msg + ' · ' + APP_VERSION_INFO; el.style.color = isError ? 'var(--pen)' : 'var(--ink-soft)';
@@ -3788,6 +3811,21 @@ document.getElementById('undoToggle').onchange = (e) => {
   undoArmed = e.target.checked;
   updateUndoButtonState();
 };
+const THEME_KEY = 'notenbuch-theme';
+function applyTheme(dark){
+  document.documentElement.setAttribute('data-theme', dark ? 'dark' : 'light');
+  try{ localStorage.setItem(THEME_KEY, dark ? 'dark' : 'light'); }catch(e){}
+  const btn = document.getElementById('darkToggle');
+  if(btn){ btn.classList.toggle('active-toggle', dark); btn.setAttribute('aria-pressed', dark ? 'true' : 'false'); }
+}
+(function initThemeToggle(){
+  const btn = document.getElementById('darkToggle');
+  let dark = false;
+  try{ dark = localStorage.getItem(THEME_KEY) === 'dark'; }catch(e){}
+  btn.classList.toggle('active-toggle', dark);
+  btn.setAttribute('aria-pressed', dark ? 'true' : 'false');
+  btn.onclick = () => applyTheme(document.documentElement.getAttribute('data-theme') !== 'dark');
+})();
 document.getElementById('helpBtn').onclick = async () => {
   await showAlert('Begriffe erklärt',
     'Notengruppe – oberste Ebene (Mündlich/Schriftlich/eigene). Fließt direkt in die Endnote ein.\n\n' +
