@@ -293,6 +293,7 @@
 const STORAGE_KEY = 'classes';
 let state = { classes: [], activeClassId: null, scaleOpen: false, searchTerm: '', compareView: false, positionMode: false, selectedStudentId: null, incognito: false, colorizeMode: false, colorizeSelection: [] };
 let pendingCsvStufe = 'SII';
+let pendingCsvMeta = null;
 let searchWasFocused = false;
 
 const NOTEN_TABLE = [
@@ -318,7 +319,7 @@ function colorForGroupName(name){
 }
 
 function uid(){ return Math.random().toString(36).slice(2,10); }
-const APP_VERSION_INFO = 'v18.4 · Entwickler: G. Schulte';
+const APP_VERSION_INFO = 'v19.1 · Entwickler: G. Schulte';
 function setStatus(msg, isError){
   const el = document.getElementById('status');
   el.textContent = msg + ' · ' + APP_VERSION_INFO; el.style.color = isError ? 'var(--pen)' : 'var(--ink-soft)';
@@ -957,9 +958,11 @@ function parseCSV(text){
   return {header, rows};
 }
 async function importCSV(file){
+  const meta = pendingCsvMeta;
+  pendingCsvMeta = null;
   const text = await file.text();
   const {rows} = parseCSV(text);
-  const klasseName = (file.name || 'Import').replace(/\.csv$/i, '').trim() || 'Import';
+  const klasseName = (meta && meta.name) || (file.name || 'Import').replace(/\.csv$/i, '').trim() || 'Import';
   if(!rows.length){
     await showAlert('CSV leer', 'Es wurden keine Datenzeilen gefunden (die erste Zeile wird als Überschrift ignoriert).');
     return;
@@ -979,6 +982,8 @@ async function importCSV(file){
     const sem2 = {id: uid(), name: '2. HJ', groups: defaultGroups(pendingCsvStufe), studentIds: [], endnoteColor: '#F2F2F2'};
     targetCls = {id: uid(), name: klasseName, students: [], semesters: [sem1, sem2], activeSemesterId: sem1.id,
       gradingSystem: 'noten', gradeTableNoten: NOTEN_TABLE.map(r=>({...r})), gradeTablePunkte: PUNKTE_TABLE.map(r=>({...r}))};
+    if(meta && meta.name){ targetCls.slForm = {klasse: meta.klasse, fach: meta.fach}; }
+    targetCls.stufe = pendingCsvStufe;
     state.classes.push(targetCls);
   }
 
@@ -1359,9 +1364,13 @@ function renderAddLerngruppeModal(){
       <div class="modal">
         <div class="modal-close"><button class="ghost small" id="closeAddModal">Abbrechen</button></div>
         <h3>Lerngruppe hinzufügen</h3>
-        <div class="sub">Name eingeben oder per CSV importieren</div>
+        <div class="sub">Angaben eingeben oder per CSV importieren</div>
         <div style="margin-top:14px;">
-          <input type="text" id="newLerngruppeName" placeholder="Name, z.B. 9b" style="width:100%;">
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
+            <label style="display:flex;flex-direction:column;gap:3px;font-size:0.78rem;color:var(--ink-soft);"><span id="newKlasseLabel">Jahrgang</span><input type="text" id="newKlasse" style="width:100%;"></label>
+            <label style="display:flex;flex-direction:column;gap:3px;font-size:0.78rem;color:var(--ink-soft);"><span id="newFachLabel">Kurs</span><input type="text" id="newFach" style="width:100%;"></label>
+          </div>
+          <div class="hint" id="newNameHint" style="margin-top:6px;"></div>
           <div class="row" style="margin-top:10px;gap:8px;">
             <button class="ghost small" id="stufeSIBtn" style="flex:1;">Sek I</button>
             <button class="ghost small" id="stufeSIIBtn" style="flex:1;">Sek II</button>
@@ -1373,14 +1382,28 @@ function renderAddLerngruppeModal(){
         </div>
         <div class="divider" style="height:1px;background:var(--line);margin:16px 0;"></div>
         <div class="form-title">Oder per CSV importieren</div>
-        <div class="hint">Spalten Nachname, Vorname (erste Zeile wird als Überschrift ignoriert). Der Dateiname ohne ".csv" wird zum Namen der Lerngruppe.</div>
+        <div class="hint">Spalten Nachname, Vorname (erste Zeile wird als Überschrift ignoriert). Sind oben Angaben eingetragen, bestimmen sie den Namen der Lerngruppe, sonst der Dateiname ohne ".csv".</div>
         <div class="row" style="margin-top:8px;">
           <button class="ghost small" id="csvFromAddModalBtn">CSV-Datei wählen</button>
         </div>
       </div>
     </div>
   `;
+  const klasseInput = document.getElementById('newKlasse');
+  const fachInput = document.getElementById('newFach');
+  const composedName = () => [klasseInput.value.trim(), fachInput.value.trim()].filter(Boolean).join(' ');
+  const updateNameHint = () => {
+    const n = composedName();
+    document.getElementById('newNameHint').textContent = n ? `Name der Lerngruppe: ${n}` : 'Der Name der Lerngruppe ergibt sich aus diesen Angaben.';
+  };
+  klasseInput.addEventListener('input', updateNameHint);
+  fachInput.addEventListener('input', updateNameHint);
   const syncStufeButtons = () => {
+    document.getElementById('newKlasseLabel').textContent = stufe==='SI' ? 'Klasse' : 'Jahrgang';
+    document.getElementById('newFachLabel').textContent = stufe==='SI' ? 'Fach' : 'Kurs';
+    klasseInput.placeholder = stufe==='SI' ? 'z.B. 9b' : 'z.B. Q1';
+    fachInput.placeholder = stufe==='SI' ? 'z.B. Deutsch' : 'z.B. D-GK1';
+    updateNameHint();
     document.getElementById('stufeSIBtn').classList.toggle('active-toggle', stufe==='SI');
     document.getElementById('stufeSIIBtn').classList.toggle('active-toggle', stufe==='SII');
     document.getElementById('stufeHint').textContent = stufe==='SI'
@@ -1392,25 +1415,27 @@ function renderAddLerngruppeModal(){
   document.getElementById('stufeSIIBtn').onclick = () => { stufe = 'SII'; syncStufeButtons(); };
   document.getElementById('overlay').addEventListener('click', (e) => { if(e.target.id==='overlay') root.innerHTML=''; });
   document.getElementById('closeAddModal').onclick = () => { root.innerHTML=''; };
-  const nameInput = document.getElementById('newLerngruppeName');
-  setTimeout(() => { nameInput.focus(); }, 30);
+  setTimeout(() => { klasseInput.focus(); }, 30);
   const doCreate = () => {
-    const name = nameInput.value.trim();
-    if(!name) return;
+    const name = composedName();
+    if(!name){ klasseInput.focus(); return; }
     const sem1 = {id: uid(), name: '1. HJ', groups: defaultGroups(stufe), studentIds: [], endnoteColor: '#F2F2F2'};
     const sem2 = {id: uid(), name: '2. HJ', groups: defaultGroups(stufe), studentIds: [], endnoteColor: '#F2F2F2'};
     const cls = {id: uid(), name, students: [], semesters: [sem1, sem2], activeSemesterId: sem1.id,
-      gradingSystem: 'noten', gradeTableNoten: NOTEN_TABLE.map(r=>({...r})), gradeTablePunkte: PUNKTE_TABLE.map(r=>({...r}))};
+      gradingSystem: 'noten', gradeTableNoten: NOTEN_TABLE.map(r=>({...r})), gradeTablePunkte: PUNKTE_TABLE.map(r=>({...r})),
+      stufe, slForm: {klasse: klasseInput.value.trim(), fach: fachInput.value.trim()}};
     state.classes.push(cls); state.activeClassId = cls.id;
     saveState();
     root.innerHTML = '';
     render();
   };
   document.getElementById('createLerngruppeBtn').onclick = doCreate;
-  nameInput.addEventListener('keydown', (e) => { if(e.key==='Enter') doCreate(); });
+  [klasseInput, fachInput].forEach(inp => inp.addEventListener('keydown', (e) => { if(e.key==='Enter') doCreate(); }));
   document.getElementById('csvFromAddModalBtn').onclick = () => {
     root.innerHTML = '';
     pendingCsvStufe = stufe;
+    const csvName = composedName();
+    pendingCsvMeta = csvName ? {name: csvName, klasse: klasseInput.value.trim(), fach: fachInput.value.trim()} : null;
     document.getElementById('csvImportFile').click();
   };
 }
@@ -1785,9 +1810,21 @@ function renderKonferenztabelleHtml(cls, sem){
   });
   return `<div class="grid-wrap konferenz-wrap"><table class="grid konferenz-table"><thead>${headerRow}</thead><tbody>${body}</tbody></table></div>`;
 }
+const studentCollator = new Intl.Collator('de', {sensitivity: 'base', numeric: true});
+function studentNameParts(name){
+  const s = String(name || '').trim();
+  const i = s.indexOf(',');
+  return i > -1 ? [s.slice(0, i).trim(), s.slice(i + 1).trim()] : [s, ''];
+}
+function compareStudents(a, b){
+  const [aLast, aFirst] = studentNameParts(a.name);
+  const [bLast, bFirst] = studentNameParts(b.name);
+  return studentCollator.compare(aLast, bLast) || studentCollator.compare(aFirst, bFirst) || studentCollator.compare(String(a.name || ''), String(b.name || ''));
+}
+// Immer alphabetisch nach Nachname (Schreibweise "Nachname, Vorname"), unabhängig von der Eingabereihenfolge
 function getSemesterStudents(cls, sem){
-  if(!sem.studentIds) return cls.students.slice();
-  return cls.students.filter(s => sem.studentIds.includes(s.id));
+  const list = !sem.studentIds ? cls.students.slice() : cls.students.filter(s => sem.studentIds.includes(s.id));
+  return list.sort(compareStudents);
 }
 async function renameStudent(cls, studentId){
   const student = cls.students.find(s=>s.id===studentId);
@@ -2522,14 +2559,18 @@ async function openCategoryMenu(cls, sem, groupId, catId){
   } else if(!isContainerCat(ctx.cat) && ctx.cat.date){
     menuMessage = `Datum: ${formatDate(ctx.cat.date)}\n${menuMessage}`;
   }
+  const isSchriftlichLeaf = !isContainerCat(ctx.cat) && (ctx.group.name || '').trim().toLowerCase() === 'schriftlich';
   const choice = await showChoice(ctx.cat.name, menuMessage, [
     {label: `${typeLabel} bearbeiten`, value: 'edit'},
     {label: `${typeLabel} duplizieren`, value: 'dup'},
     {label: `${typeLabel} löschen`, value: 'del'},
+    ...(isSchriftlichLeaf ? [{label: '📊 Statistik', value: 'stats'}] : []),
   ]);
   if(choice === null) return;
   if(choice === 'edit'){
     editCategory(cls, sem, groupId, catId);
+  } else if(choice === 'stats'){
+    openKlausurStatistik(cls, sem, groupId, catId);
   } else if(choice === 'dup'){
     const countStr = await showPrompt('Duplizieren', 'Wie viele Duplikate erstellen?', '1', {inputType:'number', confirmLabel:'Erstellen'});
     if(countStr === null) return;
@@ -2982,6 +3023,288 @@ async function exportNotennachweisJson(cls, sem, cfg){
 }
 function sanitizeForFilename(s){
   return String(s||'notenbuch').trim().replace(/[\\/:*?"<>|]+/g,'').replace(/\s+/g,'-');
+}
+function fmtStatNum(x, d){
+  return (Math.round(x * Math.pow(10, d)) / Math.pow(10, d)).toFixed(d).replace('.', ',');
+}
+function computeKlausurStats(cls, sem, cat){
+  const students = getSemesterStudents(cls, sem);
+  const scale = cat.displayScale || cls.gradingSystem;
+  const vals = [];
+  students.forEach(s => {
+    const v = categoryAvgForStudent(cls, cat, s.id);
+    if(v === null || v === undefined || isNaN(v)) return;
+    vals.push(convertValueScale(v, cls.gradingSystem, scale));
+  });
+  // Notenspiegel: immer alle 16 Stufen von 1+ bis 6 (Notenpunkte 15 bis 0 entsprechen ihnen 1:1)
+  const spiegel = NOTEN_TABLE.map((row, i) => ({label: row.note, points: PUNKTE_TABLE[i].note, count: 0}));
+  vals.forEach(v => {
+    let idx;
+    if(scale === 'punkte'){
+      const p = Math.max(0, Math.min(15, Math.round(v)));
+      idx = PUNKTE_TABLE.findIndex(row => row.note === p);
+    } else {
+      const g = valueToGradeStr(v);
+      idx = NOTEN_TABLE.findIndex(row => row.note === g);
+    }
+    if(idx > -1) spiegel[idx].count++;
+  });
+  const stats = {scale, total: students.length, n: vals.length, spiegel, mean: null, meanText: ''};
+  if(vals.length){
+    const mean = vals.reduce((s, v) => s + v, 0) / vals.length;
+    stats.mean = mean;
+    const valsNoten = vals.map(v => convertValueScale(v, scale, 'noten'));
+    stats.meanNoten = valsNoten.reduce((s, v) => s + v, 0) / valsNoten.length;
+    stats.meanText = scale === 'punkte'
+      ? `${fmtStatNum(mean, 1)} Punkte (≈ ${punkteValueToNoteText(mean)})`
+      : `${fmtStatNum(mean, 2)} (≈ ${valueToGradeStr(mean)})`;
+  }
+  return stats;
+}
+function statSpiegelChartHtml(st, forPrint){
+  const maxCount = Math.max(...st.spiegel.map(b => b.count), 1);
+  const barArea = forPrint ? 220 : 90;
+  return st.spiegel.map(b => {
+    const tone = b.label[0] <= '2' ? 'pass' : b.label[0] <= '4' ? 'warn' : 'danger';
+    const fill = forPrint ? '#555' : `var(--${tone})`;
+    return `<div style="flex:1;min-width:0;display:flex;flex-direction:column;align-items:center;justify-content:flex-end;height:100%;">
+      <div style="font-size:${forPrint ? '11pt' : '0.68rem'};font-weight:600;">${b.count}</div>
+      <div style="width:70%;height:${Math.round(b.count / maxCount * barArea)}px;min-height:${b.count ? 3 : 0}px;background:${fill};border-radius:2px 2px 0 0;"></div>
+      <div style="font-size:${forPrint ? '10pt' : '0.62rem'};margin-top:3px;font-weight:600;">${b.label}</div>
+      ${st.scale === 'punkte' ? `<div style="font-size:${forPrint ? '8pt' : '0.55rem'};color:#777;">${b.points}</div>` : ''}
+    </div>`;
+  }).join('');
+}
+function statSpiegelSvg(st){
+  const W = 640, H = st.scale === 'punkte' ? 310 : 292, base = 250, maxH = 215, slot = W / st.spiegel.length, bw = 28;
+  const maxCount = Math.max(...st.spiegel.map(b => b.count), 1);
+  let g = '';
+  st.spiegel.forEach((b, i) => {
+    const h = Math.round(b.count / maxCount * maxH);
+    const x = Math.round(i * slot + (slot - bw) / 2);
+    const cx = Math.round(i * slot + slot / 2);
+    if(h > 0) g += `<rect x="${x}" y="${base - h}" width="${bw}" height="${h}" fill="#555"/>`;
+    g += `<text x="${cx}" y="${base - h - 7}" text-anchor="middle" font-size="16" font-weight="700" fill="#000">${b.count}</text>`;
+    g += `<text x="${cx}" y="${base + 20}" text-anchor="middle" font-size="14" font-weight="700" fill="#000">${b.label}</text>`;
+    if(st.scale === 'punkte') g += `<text x="${cx}" y="${base + 37}" text-anchor="middle" font-size="11" fill="#666">${b.points}</text>`;
+  });
+  g += `<line x1="0" y1="${base}" x2="${W}" y2="${base}" stroke="#000" stroke-width="2"/>`;
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${W} ${H}" width="100%" style="display:block;font-family:Arial,Helvetica,sans-serif;">${g}</svg>`;
+}
+function printKlausurStatistik(cls, sem, cat, st){
+  const win = window.open('', '_blank');
+  if(!win){
+    showAlert('Fehler', 'Popup wurde blockiert. Bitte Popups für diese Seite erlauben und erneut versuchen.');
+    return false;
+  }
+  const today = new Date().toLocaleDateString('de-DE');
+  const schoolYear = state.schoolYear ? escapeHtml(state.schoolYear) : '–';
+  const spiegelRows = `
+    <tr><th style="text-align:left;">Note</th>${st.spiegel.map(b => `<th>${b.label}</th>`).join('')}</tr>
+    ${st.scale === 'punkte' ? `<tr><td style="text-align:left;">Punkte</td>${st.spiegel.map(b => `<td>${b.points}</td>`).join('')}</tr>` : ''}
+    <tr><td style="text-align:left;font-weight:700;">Anzahl</td>${st.spiegel.map(b => `<td style="font-weight:700;">${b.count}</td>`).join('')}</tr>`;
+  win.document.open();
+  win.document.write(`<!DOCTYPE html><html><head><meta charset="utf-8"><title>Statistik ${escapeHtml(cat.name)}</title>
+    <style>
+      @page{size:A4 portrait;margin:15mm;}
+      *{box-sizing:border-box;}
+      html, body{background:#fff;color:#000;font-family:Arial,Helvetica,sans-serif;margin:0;}
+      h1{font-size:22pt;margin:0 0 3mm;}
+      .meta{font-size:11pt;color:#333;padding-bottom:4mm;border-bottom:1px solid #999;margin-bottom:8mm;}
+      .meta span{display:inline-block;margin-right:8mm;}
+      table.facts{width:100%;border-collapse:collapse;font-size:14pt;margin-bottom:10mm;}
+      table.facts td{padding:3mm 0;border-bottom:1px solid #ccc;}
+      table.facts td:last-child{text-align:right;font-weight:700;}
+      h2{font-size:14pt;margin:0 0 4mm;}
+      .chart{width:100%;}
+      svg, svg *{-webkit-print-color-adjust:exact;print-color-adjust:exact;}
+      table.spiegel{width:100%;border-collapse:collapse;margin-top:8mm;font-size:11pt;text-align:center;table-layout:fixed;}
+      table.spiegel th, table.spiegel td{border:1px solid #888;padding:2mm 0;}
+      table.spiegel th:first-child, table.spiegel td:first-child{width:22mm;padding-left:2mm;}
+    </style>
+  </head><body>
+    <h1>Statistik: ${escapeHtml(cat.name)}</h1>
+    <div class="meta">
+      <span><strong>Schuljahr:</strong> ${schoolYear}</span>
+      <span><strong>Lerngruppe:</strong> ${escapeHtml(cls.name)}</span>
+      <span><strong>Halbjahr:</strong> ${escapeHtml(sem.name)}</span>
+      <span><strong>Gedruckt am:</strong> ${today}</span>
+    </div>
+    <table class="facts">
+      <tr><td>Anzahl Schüler*innen</td><td>${st.total}</td></tr>
+      <tr><td>Anzahl vergebene Noten</td><td>${st.n}</td></tr>
+      <tr><td>Durchschnitt</td><td>${st.n ? st.meanText : '–'}</td></tr>
+    </table>
+    <h2>Notenspiegel</h2>
+    <div class="chart">${statSpiegelSvg(st)}</div>
+    <table class="spiegel">${spiegelRows}</table>
+  </body></html>`);
+  win.document.close();
+  setTimeout(() => { win.focus(); win.print(); }, 300);
+  return true;
+}
+const SL_LOGO_DATAURL = 'data:image/jpeg;base64,/9j/7gAOQWRvYmUAZAAAAAAA/9sAQwAMCAgICAgMCAgMEAsLCwwPDg0NDhQSDg4TExIXFBIUFBobFxQUGx4eJxsUJCcnJyckMjU1NTI7Ozs7Ozs7Ozs7/90ABAAJ/8AACwgAYwBBAQARAP/EANIAAQAABAcAAAAAAAAAAAAAAAcABAUGAQIDCAkKCxAAAAIBAwMQTjsAAAAAAAAAAQIDAAQFBhESBxQVISIjMTNBQlFSYYKSoQgJChMWFxgZGiQlJicoKSoyNDU2Nzg5OkNERUZHSElKU1RVVldYWVpiY2RlZmdoaWpxcnN0dXZ3eHl6gYOEhYaHiImKkZOUlZaXmJmaoqOkpaanqKmqsbKztLW2t7i5usHCw8TFxsfIycrR0tPU1dbX2Nna4eLj5OXm5+jp6vDx8vP09fb3+Pn6/9oACAEAAAA/AFVUKhVDZVqEFucy2WQAdIUWxkgvZAjAiRVQk7Ir5cCJkyc4t4QBEpdgDYFQhZFfLcW6FOcG0IIiYuwFuCqusGpxby7ZAoNhF6SkBs2xYeAq4CHKkKByCBiiDcBAW4CrMr//0FVUKpjPr8yyWbiiFskTiJAGFAGz6FVsLFZnXq4KtyC4twETGGAKUIERVVDLhpxZGBGjQCuhK9CkF9AMiEA2AKnlqt2BZYgihQlKcAfRAbozl2AqpDLsKdjhl8iEToDGbAI0kURgAGJxatdp1kzIEwLFKIiiSi2R3iYYTFCq6Ff/0VVUKtlqsTO6QFhoIjCGLEXvmFUlCuDoUSZER6l+UpDGhQKAtxDPq0Vay1XSRZrgi5RC+iC3bQghCgMYKr0To0a+WRiGBuVMibgAwjcG4Z9VjFMZGYDlFsYggIDECCtd5Rf2lNsRV//SVVQqkNRrA66WpU6EHI6AREQCBEowLbYN1WoqFayzWqRergi2RwJxexhACFEVX0QgIyFIEAUoAGKAGyrBSCDmcQgHIzbYirTbgr//01VUKhVIX7Tq1XZhSoBlwkMLcWwNyCOKem2eVJFaUTuT7XBALCtiiI8yCqyx7GLVjiCVADc5gBzSGezGbcwrTZhkCLBaGEBAUqQBKjLCtxh2KBVpLNbiul0iW4VkOADioUdgqvzC6CL8yr//1EdmF8lWCzFMhIJzCLiBoEpG8OFVtLJmV4s0xkrlL0EgiZIQ4vQiMLGCq4lozrHLoACXkujjDEj5e8XACqoAYpgblEBCJB7BWRKnQoSuSY5UYBCmEA5lVKXrUq0QlcVo/wCkiXspAz8LnlW4ul2nXiUUy4M5GGAiACBbBGKuFp5ijLYor1clbJTg2IUYEpYnFiqtq//VVDFAwCUwAICDYQF7AVUVfNNIEwmSLM0uTiLdwF7R+CCqOuGEZNbvZkInCJRvsJJ7klSbimRvlsckY+iqwcEhxpExhxQiKpxbsIyS5eyoRIWLJHwEm9ySq8xrT63WZgTJxl+mCAbg/ZRjAiY0VVZUK//WVVH7W7Wi7YFqdZIlkYUiJbIROvFu3bESS9F6KN5AUrcBhG6r2Y1kVoyyyRL9YpASoUxQMUwQkSUYgQF6EFTKobAEArSXa7W6xWyReLtIVCgQkE6RIYWxQAFWC001yumca1MiSHFEsFwgSIlqtxegASCBynG8xAB5hSIqFf/XVVbf2pWQBlGfX6/KYTESrk8uxGKFFwJwpQVWmgWrzNPL12S9MIscujgB24vlCkFsEvcVCG2MIplKYpygYogYpgAQEHsBAYAVYqJHUVrF5dcCwrGnnRW53+SEM3KnODZ6eoaUQeokXuIVaLHLxIxzILZfohcTLZOjSgMYUQEZJW4dGciUhUiMQMQ5QMUQgBAXsBVmV//Qv1q9kHjGmmQXYGcDgtzI0YwrmkfsraNbmUCwAYpWsulouVknMtV2jMiSkbORDA2EHIAMA58BUiOmbWD0RppkjvcAsUgwoPZhRGFvIdhEKnHUlrB49AZgGOOILtOQHcJC1jRGAXyAxY0kGLBRctlsnXa4RrRaoxSpkxwIjRlexMYYAAVpmKJTCQwNhKIlEBgQEHoQU2unrIGZFpRZmSGcki3A62MMK/Qti8K2Vciv/9GqOrzIFIx6yYspn2nTmTnKEVRgJQbx48kqxmkmIBnGoVmx54KE8vU2O0b7MGfbNs+pGdRWkRZlZgyrHkB3yzILkUG7dKhK3ESgEKYIENgoiKYxDAcgiUxRASiD0ICD2AgrMmTJU6U6dOcUiRIYTnOcW5jGF7EREVKDpm0kKzQg1EyBH/TknUIYBAyNGLcBOIDCmCAjMWqzmvWHFhmpVyUoPyuxd0hxSQRcgzxwFVxukDIOKZkGKOZ6MVGuUZRiQfB22xKpNV//0qS6jsg75qtckKdyRrQiNbliAEoORwkRhVcjpExQAjXrNJSPZzFWyA4xUr6SNs+2DPKR1ErqQ0kLFrwWbY9HOmujN05Sg2KhSi2e3qGmEdjiwVJNANJmagZEF4uyC8ctDAZIIg+UqQGwgixT23NGPUKpmAAAGwPQBAAqw3VpiSp2KW7MEK/qzSgiOIBWJK9PeKMAbFVitFsgZjWqGPTuTiRInBAkEYBwSvgW+fEBU2vJsfawjkQK/9OdXLSrBJ1wlTpluJ0iVKc5zClTtxMYRERgyJVfDALJasew62WqzRgiRERtwKAiL2YRMIiIiIiLcYVVQVLMktVuvWPXC1XSMEqFKhOU5DQAg2bqk2l1ktViwCxQrRGCIgrZGkMBYUxygYxhEW4iIiMCqqqlGWWq3XzGLpaLogJEKVAcDkFuAC9N4RsIPYKPwaSafKIGKtRASiAgIJU7cBB7AYMVqTDzFWjS7PXHiqv/2Q==';
+function buildSlFormHtml(d){
+  const e = escapeHtml;
+  const cell = 'border:0.3mm solid #000;vertical-align:top;padding:1mm 1.6mm;';
+  const lab = 'font-size:9.5pt;line-height:4.2mm;';
+  const val = 'font-size:11pt;font-weight:700;margin-top:1.2mm;';
+  const spiegelHead = [1,2,3,4,5,6].map(g => `<td style="${cell}height:4.8mm;padding:0 1.2mm;font-size:11pt;">${g}</td>`).join('');
+  const spiegelVals = d.counts.map(n => `<td style="${cell}height:11.7mm;text-align:center;vertical-align:middle;font-size:13pt;font-weight:700;">${n}</td>`).join('');
+  return `<!DOCTYPE html><html><head><meta charset="utf-8"><title>SL-Formular ${e(d.klausur)}</title>
+  <style>
+    @page{size:A4 portrait;margin:0;}
+    *{box-sizing:border-box;}
+    html, body{margin:0;padding:0;background:#fff;color:#000;font-family:Arial,Helvetica,"Liberation Sans",sans-serif;}
+    .page{position:relative;width:210mm;height:296mm;overflow:hidden;}
+    .abs{position:absolute;}
+    table{border-collapse:collapse;table-layout:fixed;}
+    td{margin:0;}
+    sup{font-size:60%;line-height:0;}
+  </style></head><body><div class="page">
+    <div class="abs" style="left:27.6mm;width:170mm;top:17.3mm;text-align:center;font-size:12pt;font-weight:700;letter-spacing:0.44em;word-spacing:0.55em;padding-left:0.44em;">MERCATOR-GYMNASIUM DUISBURG</div>
+    <img class="abs" src="${SL_LOGO_DATAURL}" style="left:182.4mm;top:5.6mm;width:10.2mm;height:17.3mm;" alt="">
+    <div class="abs" style="left:27.6mm;width:170mm;top:28.65mm;text-align:center;font-size:12pt;font-weight:700;line-height:5.33mm;">Formular zur Vorlage von Klassenarbeiten/Klausuren<br>bei der Schulleitung<sup>1</sup><br>(<u>vor</u> der Rückgabe an die Lerngruppe und<br><u>nach</u> erfolgtem Noteneintrag in SchILDweb)</div>
+    <div class="abs" style="left:100.6mm;top:66mm;width:86.1mm;height:37.9mm;border:0.3mm solid #000;"><div class="abs" style="right:4mm;bottom:3.2mm;font-size:11pt;font-style:italic;">- Eingangsstempel -</div></div>
+
+    <table class="abs" style="left:23.1mm;top:120.2mm;width:164.1mm;">
+      <colgroup><col style="width:47mm"><col style="width:47.5mm"><col style="width:30.5mm"><col style="width:39.1mm"></colgroup>
+      <tr style="height:20.8mm;">
+        <td style="${cell}"><div style="${lab}">Klasse/Jahrgangsstufe:</div><div style="${val}">${e(d.klasse)}</div></td>
+        <td style="${cell}"><div style="${lab}">Fach/Kurs:</div><div style="${val}">${e(d.fach)}</div></td>
+        <td style="${cell}"><div style="${lab}">Schulhalbjahr</div><div style="${val}text-align:center;margin-top:3.5mm;">${e(d.hj)}</div></td>
+        <td style="${cell}font-size:9.5pt;line-height:4mm;"><div>Klassenarbeit/Klausur</div><div>Nr. <span style="display:inline-block;width:23mm;border-bottom:0.25mm solid #000;text-align:center;font-weight:700;font-size:11pt;">${e(d.nr)}</span></div><div style="margin-top:2.6mm;">von <span style="display:inline-block;width:23mm;border-bottom:0.25mm solid #000;text-align:center;font-weight:700;font-size:11pt;">${e(d.von)}</span></div><div style="text-align:center;">(pro Halbjahr)</div></td>
+      </tr>
+      <tr style="height:24.6mm;">
+        <td style="${cell}"><div style="${lab}">Datum der<br>Klassenarbeit/Klausur:</div><div style="${val}">${e(d.datum)}</div></td>
+        <td style="${cell}"><div style="${lab}">Dauer der<br>Klassenarbeit/Klausur<br>(in Minuten):</div><div style="${val}">${e(d.dauer)}</div></td>
+        <td style="${cell}" colspan="2"><div style="${lab}">Kürzel der Lehrkraft:</div><div style="${val}">${e(d.kuerzel)}</div></td>
+      </tr>
+    </table>
+
+    <div class="abs" style="left:23.1mm;width:164.1mm;top:169.6mm;text-align:center;font-size:11pt;"><u>Notenspiegel</u></div>
+    <table class="abs" style="left:23.1mm;top:176.5mm;width:164.1mm;">
+      <colgroup><col style="width:19.6mm"><col style="width:19.8mm"><col style="width:19.6mm"><col style="width:19.8mm"><col style="width:19.8mm"><col style="width:19.6mm"><col style="width:20.3mm"><col style="width:25.6mm"></colgroup>
+      <tr>${spiegelHead}<td style="${cell}height:4.8mm;padding:0 1mm;text-align:center;font-size:11pt;">&sum; &nbsp;/&nbsp; NT</td><td style="${cell}height:4.8mm;padding:0 1.2mm;font-size:11pt;">Durchschnitt</td></tr>
+      <tr>${spiegelVals}<td style="${cell}height:11.7mm;text-align:center;vertical-align:middle;font-size:13pt;font-weight:700;">${e(d.summe)} / ${e(d.nt)}</td><td style="${cell}height:11.7mm;text-align:center;vertical-align:middle;font-size:13pt;font-weight:700;">${e(d.avg)}</td></tr>
+    </table>
+
+    <div class="abs" style="left:31mm;top:206.8mm;font-size:12pt;font-weight:700;"><u>Anlage:</u></div>
+    <div class="abs" style="left:31.5mm;top:218.4mm;font-size:12pt;line-height:5.33mm;">1)</div>
+    <div class="abs" style="left:37.6mm;top:218.4mm;font-size:12pt;line-height:5.33mm;">Je eine gute, eine durchschnittliche, eine schwache<br>Klassenarbeit/Klausur (im Original)</div>
+
+    <div class="abs" style="left:105.4mm;width:80.3mm;top:256.8mm;border-top:0.3mm solid #000;"></div>
+    <div class="abs" style="left:106.4mm;top:257.4mm;font-size:12pt;">Datum/Kenntnisnahme durch Schulleitung</div>
+    <div class="abs" style="left:24.1mm;top:274.8mm;font-size:10pt;"><sup>1</sup> Gesetzliche Grundlagen: § 59 Absatz 2 Nummer 3 SchulG und § 22 Absatz 1 Nummer 3 ADO.</div>
+  </div></body></html>`;
+}
+function schriftlichLeafColumns(sem){
+  const g = sem.groups.find(x => (x.name || '').trim().toLowerCase() === 'schriftlich');
+  const out = [];
+  const walk = (list) => (list || []).forEach(cat => { if(isContainerCat(cat)) walk(cat.children); else out.push(cat); });
+  if(g) walk(g.children);
+  return out;
+}
+function printSlForm(d){
+  const win = window.open('', '_blank');
+  if(!win){
+    showAlert('Fehler', 'Popup wurde blockiert. Bitte Popups für diese Seite erlauben und erneut versuchen.');
+    return false;
+  }
+  win.document.open();
+  win.document.write(buildSlFormHtml(d));
+  win.document.close();
+  setTimeout(() => { win.focus(); win.print(); }, 300);
+  return true;
+}
+function openSlFormDialog(cls, sem, cat, st){
+  const root = document.getElementById('modalRoot');
+  const leaves = schriftlichLeafColumns(sem);
+  const idx = leaves.findIndex(x => x.id === cat.id);
+  const hjMatch = (sem.name || '').match(/\d/);
+  const slForm = cls.slForm || {};
+  let kuerzelStored = '';
+  try{ kuerzelStored = localStorage.getItem('notenbuch-sl-kuerzel') || ''; }catch(err){}
+  const f = (id, label, value, type) => `<label style="display:flex;flex-direction:column;gap:3px;font-size:0.78rem;color:var(--ink-soft);">${label}<input type="${type || 'text'}" id="${id}" value="${escapeHtml(String(value ?? ''))}" style="width:100%;"></label>`;
+  root.innerHTML = `
+    <div class="overlay" id="overlay">
+      <div class="modal">
+        <div class="modal-close"><button class="ghost small" id="slCancel">Abbrechen</button></div>
+        <h3>SL-Formular erzeugen</h3>
+        <div class="sub">Angaben prüfen oder ergänzen. Notenspiegel, Anzahl und Durchschnitt werden aus der Statistik übernommen.</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
+          ${f('slKlasse', cls.stufe === 'SI' ? 'Klasse' : cls.stufe === 'SII' ? 'Jahrgang' : 'Klasse/Jahrgangsstufe', slForm.klasse || (cls.slForm ? '' : cls.name))}
+          ${f('slFach', cls.stufe === 'SI' ? 'Fach' : cls.stufe === 'SII' ? 'Kurs' : 'Fach/Kurs', slForm.fach || '')}
+          ${f('slHj', 'Schulhalbjahr', hjMatch ? hjMatch[0] : '')}
+          ${f('slDatum', 'Datum der Klausur', cat.date || '', 'date')}
+          ${f('slNr', 'Klausur Nr.', idx > -1 ? idx + 1 : '')}
+          ${f('slVon', 'von (pro Halbjahr)', leaves.length || '')}
+          ${f('slDauer', 'Dauer (Minuten)', cat.durationMin || '', 'number')}
+          ${f('slKuerzel', 'Kürzel der Lehrkraft', kuerzelStored)}
+          ${f('slNt', 'NT (nicht teilgenommen)', Math.max(0, st.total - st.n), 'number')}
+        </div>
+        <div class="row" style="margin-top:14px;"><button id="slPrint">Formular drucken</button></div>
+      </div>
+    </div>`;
+  const back = () => openKlausurStatistik(cls, sem, ctxGroupIdOf(sem, cat), cat.id);
+  document.getElementById('slCancel').onclick = back;
+  document.getElementById('overlay').addEventListener('click', (e) => { if(e.target.id === 'overlay') root.innerHTML = ''; });
+  document.getElementById('slPrint').onclick = () => {
+    const v = (id) => document.getElementById(id).value.trim();
+    const counts = [1,2,3,4,5,6].map(g => st.spiegel.filter(b => b.label[0] === String(g)).reduce((s, b) => s + b.count, 0));
+    const d = {
+      klausur: cat.name,
+      klasse: v('slKlasse'), fach: v('slFach'), hj: v('slHj'), nr: v('slNr'), von: v('slVon'),
+      datum: v('slDatum') ? formatDate(v('slDatum')) : '', dauer: v('slDauer'), kuerzel: v('slKuerzel'),
+      counts, summe: st.n, nt: v('slNt') || '0',
+      avg: st.n ? fmtStatNum(st.meanNoten, 2) : '',
+    };
+    cls.slForm = {klasse: d.klasse, fach: d.fach};
+    try{ localStorage.setItem('notenbuch-sl-kuerzel', d.kuerzel); }catch(err){}
+    cat.date = v('slDatum');
+    cat.durationMin = v('slDauer');
+    printSlForm(d);
+    root.innerHTML = '';
+    saveState();
+    render();
+  };
+}
+function ctxGroupIdOf(sem, cat){
+  const g = sem.groups.find(x => (x.name || '').trim().toLowerCase() === 'schriftlich');
+  return g ? g.id : null;
+}
+function openKlausurStatistik(cls, sem, groupId, catId){
+  const ctx = findCategoryContext(sem, groupId, catId);
+  if(!ctx) return;
+  const cat = ctx.cat;
+  const st = computeKlausurStats(cls, sem, cat);
+  const root = document.getElementById('modalRoot');
+  const rows = [
+    ['Anzahl Schüler*innen', String(st.total)],
+    ['Anzahl vergebene Noten', String(st.n)],
+    ['Durchschnitt', st.n ? st.meanText : '–'],
+  ];
+  root.innerHTML = `
+    <div class="overlay" id="overlay">
+      <div class="modal">
+        <div class="modal-close" style="display:flex;gap:8px;justify-content:flex-end;">
+          <button class="ghost small" id="printStatBtn">🖨 Drucken</button>
+          <button class="ghost small" id="closeModal">Fertig</button>
+        </div>
+        <h3>Statistik: ${escapeHtml(cat.name)}</h3>
+        <div class="sub">${escapeHtml(ctx.group.name)} · ${escapeHtml(sem.name)}</div>
+        <table style="width:100%;border-collapse:collapse;margin-top:6px;font-size:0.9rem;">
+          ${rows.map(r => `<tr><td style="padding:7px 0;border-bottom:1px solid var(--line);color:var(--ink-soft);">${r[0]}</td><td style="padding:7px 0;border-bottom:1px solid var(--line);text-align:right;font-weight:600;">${r[1]}</td></tr>`).join('')}
+        </table>
+        <div style="margin-top:16px;font-weight:600;font-size:0.85rem;">Notenspiegel</div>
+        <div style="display:flex;align-items:flex-end;gap:1px;height:${st.scale === 'punkte' ? 150 : 140}px;margin-top:6px;">${statSpiegelChartHtml(st, false)}</div>
+        <div class="row" style="margin-top:16px;"><button class="ghost small" id="slFormBtn">SL Formular erzeugen</button></div>
+      </div>
+    </div>`;
+  document.getElementById('overlay').addEventListener('click', (e) => { if(e.target.id === 'overlay') root.innerHTML = ''; });
+  document.getElementById('closeModal').onclick = () => { root.innerHTML = ''; };
+  document.getElementById('printStatBtn').onclick = () => { printKlausurStatistik(cls, sem, cat, st); };
+  document.getElementById('slFormBtn').onclick = () => { openSlFormDialog(cls, sem, cat, st); };
 }
 function openEndnoteModal(cls, sem, studentId){
   const student = cls.students.find(s=>s.id===studentId);
