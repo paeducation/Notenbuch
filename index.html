@@ -319,7 +319,7 @@ function colorForGroupName(name){
 }
 
 function uid(){ return Math.random().toString(36).slice(2,10); }
-const APP_VERSION_INFO = 'v19.2 · Entwickler: G. Schulte';
+const APP_VERSION_INFO = 'v19.3 · Entwickler: G. Schulte';
 function setStatus(msg, isError){
   const el = document.getElementById('status');
   el.textContent = msg + ' · ' + APP_VERSION_INFO; el.style.color = isError ? 'var(--pen)' : 'var(--ink-soft)';
@@ -1935,9 +1935,10 @@ function renderGrid(main, cls, sem){
   const maxDepth = maxCatDepth(groups);
   const topRowspan = maxDepth + 1;
 
+  const studentCount = getSemesterStudents(cls, sem).length;
   const studentColSelected = state.colorizeMode && isColorizeSelected('studentcol', 'schueler');
   const studentColSelectStyle = studentColSelected ? 'box-shadow:inset 0 0 0 3px var(--accent);' : '';
-  let groupHeadRow = `<tr><th class="name-col" rowspan="${topRowspan}" style="${sem.studentColColor?`background:${sem.studentColColor};`:''}${studentColSelectStyle}"><div class="colhead-wrap" style="min-height:100px;"><input type="text" id="searchStudent" placeholder="Suchen…" value="${escapeHtml(state.searchTerm||'')}" style="position:absolute;top:4px;left:50%;transform:translateX(-50%);width:90%;max-width:120px;font-size:0.72rem;padding:3px 6px;z-index:2;"><div data-select-student-col style="min-height:100px;display:flex;flex-direction:column;justify-content:center;align-items:center;gap:2px;cursor:${state.colorizeMode?'pointer':'default'};">Schüler${studentColSelected ? ' ✓' : ''}${state.selectedStudentId ? `<button class="colx dark ${state.incognito?'active-toggle':''}" data-toggle-incognito title="${state.incognito?'Inkognito ausschalten':'Inkognito einschalten (nur markierten Schüler zeigen)'}" style="display:inline-flex;align-items:center;justify-content:center;padding:0 2px;margin-top:6px;width:auto;height:auto;">${personIconSvg()}</button>` : ''}</div></div></th><th class="endnote-col" rowspan="${topRowspan}" data-edit-endnote-color style="cursor:pointer;${sem.endnoteColor?`background:${sem.endnoteColor};`:''}"><div class="endnote-head">Endnote<br><span class="weight">${sem.name}</span></div></th>`;
+  let groupHeadRow = `<tr><th class="name-col" rowspan="${topRowspan}" style="${sem.studentColColor?`background:${sem.studentColColor};`:''}${studentColSelectStyle}"><div class="colhead-wrap" style="min-height:100px;"><input type="text" id="searchStudent" placeholder="Suchen…" value="${escapeHtml(state.searchTerm||'')}" style="position:absolute;top:4px;left:50%;transform:translateX(-50%);width:90%;max-width:120px;font-size:0.72rem;padding:3px 6px;z-index:2;"><div data-select-student-col style="min-height:100px;display:flex;flex-direction:column;justify-content:center;align-items:center;gap:2px;cursor:${state.colorizeMode?'pointer':'default'};">Schüler (${studentCount})${studentColSelected ? ' ✓' : ''}${state.selectedStudentId ? `<button class="colx dark ${state.incognito?'active-toggle':''}" data-toggle-incognito title="${state.incognito?'Inkognito ausschalten':'Inkognito einschalten (nur markierten Schüler zeigen)'}" style="display:inline-flex;align-items:center;justify-content:center;padding:0 2px;margin-top:6px;width:auto;height:auto;">${personIconSvg()}</button>` : ''}</div></div></th><th class="endnote-col" rowspan="${topRowspan}" data-edit-endnote-color style="cursor:pointer;${sem.endnoteColor?`background:${sem.endnoteColor};`:''}"><div class="endnote-head">Endnote<br><span class="weight">${sem.name}</span></div></th>`;
   groups.forEach(g => {
     if(g.collapsed){
       groupHeadRow += `<th class="grp-head collapsed-col" rowspan="${topRowspan}" style="background:${(g.bgColor || colorForGroupName(g.name))};">
