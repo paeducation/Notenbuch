@@ -139,8 +139,9 @@
     text-align:center;vertical-align:middle;}
   .endnote-head{display:flex;flex-direction:column;align-items:center;justify-content:center;
     height:100%;text-align:center;}
-  td.name-col{z-index:6;font-weight:500;}
+  td.name-col{z-index:6;font-weight:700;}
   td.endnote-col{z-index:6;}
+  td.endnote-col .note-pill{font-weight:900;font-size:0.92rem;}
   td.total-col{background:var(--surface-soft);border-right:2px solid var(--ink-soft);}
   .colx{border:none;background:rgba(255,255,255,0.3);color:#fff;font-size:0.7rem;width:18px;height:18px;
     border-radius:50%;cursor:pointer;font-weight:700;line-height:1;}
@@ -343,7 +344,7 @@ function colorForGroupName(name){
 }
 
 function uid(){ return Math.random().toString(36).slice(2,10); }
-const APP_VERSION_INFO = 'v20.5 · Entwickler: G. Schulte';
+const APP_VERSION_INFO = 'v20.6 · Entwickler: G. Schulte';
 function setStatus(msg, isError){
   const el = document.getElementById('status');
   el.textContent = msg + ' · ' + APP_VERSION_INFO; el.style.color = isError ? 'var(--pen)' : 'var(--ink-soft)';
