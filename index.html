@@ -319,7 +319,7 @@ function colorForGroupName(name){
 }
 
 function uid(){ return Math.random().toString(36).slice(2,10); }
-const APP_VERSION_INFO = 'v19.1 · Entwickler: G. Schulte';
+const APP_VERSION_INFO = 'v19.2 · Entwickler: G. Schulte';
 function setStatus(msg, isError){
   const el = document.getElementById('status');
   el.textContent = msg + ' · ' + APP_VERSION_INFO; el.style.color = isError ? 'var(--pen)' : 'var(--ink-soft)';
@@ -1439,22 +1439,89 @@ function renderAddLerngruppeModal(){
     document.getElementById('csvImportFile').click();
   };
 }
+function renderEditLerngruppeModal(cls){
+  const root = document.getElementById('modalRoot');
+  const wsGroup = (cls.semesters[0] && cls.semesters[0].groups || []).find(g => (g.name || '').trim().toLowerCase() === 'schriftlich');
+  const looksLikeSI = !!(wsGroup && (wsGroup.children || []).some(ch => /^ka\d/i.test(ch.name || '')));
+  let stufe = cls.stufe || (looksLikeSI ? 'SI' : 'SII');
+  const slForm = cls.slForm || {};
+  const startKlasse = cls.slForm ? (slForm.klasse || '') : cls.name;
+  const startFach = slForm.fach || '';
+  root.innerHTML = `
+    <div class="overlay" id="overlay">
+      <div class="modal">
+        <div class="modal-close"><button class="ghost small" id="closeEditModal">Abbrechen</button></div>
+        <h3>Lerngruppe bearbeiten</h3>
+        <div class="sub">Angaben wie beim Anlegen ändern</div>
+        <div style="margin-top:14px;">
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
+            <label style="display:flex;flex-direction:column;gap:3px;font-size:0.78rem;color:var(--ink-soft);"><span id="editKlasseLabel">Klasse</span><input type="text" id="editKlasse" value="${escapeHtml(startKlasse)}" style="width:100%;"></label>
+            <label style="display:flex;flex-direction:column;gap:3px;font-size:0.78rem;color:var(--ink-soft);"><span id="editFachLabel">Fach</span><input type="text" id="editFach" value="${escapeHtml(startFach)}" style="width:100%;"></label>
+          </div>
+          <div class="hint" id="editNameHint" style="margin-top:6px;"></div>
+          <div class="row" style="margin-top:10px;gap:8px;">
+            <button class="ghost small" id="editStufeSIBtn" style="flex:1;">Sek I</button>
+            <button class="ghost small" id="editStufeSIIBtn" style="flex:1;">Sek II</button>
+          </div>
+          <div class="hint" style="margin-top:6px;">Die Stufe bestimmt die Beschriftung (Klasse/Fach bzw. Jahrgang/Kurs). Die vorhandene Struktur und alle Noten bleiben unverändert.</div>
+          <div class="row" style="margin-top:12px;justify-content:flex-end;">
+            <button id="saveEditLerngruppeBtn">Speichern</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  `;
+  const klasseInput = document.getElementById('editKlasse');
+  const fachInput = document.getElementById('editFach');
+  const composedName = () => [klasseInput.value.trim(), fachInput.value.trim()].filter(Boolean).join(' ');
+  const updateNameHint = () => {
+    const n = composedName();
+    document.getElementById('editNameHint').textContent = n ? `Name der Lerngruppe: ${n}` : 'Der Name der Lerngruppe ergibt sich aus diesen Angaben.';
+  };
+  const sync = () => {
+    document.getElementById('editKlasseLabel').textContent = stufe === 'SI' ? 'Klasse' : 'Jahrgang';
+    document.getElementById('editFachLabel').textContent = stufe === 'SI' ? 'Fach' : 'Kurs';
+    klasseInput.placeholder = stufe === 'SI' ? 'z.B. 9b' : 'z.B. Q1';
+    fachInput.placeholder = stufe === 'SI' ? 'z.B. Deutsch' : 'z.B. D-GK1';
+    document.getElementById('editStufeSIBtn').classList.toggle('active-toggle', stufe === 'SI');
+    document.getElementById('editStufeSIIBtn').classList.toggle('active-toggle', stufe === 'SII');
+    updateNameHint();
+  };
+  klasseInput.addEventListener('input', updateNameHint);
+  fachInput.addEventListener('input', updateNameHint);
+  document.getElementById('editStufeSIBtn').onclick = () => { stufe = 'SI'; sync(); };
+  document.getElementById('editStufeSIIBtn').onclick = () => { stufe = 'SII'; sync(); };
+  sync();
+  document.getElementById('overlay').addEventListener('click', (e) => { if(e.target.id === 'overlay') root.innerHTML = ''; });
+  document.getElementById('closeEditModal').onclick = () => { root.innerHTML = ''; };
+  const doSave = () => {
+    const name = composedName();
+    if(!name){ klasseInput.focus(); return; }
+    cls.name = name;
+    cls.stufe = stufe;
+    cls.slForm = {klasse: klasseInput.value.trim(), fach: fachInput.value.trim()};
+    saveState();
+    root.innerHTML = '';
+    render();
+  };
+  document.getElementById('saveEditLerngruppeBtn').onclick = doSave;
+  [klasseInput, fachInput].forEach(inp => inp.addEventListener('keydown', (e) => { if(e.key === 'Enter') doSave(); }));
+}
 function renderClassRow(){
   const row = document.getElementById('classRow');
   row.innerHTML = state.classes.map(c => `
     <button class="sem-tab ${c.id===state.activeClassId?'active':''}" data-class="${c.id}">${escapeHtml(c.name)}</button>
   `).join('') + `<button class="icon-add-btn labeled" id="addClassIconBtn" title="Lerngruppe hinzufügen"><span>Lerngruppe hinzufügen</span> +</button>` +
-    (state.classes.length ? `<button class="ghost small" id="renameClassBtn">✎</button><button class="ghost small" id="deleteClassBtn">✕</button>` : '');
+    (state.classes.length ? `<button class="ghost small" id="renameClassBtn" title="Lerngruppe bearbeiten">✎</button><button class="ghost small" id="deleteClassBtn" title="Lerngruppe löschen">✕</button>` : '');
   row.querySelectorAll('[data-class]').forEach(btn=>{
     btn.onclick = () => { state.activeClassId = btn.dataset.class; saveState(); render(); };
   });
   document.getElementById('addClassIconBtn').onclick = async () => { await showSecurityInfoModal(); renderAddLerngruppeModal(); };
   const renameBtn = document.getElementById('renameClassBtn');
   if(renameBtn){
-    renameBtn.onclick = async () => {
+    renameBtn.onclick = () => {
       const cls = getActiveClass(); if(!cls) return;
-      const name = await showPrompt('Lerngruppe umbenennen', '', cls.name, {confirmLabel:'Speichern'});
-      if(name && name.trim()){ cls.name = name.trim(); saveState(); render(); }
+      renderEditLerngruppeModal(cls);
     };
   }
   const deleteBtn = document.getElementById('deleteClassBtn');
