@@ -132,6 +132,7 @@
     box-shadow:0 1px 2px rgba(0,0,0,.25);z-index:2;}
   .note-pill{display:inline-block;min-width:26px;text-align:center;padding:2px 7px;border-radius:14px;
     font-weight:700;font-size:0.8rem;font-family:ui-monospace,'SF Mono',Menlo,monospace;}
+  .note-x{background:var(--surface-soft);color:var(--ink-soft);border:1px dashed var(--ink-soft);font-weight:700;}
   .note-1,.note-2{background:var(--pass-soft);color:var(--pass);}
   .note-3,.note-4{background:var(--warn-soft);color:var(--warn);}
   .note-5,.note-6{background:var(--danger-soft);color:var(--danger);}
@@ -319,7 +320,7 @@ function colorForGroupName(name){
 }
 
 function uid(){ return Math.random().toString(36).slice(2,10); }
-const APP_VERSION_INFO = 'v19.3 · Entwickler: G. Schulte';
+const APP_VERSION_INFO = 'v19.8 · Entwickler: G. Schulte';
 function setStatus(msg, isError){
   const el = document.getElementById('status');
   el.textContent = msg + ' · ' + APP_VERSION_INFO; el.style.color = isError ? 'var(--pen)' : 'var(--ink-soft)';
@@ -393,7 +394,21 @@ function gradeForPercent(table, pct){
 }
 function activeGradeTable(cls){ return cls.gradingSystem === 'punkte' ? cls.gradeTablePunkte : cls.gradeTableNoten; }
 const OBSERVATION_SYMBOLS = ['+','○','-'];
+// Markierungen ohne Wertung: NT = nicht teilgenommen, NB = nicht bewertbar (älteres Format {x:true} gilt als NT)
+function entryMark(entry){
+  if(!entry) return null;
+  if(entry.mark === 'NT' || entry.mark === 'NB') return entry.mark;
+  return entry.x ? 'NT' : null;
+}
+function studentMark(cat, studentId){
+  return entryMark(cat && cat.entries && cat.entries[studentId]);
+}
+const MARK_TITLES = {NT: 'nicht teilgenommen (ohne Wertung)', NB: 'nicht bewertbar (ohne Wertung)'};
+function markPillHtml(mark){
+  return `<span class="note-pill note-x" title="${MARK_TITLES[mark] || ''}">${mark}</span>`;
+}
 function entryValue(cls, cat, entry){
+  if(entryMark(entry)) return null;
   if(cat.mode === 'points'){
     const pts = parseFloat(entry.points), max = parseFloat(entry.maxPoints);
     if(isNaN(pts) || isNaN(max) || max <= 0) return null;
@@ -1720,6 +1735,8 @@ function excelCellForValue(cls, value, scaleOverride){
   return {text: displayValue(effCls, displayVal), bucket};
 }
 function excelCellForCategory(cls, cat, studentId){
+  const mk = studentMark(cat, studentId);
+  if(mk) return mk;
   const v = categoryAvgForStudent(cls, cat, studentId);
   return excelCellForValue(cls, v, cat.displayScale);
 }
@@ -1863,7 +1880,7 @@ function renderKonferenztabelleHtml(cls, sem){
     let row = `<tr><td class="name-col" style="text-align:left;">${escapeHtml(s.name)}</td>`;
     schriftlichCats.forEach(c => {
       const v = categoryAvgForStudent(cls, c, s.id);
-      row += `<td>${notePill(cls, v, undefined, c.displayScale)}</td>`;
+      row += `<td>${studentMark(c, s.id) ? markPillHtml(studentMark(c, s.id)) : notePill(cls, v, undefined, c.displayScale)}</td>`;
     });
     const gSchr = schriftlich ? groupGesamtForStudent(cls, schriftlich, s.id) : null;
     row += `<td class="total-col">${notePill(cls, gSchr)}</td>`;
@@ -2099,6 +2116,10 @@ function renderGrid(main, cls, sem){
       if(cat.mode === 'points' && !isContainerCat(cat)){
         const entry = cat.entries[s.id];
         if(entry) subLabel = `${entry.points ?? '?'}/${entry.maxPoints ?? '?'}`;
+      }
+      const cellMark = studentMark(cat, s.id);
+      if(cellMark){
+        return `<td${colorCls}${bgAttr}><div class="cell-stack" data-open-entries data-cat="${cat.id}" data-group="${g.id}" data-student="${s.id}">${markPillHtml(cellMark)}</div></td>`;
       }
       return `<td${colorCls}${bgAttr}><div class="cell-stack" data-open-entries data-cat="${cat.id}" data-group="${g.id}" data-student="${s.id}">${notePill(cls, a, subLabel, cat.displayScale)}${overrideMark(cat, g, s)}</div></td>`;
     }
@@ -2799,9 +2820,11 @@ async function editCategory(cls, sem, groupId, catId){
 }
 
 // ---------- entries modal ----------
+let lastEntryGroup = null;
 function openEntriesModal(cls, sem, groupId, catId, studentId){
   const ctx = findCategoryContext(sem, groupId, catId);
   if(!ctx) return;
+  lastEntryGroup = ctx.group;
   const student = cls.students.find(s=>s.id===studentId);
   if(isContainerCat(ctx.cat)){
     renderCategoryOverrideModal(cls, ctx.cat, student);
@@ -3117,7 +3140,13 @@ function computeKlausurStats(cls, sem, cat){
     }
     if(idx > -1) spiegel[idx].count++;
   });
-  const stats = {scale, total: students.length, n: vals.length, spiegel, mean: null, meanText: ''};
+  const stats = {scale, total: students.length, n: vals.length, ntAuto: students.filter(s => {
+      const mk = studentMark(cat, s.id);
+      if(mk === 'NT') return true;
+      if(mk === 'NB') return false;
+      const v = categoryAvgForStudent(cls, cat, s.id);
+      return v === null || v === undefined || isNaN(v);
+    }).length, spiegel, mean: null, meanText: ''};
   if(vals.length){
     const mean = vals.reduce((s, v) => s + v, 0) / vals.length;
     stats.mean = mean;
@@ -3309,7 +3338,7 @@ function openSlFormDialog(cls, sem, cat, st){
           ${f('slVon', 'von (pro Halbjahr)', leaves.length || '')}
           ${f('slDauer', 'Dauer (Minuten)', cat.durationMin || '', 'number')}
           ${f('slKuerzel', 'Kürzel der Lehrkraft', kuerzelStored)}
-          ${f('slNt', 'NT (nicht teilgenommen)', Math.max(0, st.total - st.n), 'number')}
+          ${f('slNt', 'NT (nicht teilgenommen / ohne Note)', st.ntAuto || 0, 'number')}
         </div>
         <div class="row" style="margin-top:14px;"><button id="slPrint">Formular drucken</button></div>
       </div>
@@ -3324,7 +3353,7 @@ function openSlFormDialog(cls, sem, cat, st){
       klausur: cat.name,
       klasse: v('slKlasse'), fach: v('slFach'), hj: v('slHj'), nr: v('slNr'), von: v('slVon'),
       datum: v('slDatum') ? formatDate(v('slDatum')) : '', dauer: v('slDauer'), kuerzel: v('slKuerzel'),
-      counts, summe: st.n, nt: v('slNt') || '0',
+      counts, summe: st.n, nt: v('slNt'),
       avg: st.n ? fmtStatNum(st.meanNoten, 2) : '',
     };
     cls.slForm = {klasse: d.klasse, fach: d.fach};
@@ -3487,6 +3516,8 @@ function observationChipsHtml(selected){
 function renderModal(cls, cat, student){
   const root = document.getElementById('modalRoot');
   const entry = cat.entries[student.id];
+  const inSchriftlich = !!(lastEntryGroup && (lastEntryGroup.name || '').trim().toLowerCase() === 'schriftlich');
+  const showNb = !inSchriftlich || entryMark(entry) === 'NB';
   const unit = cls.gradingSystem === 'punkte' ? 'Notenpunkte (0-15)' : 'Note mit Tendenz';
   const modeLabel = cat.mode==='points' ? 'Klausurpunkte (automatisch berechnet)' : cat.mode==='observation' ? 'Unterrichtsbeobachtung' : unit;
   root.innerHTML = `
@@ -3508,6 +3539,11 @@ function renderModal(cls, cat, student){
                  ${gradeChipsHtml(cls, entry?.hiddenGrade, true)}`}`
               : gradeChipsHtml(cls, entry?.grade)}
         </div>
+        ${cat.mode !== 'observation' ? `<div class="row" style="margin-top:14px;align-items:center;gap:8px;">
+          <button class="${entryMark(entry) === 'NT' ? '' : 'ghost'} small" data-mark-btn="NT" style="min-width:46px;font-weight:700;">NT</button>
+          ${showNb ? `<button class="${entryMark(entry) === 'NB' ? '' : 'ghost'} small" data-mark-btn="NB" style="min-width:46px;font-weight:700;">NB</button>` : ''}
+          <span class="hint" style="margin:0;">${entryMark(entry) ? `${MARK_TITLES[entryMark(entry)]}. Antippen zum Entfernen.` : (showNb ? 'NT = nicht teilgenommen, NB = nicht bewertbar (jeweils ohne Wertung)' : 'NT = nicht teilgenommen (ohne Wertung)')}</span>
+        </div>` : ''}
         <div style="margin-top:14px;">
           <textarea id="entryNote" rows="2" placeholder="Notiz (optional)" style="width:100%;resize:vertical;">${escapeHtml(entry?.note || '')}</textarea>
         </div>
@@ -3554,6 +3590,18 @@ function renderModal(cls, cat, student){
       };
     });
   }
+  root.querySelectorAll('[data-mark-btn]').forEach(btn => {
+    btn.onclick = () => {
+      const mark = btn.dataset.markBtn;
+      if(entryMark(cat.entries[student.id]) === mark){
+        delete cat.entries[student.id];
+      } else {
+        cat.entries[student.id] = {mark, note: currentNote()};
+      }
+      saveState();
+      root.innerHTML = ''; render();
+    };
+  });
   const noteInput = document.getElementById('entryNote');
   if(noteInput){
     noteInput.addEventListener('change', () => {
