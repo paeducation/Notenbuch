@@ -319,6 +319,13 @@ const STORAGE_KEY = 'classes';
 let state = { classes: [], activeClassId: null, scaleOpen: false, searchTerm: '', compareView: false, positionMode: false, selectedStudentId: null, incognito: false, colorizeMode: false, colorizeSelection: [] };
 let pendingCsvStufe = 'SII';
 let pendingCsvMeta = null;
+const SL_KUERZEL_KEY = 'notenbuch-sl-kuerzel';
+function getStoredKuerzel(){
+  try{ return localStorage.getItem(SL_KUERZEL_KEY) || ''; }catch(e){ return ''; }
+}
+function storeKuerzel(k){
+  try{ if(k) localStorage.setItem(SL_KUERZEL_KEY, k); }catch(e){}
+}
 let searchWasFocused = false;
 
 const NOTEN_TABLE = [
@@ -344,7 +351,7 @@ function colorForGroupName(name){
 }
 
 function uid(){ return Math.random().toString(36).slice(2,10); }
-const APP_VERSION_INFO = 'v20.6 · Entwickler: G. Schulte';
+const APP_VERSION_INFO = 'v20.7 · Entwickler: G. Schulte';
 function setStatus(msg, isError){
   const el = document.getElementById('status');
   el.textContent = msg + ' · ' + APP_VERSION_INFO; el.style.color = isError ? 'var(--pen)' : 'var(--ink-soft)';
@@ -1025,7 +1032,7 @@ async function importCSV(file){
     const sem2 = {id: uid(), name: '2. HJ', groups: defaultGroups(pendingCsvStufe), studentIds: [], endnoteColor: '#F2F2F2'};
     targetCls = {id: uid(), name: klasseName, students: [], semesters: [sem1, sem2], activeSemesterId: sem1.id,
       gradingSystem: 'noten', gradeTableNoten: NOTEN_TABLE.map(r=>({...r})), gradeTablePunkte: PUNKTE_TABLE.map(r=>({...r}))};
-    if(meta && meta.name){ targetCls.slForm = {klasse: meta.klasse, fach: meta.fach}; }
+    if(meta){ targetCls.slForm = meta.name ? {klasse: meta.klasse, fach: meta.fach, kuerzel: meta.kuerzel} : {klasse: klasseName, fach: '', kuerzel: meta.kuerzel}; }
     targetCls.stufe = pendingCsvStufe;
     state.classes.push(targetCls);
   }
@@ -1413,6 +1420,7 @@ function renderAddLerngruppeModal(){
             <label style="display:flex;flex-direction:column;gap:3px;font-size:0.78rem;color:var(--ink-soft);"><span id="newKlasseLabel">Jahrgang</span><input type="text" id="newKlasse" style="width:100%;"></label>
             <label style="display:flex;flex-direction:column;gap:3px;font-size:0.78rem;color:var(--ink-soft);"><span id="newFachLabel">Kurs</span><input type="text" id="newFach" style="width:100%;"></label>
           </div>
+          <label style="display:flex;flex-direction:column;gap:3px;font-size:0.78rem;color:var(--ink-soft); margin-top:10px;"><span>Lehrkraftkürzel</span><input type="text" id="newKuerzel" placeholder="z.B. SCH" style="width:100%;"></label>
           <div class="hint" id="newNameHint" style="margin-top:6px;"></div>
           <div class="row" style="margin-top:10px;gap:8px;">
             <button class="ghost small" id="stufeSIBtn" style="flex:1;">Sek I</button>
@@ -1434,6 +1442,8 @@ function renderAddLerngruppeModal(){
   `;
   const klasseInput = document.getElementById('newKlasse');
   const fachInput = document.getElementById('newFach');
+  const kuerzelInput = document.getElementById('newKuerzel');
+  kuerzelInput.value = getStoredKuerzel();
   const composedName = () => [klasseInput.value.trim(), fachInput.value.trim()].filter(Boolean).join(' ');
   const updateNameHint = () => {
     const n = composedName();
@@ -1466,7 +1476,8 @@ function renderAddLerngruppeModal(){
     const sem2 = {id: uid(), name: '2. HJ', groups: defaultGroups(stufe), studentIds: [], endnoteColor: '#F2F2F2'};
     const cls = {id: uid(), name, students: [], semesters: [sem1, sem2], activeSemesterId: sem1.id,
       gradingSystem: 'noten', gradeTableNoten: NOTEN_TABLE.map(r=>({...r})), gradeTablePunkte: PUNKTE_TABLE.map(r=>({...r})),
-      stufe, slForm: {klasse: klasseInput.value.trim(), fach: fachInput.value.trim()}};
+      stufe, slForm: {klasse: klasseInput.value.trim(), fach: fachInput.value.trim(), kuerzel: kuerzelInput.value.trim()}};
+    storeKuerzel(kuerzelInput.value.trim());
     state.classes.push(cls); state.activeClassId = cls.id;
     saveState();
     root.innerHTML = '';
@@ -1478,7 +1489,9 @@ function renderAddLerngruppeModal(){
     root.innerHTML = '';
     pendingCsvStufe = stufe;
     const csvName = composedName();
-    pendingCsvMeta = csvName ? {name: csvName, klasse: klasseInput.value.trim(), fach: fachInput.value.trim()} : null;
+    const csvKuerzel = kuerzelInput.value.trim();
+    storeKuerzel(csvKuerzel);
+    pendingCsvMeta = (csvName || csvKuerzel) ? {name: csvName, klasse: klasseInput.value.trim(), fach: fachInput.value.trim(), kuerzel: csvKuerzel} : null;
     document.getElementById('csvImportFile').click();
   };
 }
@@ -1490,6 +1503,7 @@ function renderEditLerngruppeModal(cls){
   const slForm = cls.slForm || {};
   const startKlasse = cls.slForm ? (slForm.klasse || '') : cls.name;
   const startFach = slForm.fach || '';
+  const startKuerzel = slForm.kuerzel || getStoredKuerzel();
   root.innerHTML = `
     <div class="overlay" id="overlay">
       <div class="modal">
@@ -1501,6 +1515,7 @@ function renderEditLerngruppeModal(cls){
             <label style="display:flex;flex-direction:column;gap:3px;font-size:0.78rem;color:var(--ink-soft);"><span id="editKlasseLabel">Klasse</span><input type="text" id="editKlasse" value="${escapeHtml(startKlasse)}" style="width:100%;"></label>
             <label style="display:flex;flex-direction:column;gap:3px;font-size:0.78rem;color:var(--ink-soft);"><span id="editFachLabel">Fach</span><input type="text" id="editFach" value="${escapeHtml(startFach)}" style="width:100%;"></label>
           </div>
+          <label style="display:flex;flex-direction:column;gap:3px;font-size:0.78rem;color:var(--ink-soft); margin-top:10px;"><span>Lehrkraftkürzel</span><input type="text" id="editKuerzel" value="${escapeHtml(startKuerzel)}" placeholder="z.B. SCH" style="width:100%;"></label>
           <div class="hint" id="editNameHint" style="margin-top:6px;"></div>
           <div class="row" style="margin-top:10px;gap:8px;">
             <button class="ghost small" id="editStufeSIBtn" style="flex:1;">Sek I</button>
@@ -1542,7 +1557,9 @@ function renderEditLerngruppeModal(cls){
     if(!name){ klasseInput.focus(); return; }
     cls.name = name;
     cls.stufe = stufe;
-    cls.slForm = {klasse: klasseInput.value.trim(), fach: fachInput.value.trim()};
+    const kz = document.getElementById('editKuerzel').value.trim();
+    cls.slForm = {klasse: klasseInput.value.trim(), fach: fachInput.value.trim(), kuerzel: kz};
+    storeKuerzel(kz);
     saveState();
     root.innerHTML = '';
     render();
@@ -3348,8 +3365,7 @@ function openSlFormDialog(cls, sem, cat, st){
   const idx = leaves.findIndex(x => x.id === cat.id);
   const hjMatch = (sem.name || '').match(/\d/);
   const slForm = cls.slForm || {};
-  let kuerzelStored = '';
-  try{ kuerzelStored = localStorage.getItem('notenbuch-sl-kuerzel') || ''; }catch(err){}
+  const kuerzelStored = slForm.kuerzel || getStoredKuerzel();
   const f = (id, label, value, type) => `<label style="display:flex;flex-direction:column;gap:3px;font-size:0.78rem;color:var(--ink-soft);">${label}<input type="${type || 'text'}" id="${id}" value="${escapeHtml(String(value ?? ''))}" style="width:100%;"></label>`;
   root.innerHTML = `
     <div class="overlay" id="overlay">
@@ -3384,8 +3400,8 @@ function openSlFormDialog(cls, sem, cat, st){
       counts, summe: st.n, nt: v('slNt'),
       avg: st.n ? fmtStatNum(st.meanNoten, 2) : '',
     };
-    cls.slForm = {klasse: d.klasse, fach: d.fach};
-    try{ localStorage.setItem('notenbuch-sl-kuerzel', d.kuerzel); }catch(err){}
+    cls.slForm = {klasse: d.klasse, fach: d.fach, kuerzel: d.kuerzel};
+    storeKuerzel(d.kuerzel);
     cat.date = v('slDatum');
     cat.durationMin = v('slDauer');
     printSlForm(d);
