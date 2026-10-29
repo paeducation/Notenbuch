@@ -357,7 +357,7 @@ function colorForGroupName(name){
 }
 
 function uid(){ return Math.random().toString(36).slice(2,10); }
-const APP_VERSION_INFO = 'v20.8 · Entwickler: G. Schulte';
+const APP_VERSION_INFO = 'v20.9 · Entwickler: G. Schulte';
 function setStatus(msg, isError){
   const el = document.getElementById('status');
   el.textContent = msg + ' · ' + APP_VERSION_INFO; el.style.color = isError ? 'var(--pen)' : 'var(--ink-soft)';
@@ -1887,6 +1887,348 @@ async function downloadAsExcel(filename, sheetName, headers, rows, infoLines){
   document.body.appendChild(a); a.click(); document.body.removeChild(a);
   URL.revokeObjectURL(url);
 }
+// ---------- Minimaler PDF-Erzeuger (iPad/iPhone: PDF erstellen und über das Teilen-Menü drucken) ----------
+const PDF_W = {"R": [278, 278, 355, 556, 556, 889, 667, 191, 333, 333, 389, 584, 278, 333, 278, 278, 556, 556, 556, 556, 556, 556, 556, 556, 556, 556, 278, 278, 584, 584, 584, 556, 1015, 667, 667, 722, 722, 667, 611, 778, 722, 278, 500, 667, 556, 833, 722, 778, 667, 778, 722, 667, 611, 722, 667, 944, 667, 667, 611, 278, 278, 278, 469, 556, 333, 556, 556, 500, 556, 556, 278, 556, 556, 222, 222, 500, 222, 833, 556, 556, 556, 556, 333, 500, 278, 556, 500, 722, 500, 500, 500, 334, 260, 334, 584, 761, 556, 0, 222, 556, 333, 1000, 556, 556, 333, 1000, 667, 333, 1000, 0, 611, 0, 0, 222, 222, 333, 333, 350, 556, 1000, 333, 1000, 500, 333, 944, 0, 500, 667, 278, 333, 556, 556, 556, 556, 260, 556, 333, 737, 370, 556, 584, 333, 737, 333, 400, 584, 333, 333, 333, 556, 537, 278, 333, 333, 365, 556, 834, 834, 834, 611, 667, 667, 667, 667, 667, 667, 1000, 722, 667, 667, 667, 667, 278, 278, 278, 278, 722, 722, 778, 778, 778, 778, 778, 584, 778, 722, 722, 722, 722, 667, 667, 611, 556, 556, 556, 556, 556, 556, 889, 500, 556, 556, 556, 556, 278, 278, 278, 278, 556, 556, 556, 556, 556, 556, 556, 584, 611, 556, 556, 556, 556, 500, 556, 500], "B": [278, 333, 474, 556, 556, 889, 722, 238, 333, 333, 389, 584, 278, 333, 278, 278, 556, 556, 556, 556, 556, 556, 556, 556, 556, 556, 333, 333, 584, 584, 584, 611, 975, 722, 722, 722, 722, 667, 611, 778, 722, 278, 556, 722, 611, 833, 722, 778, 667, 778, 722, 667, 611, 722, 667, 944, 667, 667, 611, 333, 278, 333, 584, 556, 333, 556, 611, 556, 611, 556, 333, 611, 611, 278, 278, 556, 278, 889, 611, 611, 611, 611, 389, 556, 333, 611, 556, 778, 556, 556, 500, 389, 280, 389, 584, 761, 556, 0, 278, 556, 500, 1000, 556, 556, 333, 1000, 667, 333, 1000, 0, 611, 0, 0, 278, 278, 500, 500, 350, 556, 1000, 333, 1000, 556, 333, 944, 0, 500, 667, 278, 333, 556, 556, 556, 556, 280, 556, 333, 737, 370, 556, 584, 333, 737, 333, 400, 584, 333, 333, 333, 611, 556, 278, 333, 333, 365, 556, 834, 834, 834, 611, 722, 722, 722, 722, 722, 722, 1000, 722, 667, 667, 667, 667, 278, 278, 278, 278, 722, 722, 778, 778, 778, 778, 778, 584, 778, 722, 722, 722, 722, 667, 667, 611, 556, 556, 556, 556, 556, 556, 889, 556, 556, 556, 556, 556, 278, 278, 278, 278, 611, 611, 611, 611, 611, 611, 611, 584, 611, 611, 611, 611, 611, 556, 611, 556]};
+const PDF_FONT_RES = {R: 'F1', B: 'F2', I: 'F3', S: 'F4'};
+const IS_IOS = /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+function pdfWinAnsi(str){
+  let out = '';
+  for(const ch of String(str)){
+    const c = ch.codePointAt(0);
+    if(c < 256){ out += String.fromCharCode(c); continue; }
+    switch(c){
+      case 0x2013: out += '\x96'; break;
+      case 0x2014: out += '\x97'; break;
+      case 0x2018: out += '\x91'; break;
+      case 0x2019: out += '\x92'; break;
+      case 0x201C: out += '\x93'; break;
+      case 0x201D: out += '\x94'; break;
+      case 0x2026: out += '\x85'; break;
+      case 0x2022: out += '\x95'; break;
+      case 0x20AC: out += '\x80'; break;
+      case 0x2248: out += '~'; break;
+      default: out += '?';
+    }
+  }
+  return out;
+}
+function pdfEsc(bin){
+  return bin.replace(/\\/g, '\\\\').replace(/\(/g, '\\(').replace(/\)/g, '\\)');
+}
+function MiniPdf(w, h){
+  this.w = w; this.h = h; this.ops = []; this.img = null;
+}
+MiniPdf.prototype.widthBin = function(bin, font, size){
+  if(font === 'S') return bin.length * 0.713 * size;
+  const tab = font === 'B' ? PDF_W.B : PDF_W.R;
+  let sum = 0;
+  for(let i = 0; i < bin.length; i++){
+    const code = bin.charCodeAt(i);
+    sum += code >= 32 ? (tab[code - 32] || 0) : 0;
+  }
+  return sum * size / 1000;
+};
+MiniPdf.prototype.width = function(str, font, size){
+  return this.widthBin(pdfWinAnsi(str), font || 'R', size || 10);
+};
+MiniPdf.prototype.text = function(str, x, base, o){
+  o = o || {};
+  const size = o.size || 10, font = o.font || 'R';
+  const bin = pdfWinAnsi(str);
+  const w = this.widthBin(bin, font, size);
+  let xx = x;
+  if(o.align === 'center') xx = x - w / 2;
+  else if(o.align === 'right') xx = x - w;
+  const g = o.gray != null ? o.gray : 0;
+  this.ops.push(`${g} g BT /${PDF_FONT_RES[font]} ${size} Tf ${xx.toFixed(2)} ${(this.h - base).toFixed(2)} Td (${pdfEsc(bin)}) Tj ET`);
+  return w;
+};
+MiniPdf.prototype.line = function(x1, y1, x2, y2, lw, gray){
+  this.ops.push(`${gray != null ? gray : 0} G ${lw || 0.5} w ${x1.toFixed(2)} ${(this.h - y1).toFixed(2)} m ${x2.toFixed(2)} ${(this.h - y2).toFixed(2)} l S`);
+};
+MiniPdf.prototype.rect = function(x, y, w, h, o){
+  o = o || {};
+  const rect = `${x.toFixed(2)} ${(this.h - y - h).toFixed(2)} ${w.toFixed(2)} ${h.toFixed(2)} re`;
+  if(o.fill != null) this.ops.push(`${o.fill} g ${rect} f`);
+  else this.ops.push(`${o.gray != null ? o.gray : 0} G ${o.lw || 0.5} w ${rect} S`);
+};
+MiniPdf.prototype.image = function(jpegBin, pxW, pxH, x, y, w, h){
+  this.img = {bin: jpegBin, pxW, pxH};
+  this.ops.push(`q ${w.toFixed(2)} 0 0 ${h.toFixed(2)} ${x.toFixed(2)} ${(this.h - y - h).toFixed(2)} cm /Im1 Do Q`);
+};
+MiniPdf.prototype.build = function(){
+  const objs = [];
+  const content = this.ops.join('\n');
+  objs[1] = '<< /Type /Catalog /Pages 2 0 R >>';
+  objs[2] = '<< /Type /Pages /Kids [3 0 R] /Count 1 >>';
+  objs[3] = `<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ${this.w} ${this.h}] /Resources << /Font << /F1 5 0 R /F2 6 0 R /F3 7 0 R /F4 8 0 R >>${this.img ? ' /XObject << /Im1 9 0 R >>' : ''} >> /Contents 4 0 R >>`;
+  objs[4] = `<< /Length ${content.length} >>\nstream\n${content}\nendstream`;
+  objs[5] = '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>';
+  objs[6] = '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold /Encoding /WinAnsiEncoding >>';
+  objs[7] = '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Oblique /Encoding /WinAnsiEncoding >>';
+  objs[8] = '<< /Type /Font /Subtype /Type1 /BaseFont /Symbol >>';
+  if(this.img){
+    objs[9] = `<< /Type /XObject /Subtype /Image /Width ${this.img.pxW} /Height ${this.img.pxH} /ColorSpace /DeviceGray /BitsPerComponent 8 /Filter /DCTDecode /Length ${this.img.bin.length} >>\nstream\n${this.img.bin}\nendstream`;
+  }
+  let out = '%PDF-1.4\n%\xE2\xE3\xCF\xD3\n';
+  const offs = [];
+  for(let i = 1; i < objs.length; i++){
+    offs[i] = out.length;
+    out += `${i} 0 obj\n${objs[i]}\nendobj\n`;
+  }
+  const xref = out.length;
+  out += `xref\n0 ${objs.length}\n0000000000 65535 f \n`;
+  for(let i = 1; i < objs.length; i++) out += String(offs[i]).padStart(10, '0') + ' 00000 n \n';
+  out += `trailer\n<< /Size ${objs.length} /Root 1 0 R >>\nstartxref\n${xref}\n%%EOF`;
+  const u8 = new Uint8Array(out.length);
+  for(let i = 0; i < out.length; i++) u8[i] = out.charCodeAt(i) & 255;
+  return u8;
+};
+async function sharePdf(filename, bytes, title){
+  const file = new File([bytes], filename, {type: 'application/pdf'});
+  if(navigator.canShare && navigator.canShare({files: [file]})){
+    try{
+      await navigator.share({files: [file], title: title || filename});
+      return true;
+    }catch(err){
+      if(err && err.name === 'AbortError') return true;
+    }
+  }
+  const url = URL.createObjectURL(new Blob([bytes], {type: 'application/pdf'}));
+  const a = document.createElement('a');
+  a.href = url; a.download = filename;
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 60000);
+  return true;
+}
+// iPad/iPhone: PDF erzeugen und teilen (Teilen-Menü → "Drucken"); sonst normaler Druckdialog
+function printOrSharePdf(filename, buildFn, overlayFn){
+  if(IS_IOS){
+    try{
+      const bytes = buildFn();
+      setStatus('PDF erstellt – im Teilen-Menü „Drucken“ wählen');
+      sharePdf(filename, bytes, filename);
+      return true;
+    }catch(err){
+      console.error(err);
+    }
+  }
+  return overlayFn();
+}
+function gradeTextForPdf(cls, value, scaleOverride){
+  if(value === null || value === undefined || isNaN(value)) return '–';
+  const effCls = scaleOverride ? {...cls, gradingSystem: scaleOverride} : cls;
+  const displayVal = scaleOverride ? convertValueScale(value, cls.gradingSystem, scaleOverride) : value;
+  return displayValue(effCls, displayVal);
+}
+function buildSlFormPdf(d){
+  const pdf = new MiniPdf(595.2, 841.92);
+  const T = (s, x, b, o) => pdf.text(s, x, b, o);
+  const bold = {size: 13, font: 'B'};
+  // Kopf
+  T('M E R C A T O R  - G Y M N A S I U M   D U I S B U R G', 141.6, 63.4, {size: 13.9, font: 'B'});
+  pdf.image(atob(SL_LOGO_DATAURL.split(',')[1]), 65, 99, 514.3, 16.7, 30.8, 47.3);
+  T('Formular zur Vorlage von Klassenarbeiten/Klausuren', 155.0, 93.5, bold);
+  T('bei der Schulleitung', 254.5, 108.8, bold);
+  T('1', 379.0, 102.8, {size: 8.4, font: 'B'});
+  T('(vor der Rückgabe an die Lerngruppe und', 190.4, 123.5, bold);
+  T('nach erfolgtem Noteneintrag in SchILDweb)', 184.4, 138.4, bold);
+  pdf.line(195.0, 126.0, 214.2, 126.0, 1.3);
+  pdf.line(184.4, 140.95, 214.7, 140.95, 1.3);
+  // Eingangsstempel
+  pdf.rect(285.2, 186.5, 528.5 - 285.2, 294.4 - 186.5, {lw: 0.25});
+  T('- Eingangsstempel -', 410.2, 282.4, {size: 12, font: 'I'});
+  // Tabelle 1
+  const lw = 0.5;
+  const xs1 = [65.25, 198.45, 333.15, 418.05, 529.95];
+  const ys1 = [341.75, 399.85, 469.2];
+  ys1.forEach(y => pdf.line(xs1[0], y, xs1[4], y, lw));
+  xs1.forEach(x => pdf.line(x, ys1[0], x, ys1[1], lw));
+  [xs1[0], xs1[1], xs1[2], xs1[4]].forEach(x => pdf.line(x, ys1[1], x, ys1[2], lw));
+  const lab = {size: 10.1};
+  T('Klasse/Jahrgangsstufe:', 70.8, 351.1, lab);
+  T('Fach/Kurs:', 203.8, 351.1, lab);
+  T('Schulhalbjahr', 338.4, 351.1, lab);
+  T('Klassenarbeit/Klausur', 423.6, 351.1, lab);
+  T('Nr.', 423.6, 362.6, lab);
+  T('von', 423.6, 385.7, lab);
+  pdf.line(442.0, 364.2, 509.5, 364.2, 0.5);
+  pdf.line(446.0, 387.3, 508.0, 387.3, 0.5);
+  T('(pro Halbjahr)', 443.8, 397.2, lab);
+  T('Datum der', 70.8, 409.2, lab);
+  T('Klassenarbeit/Klausur:', 70.8, 420.7, lab);
+  T('Dauer der', 203.8, 409.2, lab);
+  T('Klassenarbeit/Klausur', 203.8, 420.7, lab);
+  T('(in Minuten):', 203.8, 432.2, lab);
+  T('Kürzel der Lehrkraft:', 338.4, 409.2, lab);
+  const val = {size: 11, font: 'B'};
+  T(d.klasse, 70.8, 369.0, val);
+  T(d.fach, 203.8, 369.0, val);
+  T(d.hj, 375.6, 378.0, {size: 11, font: 'B', align: 'center'});
+  T(d.nr, 475.8, 361.6, {size: 11, font: 'B', align: 'center'});
+  T(d.von, 477.0, 384.7, {size: 11, font: 'B', align: 'center'});
+  T(d.datum, 70.8, 448.0, val);
+  T(d.dauer, 203.8, 448.0, val);
+  T(d.kuerzel, 338.4, 427.0, val);
+  // Notenspiegel
+  T('Notenspiegel', 248.8, 491.5, {size: 11});
+  pdf.line(248.8, 493.4, 313.0, 493.4, 0.8);
+  const xs2 = [65.5, 121.35, 177.25, 233.05, 288.85, 344.8, 400.75, 457.95, 529.9];
+  const ys2 = [500.35, 513.55, 547.55];
+  ys2.forEach(y => pdf.line(xs2[0], y, xs2[8], y, lw));
+  xs2.forEach(x => pdf.line(x, ys2[0], x, ys2[2], lw));
+  [70.9, 126.8, 182.6, 238.4, 294.3, 350.2].forEach((x, i) => T(String(i + 1), x, 510.8, {size: 11}));
+  T('å', 410.5, 510.8, {size: 11, font: 'S'});
+  T('/', 424.5, 510.8, {size: 11});
+  T('NT', 435.5, 510.8, {size: 11});
+  T('Durchschnitt', 462.3, 510.8, {size: 11});
+  const cx = [93.4, 149.3, 205.15, 260.95, 316.8, 372.8];
+  d.counts.forEach((n, i) => T(String(n), cx[i], 534.9, {size: 12, font: 'B', align: 'center'}));
+  T(String(d.summe), 411.0, 534.9, {size: 12, font: 'B', align: 'center'});
+  T('/', 425.9, 537.9, {size: 20});
+  T(String(d.nt), 446.0, 534.9, {size: 12, font: 'B', align: 'center'});
+  T(String(d.avg), 493.9, 534.9, {size: 12, font: 'B', align: 'center'});
+  // Anlage
+  T('Anlage:', 87.8, 597.3, bold);
+  pdf.line(88.0, 599.8, 135.1, 599.8, 1.4);
+  T('1)', 88.8, 631.4, {size: 13});
+  T('Je eine gute, eine durchschnittliche, eine schwache', 106.8, 631.4, {size: 13});
+  T('Klassenarbeit/Klausur (im Original)', 106.8, 646.3, {size: 13});
+  // Unterschrift und Fußnote
+  pdf.line(298.9, 727.7, 525.8, 727.7, 0.6);
+  T('Datum/Kenntnisnahme durch Schulleitung', 301.5, 740.4, {size: 12});
+  T('1', 70.8, 785.0, {size: 6.5});
+  T(' Gesetzliche Grundlagen: § 59 Absatz 2 Nummer 3 SchulG und § 22 Absatz 1 Nummer 3 ADO.', 74.4, 790.1, {size: 10.1});
+  return pdf.build();
+}
+function buildStatPdf(cls, sem, cat, st){
+  const pdf = new MiniPdf(595.28, 841.89);
+  const mx = 42.52, R = 595.28 - mx;
+  const today = new Date().toLocaleDateString('de-DE');
+  const schoolYear = state.schoolYear || '–';
+  pdf.text('Statistik: ' + cat.name, mx, 60, {size: 22, font: 'B'});
+  let x = mx;
+  [['Schuljahr:', schoolYear], ['Lerngruppe:', cls.name], ['Halbjahr:', sem.name], ['Gedruckt am:', today]].forEach(pair => {
+    x += pdf.text(pair[0], x, 82, {size: 11, font: 'B', gray: 0.2}) + 3;
+    x += pdf.text(pair[1], x, 82, {size: 11, gray: 0.2}) + 16;
+  });
+  pdf.line(mx, 92, R, 92, 0.7, 0.6);
+  const rows = [['Anzahl Schüler*innen', String(st.total)], ['Anzahl vergebene Noten', String(st.n)], ['Durchschnitt', st.n ? st.meanText.replace('≈', 'ca.') : '–']];
+  let y = 92;
+  rows.forEach(r => {
+    pdf.text(r[0], mx, y + 23, {size: 14});
+    pdf.text(r[1], R, y + 23, {size: 14, font: 'B', align: 'right'});
+    y += 32;
+    pdf.line(mx, y, R, y, 0.5, 0.8);
+  });
+  pdf.text('Notenspiegel', mx, y + 34, {size: 14, font: 'B'});
+  const slot = (R - mx) / st.spiegel.length, bw = 22, maxH = 170;
+  const yb = y + 34 + 20 + maxH + 18;
+  const maxCount = Math.max(...st.spiegel.map(b => b.count), 1);
+  st.spiegel.forEach((b, i) => {
+    const h = b.count / maxCount * maxH;
+    const cx = mx + i * slot + slot / 2;
+    if(h > 0) pdf.rect(cx - bw / 2, yb - h, bw, h, {fill: 0.33});
+    pdf.text(String(b.count), cx, yb - h - 5, {size: 11, font: 'B', align: 'center'});
+    pdf.text(b.label, cx, yb + 14, {size: 10, font: 'B', align: 'center'});
+    if(st.scale === 'punkte') pdf.text(String(b.points), cx, yb + 25, {size: 8, gray: 0.45, align: 'center'});
+  });
+  pdf.line(mx, yb, R, yb, 1.5);
+  // Tabelle
+  const tRows = [['Note', st.spiegel.map(b => b.label), true]];
+  if(st.scale === 'punkte') tRows.push(['Punkte', st.spiegel.map(b => String(b.points)), false]);
+  tRows.push(['Anzahl', st.spiegel.map(b => String(b.count)), true]);
+  const rowH = 20, c0 = 62, cw = (R - mx - c0) / st.spiegel.length;
+  const ty = yb + (st.scale === 'punkte' ? 46 : 36);
+  tRows.forEach((tr, ri) => {
+    const yy = ty + ri * rowH;
+    pdf.text(tr[0], mx + 5, yy + 14, {size: 10, font: tr[2] ? 'B' : 'R'});
+    tr[1].forEach((s, ci) => pdf.text(s, mx + c0 + ci * cw + cw / 2, yy + 14, {size: 10, font: tr[2] ? 'B' : 'R', align: 'center'}));
+  });
+  for(let ri = 0; ri <= tRows.length; ri++) pdf.line(mx, ty + ri * rowH, R, ty + ri * rowH, 0.6, 0.45);
+  pdf.line(mx, ty, mx, ty + tRows.length * rowH, 0.6, 0.45);
+  pdf.line(mx + c0, ty, mx + c0, ty + tRows.length * rowH, 0.6, 0.45);
+  for(let ci = 1; ci <= st.spiegel.length; ci++) pdf.line(mx + c0 + ci * cw, ty, mx + c0 + ci * cw, ty + tRows.length * rowH, 0.6, 0.45);
+  return pdf.build();
+}
+function buildKonferenzPdf(cls, sem){
+  const pdf = new MiniPdf(595.28, 841.89);
+  const mx = 28.35, R = 595.28 - mx;
+  const today = new Date().toLocaleDateString('de-DE');
+  const schriftlich = findGroupByName(sem, 'schriftlich');
+  const muendlich = findGroupByName(sem, 'mündlich');
+  const soMi1 = findCategoryByName(muendlich, 'somi 1');
+  const soMi2 = findCategoryByName(muendlich, 'somi 2');
+  const students = getSemesterStudents(cls, sem);
+  const cats = schriftlich ? schriftlich.children : [];
+  const cols = [{title: 'Schüler', w: 150, left: true}];
+  const getters = [s => ({text: s.name, left: true, bold: true})];
+  const cellFor = (c, s) => {
+    const mk = studentMark(c, s.id);
+    return {text: mk || gradeTextForPdf(cls, categoryAvgForStudent(cls, c, s.id), c.displayScale)};
+  };
+  cats.forEach(c => { cols.push({title: c.name, w: 1}); getters.push(s => cellFor(c, s)); });
+  cols.push({title: 'G', w: 1});
+  getters.push(s => ({text: gradeTextForPdf(cls, schriftlich ? groupGesamtForStudent(cls, schriftlich, s.id) : null), bold: false}));
+  if(soMi1){ cols.push({title: 'SoMi 1', w: 1}); getters.push(s => cellFor(soMi1, s)); }
+  if(soMi2){ cols.push({title: 'SoMi 2', w: 1}); getters.push(s => cellFor(soMi2, s)); }
+  cols.push({title: 'G', w: 1});
+  getters.push(s => ({text: gradeTextForPdf(cls, muendlich ? groupGesamtForStudent(cls, muendlich, s.id) : null)}));
+  cols.push({title: 'Endnote (NT)', w: 1.7});
+  getters.push(s => ({text: gradeTextForPdf(cls, semesterEndnoteForStudent(cls, sem, s.id)), bold: true}));
+  const rest = (R - mx) - cols[0].w;
+  const weightSum = cols.slice(1).reduce((a, c) => a + c.w, 0);
+  const widths = cols.map((c, i) => i === 0 ? c.w : rest * c.w / weightSum);
+  // Kopf
+  let x = mx;
+  [['Schuljahr:', state.schoolYear || '–'], ['Lerngruppe:', cls.name], ['Halbjahr:', sem.name], ['Gedruckt am:', today]].forEach(pair => {
+    x += pdf.text(pair[0], x, 40, {size: 11, font: 'B', gray: 0.2}) + 3;
+    x += pdf.text(pair[1], x, 40, {size: 11, gray: 0.2}) + 16;
+  });
+  pdf.line(mx, 48, R, 48, 0.7, 0.6);
+  const top = 58, headH = 26;
+  const availH = 841.89 - top - 28 - headH;
+  const rowH = Math.max(11, Math.min(22, availH / Math.max(students.length, 1)));
+  const fs = Math.min(12, rowH * 0.58);
+  // Kopfzeile
+  let cx = mx;
+  cols.forEach((c, i) => {
+    const w = widths[i];
+    pdf.text(c.title, c.left ? cx + 5 : cx + w / 2, top + 17, {size: 10, font: 'B', align: c.left ? 'left' : 'center'});
+    cx += w;
+  });
+  // Zeilen
+  students.forEach((s, ri) => {
+    const yy = top + headH + ri * rowH;
+    let xx = mx;
+    getters.forEach((g, ci) => {
+      const cell = g(s);
+      const w = widths[ci];
+      let size = fs;
+      const font = (cell.bold || (cell.text === 'NT' || cell.text === 'NB')) ? 'B' : 'R';
+      if(cell.left){
+        const maxW = w - 10;
+        const tw = pdf.width(cell.text, font, size);
+        if(tw > maxW) size = Math.max(6, size * maxW / tw);
+        pdf.text(cell.text, xx + 5, yy + rowH / 2 + size * 0.35, {size, font});
+      } else {
+        pdf.text(cell.text, xx + w / 2, yy + rowH / 2 + size * 0.35, {size, font, align: 'center'});
+      }
+      xx += w;
+    });
+  });
+  // Gitter
+  const bottom = top + headH + students.length * rowH;
+  pdf.line(mx, top, R, top, 0.8);
+  pdf.line(mx, top + headH, R, top + headH, 1.0);
+  for(let ri = 1; ri <= students.length; ri++) pdf.line(mx, top + headH + ri * rowH, R, top + headH + ri * rowH, 0.4, 0.5);
+  let gx = mx;
+  for(let i = 0; i <= cols.length; i++){
+    pdf.line(gx, top, gx, bottom, 0.6);
+    if(i < cols.length) gx += widths[i];
+  }
+  return pdf.build();
+}
 function printViaOverlay(bodyHtml, css, pageCss){
   const body = document.body;
   let ov = document.getElementById('printOverlay');
@@ -1917,6 +2259,9 @@ function printViaOverlay(bodyHtml, css, pageCss){
   return true;
 }
 function printKonferenztabelleIsolated(cls, sem){
+  return printOrSharePdf('Konferenztabelle-' + sanitizeForFilename(cls.name) + '.pdf', () => buildKonferenzPdf(cls, sem), () => printKonferenztabelleOverlay(cls, sem));
+}
+function printKonferenztabelleOverlay(cls, sem){
   const bodyHtml = printHeaderHtml(cls, sem) + renderKonferenztabelleHtml(cls, sem);
   const css = `
     #printOverlay .konferenz-table{font-size:12px!important;width:100%!important;table-layout:auto!important;}
@@ -3254,6 +3599,9 @@ function statSpiegelSvg(st){
   return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${W} ${H}" width="100%" style="display:block;font-family:Arial,Helvetica,sans-serif;">${g}</svg>`;
 }
 function printKlausurStatistik(cls, sem, cat, st){
+  return printOrSharePdf('Statistik-' + sanitizeForFilename(cat.name) + '.pdf', () => buildStatPdf(cls, sem, cat, st), () => printKlausurStatistikOverlay(cls, sem, cat, st));
+}
+function printKlausurStatistikOverlay(cls, sem, cat, st){
   const today = new Date().toLocaleDateString('de-DE');
   const schoolYear = state.schoolYear ? escapeHtml(state.schoolYear) : '–';
   const spiegelRows = `
@@ -3357,6 +3705,9 @@ function schriftlichLeafColumns(sem){
   return out;
 }
 function printSlForm(d){
+  return printOrSharePdf('SL-Formular-' + sanitizeForFilename(d.klausur || 'Klausur') + '.pdf', () => buildSlFormPdf(d), () => printSlFormOverlay(d));
+}
+function printSlFormOverlay(d){
   const full = buildSlFormHtml(d);
   const bodyHtml = full.slice(full.indexOf('<body>') + 6, full.lastIndexOf('</body>'));
   const css = `
