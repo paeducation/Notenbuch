@@ -50,6 +50,12 @@
   .mono{font-family:ui-monospace,'SF Mono',Menlo,monospace;}
 
   #appRoot.idle-blurred{filter:blur(22px);pointer-events:none;user-select:none;transition:filter .3s;}
+  /* Druck im selben Fenster (funktioniert auch auf iPad/PWA ohne Popup): Inhalt liegt in #printOverlay */
+  #printOverlay{display:none;}
+  @media print{
+    body.printing-overlay > *:not(#printOverlay){display:none!important;}
+    body.printing-overlay #printOverlay{display:block!important;}
+  }
   .titlebar{
     display:flex;align-items:center;justify-content:center;gap:8px;
     padding:9px 14px;background:linear-gradient(#FBFBFC,#F1F1F3);
@@ -351,7 +357,7 @@ function colorForGroupName(name){
 }
 
 function uid(){ return Math.random().toString(36).slice(2,10); }
-const APP_VERSION_INFO = 'v20.7 · Entwickler: G. Schulte';
+const APP_VERSION_INFO = 'v20.8 · Entwickler: G. Schulte';
 function setStatus(msg, isError){
   const el = document.getElementById('status');
   el.textContent = msg + ' · ' + APP_VERSION_INFO; el.style.color = isError ? 'var(--pen)' : 'var(--ink-soft)';
@@ -1881,30 +1887,44 @@ async function downloadAsExcel(filename, sheetName, headers, rows, infoLines){
   document.body.appendChild(a); a.click(); document.body.removeChild(a);
   URL.revokeObjectURL(url);
 }
-function printKonferenztabelleIsolated(cls, sem){
-  const styleEl = document.querySelector('style');
-  const styleContent = styleEl ? styleEl.innerHTML : '';
-  const bodyHtml = printHeaderHtml(cls, sem) + renderKonferenztabelleHtml(cls, sem);
-  const win = window.open('', '_blank');
-  if(!win){
-    showAlert('Fehler', 'Popup wurde blockiert. Bitte Popups für diese Seite erlauben und erneut versuchen.');
-    return false;
-  }
-  win.document.open();
-  win.document.write(`<!DOCTYPE html><html><head><meta charset="utf-8"><title>Konferenztabelle</title>
-    <style>${styleContent}
-      @page{size:A4 portrait;margin:10mm;}
-      html, body{background:#fff!important;filter:grayscale(100%);-webkit-print-color-adjust:exact;print-color-adjust:exact;}
-      .konferenz-table{font-size:12px!important;width:100%!important;table-layout:auto!important;}
-      .konferenz-table th, .konferenz-table td{padding:4px 6px!important;}
-      .konferenz-table th.name-col, .konferenz-table td.name-col{text-align:left!important;width:auto!important;max-width:none!important;min-width:0!important;white-space:normal!important;}
-      .konferenz-wrap{max-width:100%!important;max-height:none!important;overflow:visible!important;box-shadow:none!important;border:none!important;}
-      .print-header{display:flex;gap:18px;flex-wrap:wrap;font-size:11px;margin-bottom:10px;padding-bottom:6px;border-bottom:1px solid #999;}
-    </style>
-  </head><body>${bodyHtml}</body></html>`);
-  win.document.close();
-  setTimeout(() => { win.focus(); win.print(); }, 300);
+function printViaOverlay(bodyHtml, css, pageCss){
+  const body = document.body;
+  let ov = document.getElementById('printOverlay');
+  if(!ov){ ov = document.createElement('div'); ov.id = 'printOverlay'; body.appendChild(ov); }
+  ov.innerHTML = bodyHtml;
+  const old = document.getElementById('printOverlayStyle');
+  if(old) old.remove();
+  const st = document.createElement('style');
+  st.id = 'printOverlayStyle';
+  st.textContent = `@page{${pageCss}}\n@media print{${css}}`;
+  document.head.appendChild(st);
+  body.classList.add('printing-overlay');
+  const started = Date.now();
+  let done = false;
+  const cleanup = () => {
+    if(done) return;
+    done = true;
+    window.removeEventListener('afterprint', onAfter);
+    body.classList.remove('printing-overlay');
+    ov.innerHTML = '';
+    st.remove();
+  };
+  // iOS meldet "afterprint" teils sofort – daher mindestens 2,5 s warten, bevor aufgeräumt wird
+  const onAfter = () => setTimeout(cleanup, Math.max(0, 2500 - (Date.now() - started)));
+  window.addEventListener('afterprint', onAfter);
+  setTimeout(cleanup, 20000);
+  window.print();
   return true;
+}
+function printKonferenztabelleIsolated(cls, sem){
+  const bodyHtml = printHeaderHtml(cls, sem) + renderKonferenztabelleHtml(cls, sem);
+  const css = `
+    #printOverlay .konferenz-table{font-size:12px!important;width:100%!important;table-layout:auto!important;}
+    #printOverlay .konferenz-table th, #printOverlay .konferenz-table td{padding:4px 6px!important;}
+    #printOverlay .konferenz-table th.name-col, #printOverlay .konferenz-table td.name-col{text-align:left!important;width:auto!important;max-width:none!important;min-width:0!important;white-space:normal!important;}
+    #printOverlay .konferenz-wrap{max-width:100%!important;max-height:none!important;overflow:visible!important;box-shadow:none!important;border:none!important;}
+    #printOverlay .print-header{display:flex!important;gap:18px;flex-wrap:wrap;font-size:11px;margin-bottom:10px;padding-bottom:6px;border-bottom:1px solid #999;}`;
+  return printViaOverlay(bodyHtml, css, 'size:A4 portrait;margin:10mm;');
 }
 function renderKonferenztabelleHtml(cls, sem){
   const schriftlich = findGroupByName(sem, 'schriftlich');
@@ -3234,37 +3254,13 @@ function statSpiegelSvg(st){
   return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${W} ${H}" width="100%" style="display:block;font-family:Arial,Helvetica,sans-serif;">${g}</svg>`;
 }
 function printKlausurStatistik(cls, sem, cat, st){
-  const win = window.open('', '_blank');
-  if(!win){
-    showAlert('Fehler', 'Popup wurde blockiert. Bitte Popups für diese Seite erlauben und erneut versuchen.');
-    return false;
-  }
   const today = new Date().toLocaleDateString('de-DE');
   const schoolYear = state.schoolYear ? escapeHtml(state.schoolYear) : '–';
   const spiegelRows = `
     <tr><th style="text-align:left;">Note</th>${st.spiegel.map(b => `<th>${b.label}</th>`).join('')}</tr>
     ${st.scale === 'punkte' ? `<tr><td style="text-align:left;">Punkte</td>${st.spiegel.map(b => `<td>${b.points}</td>`).join('')}</tr>` : ''}
     <tr><td style="text-align:left;font-weight:700;">Anzahl</td>${st.spiegel.map(b => `<td style="font-weight:700;">${b.count}</td>`).join('')}</tr>`;
-  win.document.open();
-  win.document.write(`<!DOCTYPE html><html><head><meta charset="utf-8"><title>Statistik ${escapeHtml(cat.name)}</title>
-    <style>
-      @page{size:A4 portrait;margin:15mm;}
-      *{box-sizing:border-box;}
-      html, body{background:#fff;color:#000;font-family:Arial,Helvetica,sans-serif;margin:0;}
-      h1{font-size:22pt;margin:0 0 3mm;}
-      .meta{font-size:11pt;color:#333;padding-bottom:4mm;border-bottom:1px solid #999;margin-bottom:8mm;}
-      .meta span{display:inline-block;margin-right:8mm;}
-      table.facts{width:100%;border-collapse:collapse;font-size:14pt;margin-bottom:10mm;}
-      table.facts td{padding:3mm 0;border-bottom:1px solid #ccc;}
-      table.facts td:last-child{text-align:right;font-weight:700;}
-      h2{font-size:14pt;margin:0 0 4mm;}
-      .chart{width:100%;}
-      svg, svg *{-webkit-print-color-adjust:exact;print-color-adjust:exact;}
-      table.spiegel{width:100%;border-collapse:collapse;margin-top:8mm;font-size:11pt;text-align:center;table-layout:fixed;}
-      table.spiegel th, table.spiegel td{border:1px solid #888;padding:2mm 0;}
-      table.spiegel th:first-child, table.spiegel td:first-child{width:22mm;padding-left:2mm;}
-    </style>
-  </head><body>
+  const bodyHtml = `<div class="statprint">
     <h1>Statistik: ${escapeHtml(cat.name)}</h1>
     <div class="meta">
       <span><strong>Schuljahr:</strong> ${schoolYear}</span>
@@ -3280,10 +3276,23 @@ function printKlausurStatistik(cls, sem, cat, st){
     <h2>Notenspiegel</h2>
     <div class="chart">${statSpiegelSvg(st)}</div>
     <table class="spiegel">${spiegelRows}</table>
-  </body></html>`);
-  win.document.close();
-  setTimeout(() => { win.focus(); win.print(); }, 300);
-  return true;
+  </div>`;
+  const css = `
+    #printOverlay .statprint, #printOverlay .statprint *{box-sizing:border-box;}
+    #printOverlay .statprint{background:#fff;color:#000;font-family:Arial,Helvetica,sans-serif;line-height:normal;}
+    #printOverlay .statprint h1{font-size:22pt;margin:0 0 3mm;font-weight:700;}
+    #printOverlay .statprint .meta{font-size:11pt;color:#333;padding-bottom:4mm;border-bottom:1px solid #999;margin-bottom:8mm;}
+    #printOverlay .statprint .meta span{display:inline-block;margin-right:8mm;}
+    #printOverlay .statprint table.facts{width:100%;border-collapse:collapse;font-size:14pt;margin-bottom:10mm;}
+    #printOverlay .statprint table.facts td{padding:3mm 0;border-bottom:1px solid #ccc;}
+    #printOverlay .statprint table.facts td:last-child{text-align:right;font-weight:700;}
+    #printOverlay .statprint h2{font-size:14pt;margin:0 0 4mm;font-weight:700;}
+    #printOverlay .statprint .chart{width:100%;}
+    #printOverlay .statprint svg, #printOverlay .statprint svg *{-webkit-print-color-adjust:exact;print-color-adjust:exact;}
+    #printOverlay .statprint table.spiegel{width:100%;border-collapse:collapse;margin-top:8mm;font-size:11pt;text-align:center;table-layout:fixed;}
+    #printOverlay .statprint table.spiegel th, #printOverlay .statprint table.spiegel td{border:1px solid #888;padding:2mm 0;}
+    #printOverlay .statprint table.spiegel th:first-child, #printOverlay .statprint table.spiegel td:first-child{width:22mm;padding-left:2mm;}`;
+  return printViaOverlay(bodyHtml, css, 'size:A4 portrait;margin:15mm;');
 }
 const SL_LOGO_DATAURL = 'data:image/jpeg;base64,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';
 function buildSlFormHtml(d){
@@ -3348,16 +3357,17 @@ function schriftlichLeafColumns(sem){
   return out;
 }
 function printSlForm(d){
-  const win = window.open('', '_blank');
-  if(!win){
-    showAlert('Fehler', 'Popup wurde blockiert. Bitte Popups für diese Seite erlauben und erneut versuchen.');
-    return false;
-  }
-  win.document.open();
-  win.document.write(buildSlFormHtml(d));
-  win.document.close();
-  setTimeout(() => { win.focus(); win.print(); }, 300);
-  return true;
+  const full = buildSlFormHtml(d);
+  const bodyHtml = full.slice(full.indexOf('<body>') + 6, full.lastIndexOf('</body>'));
+  const css = `
+    #printOverlay{background:#fff;color:#000;font-family:Arial,Helvetica,"Liberation Sans",sans-serif;line-height:normal;margin:0;padding:0;}
+    #printOverlay *{box-sizing:border-box;}
+    #printOverlay .page{position:relative;width:210mm;height:296mm;overflow:hidden;}
+    #printOverlay .abs{position:absolute;}
+    #printOverlay table{border-collapse:collapse;table-layout:fixed;}
+    #printOverlay td{margin:0;}
+    #printOverlay sup{font-size:60%;line-height:0;}`;
+  return printViaOverlay(bodyHtml, css, 'size:A4 portrait;margin:0;');
 }
 function openSlFormDialog(cls, sem, cat, st){
   const root = document.getElementById('modalRoot');
