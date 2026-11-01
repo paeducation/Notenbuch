@@ -357,7 +357,7 @@ function colorForGroupName(name){
 }
 
 function uid(){ return Math.random().toString(36).slice(2,10); }
-const APP_VERSION_INFO = 'v21.0 · Entwickler: G. Schulte';
+const APP_VERSION_INFO = 'v21.2 · Entwickler: G. Schulte';
 function setStatus(msg, isError){
   const el = document.getElementById('status');
   el.textContent = msg + ' · ' + APP_VERSION_INFO; el.style.color = isError ? 'var(--pen)' : 'var(--ink-soft)';
@@ -3067,34 +3067,55 @@ async function swapSemestersDialog(){
   saveState(); render();
   setStatus(`${a.name} und ${b.name} getauscht`);
 }
-async function moveCategoryToOtherSemester(cls, sem, ctx){
+function cloneCategoryWithData(cat){
+  const copy = JSON.parse(JSON.stringify(cat));
+  const renew = (x) => { x.id = uid(); (x.children || []).forEach(renew); };
+  renew(copy);
+  delete copy.manualWeight;
+  return copy;
+}
+async function moveOrCopyCategoryToOtherSemester(cls, sem, ctx){
   const target = cls.semesters.find(s => s.id !== sem.id);
   if(!target) return;
   if(!target.groups.length){
     await showAlert('Nicht möglich', `${target.name} hat noch keine Notengruppe.`);
     return;
   }
+  const mode = await showChoice(`„${ctx.cat.name}“ → ${target.name}`, 'Was soll mit der Spalte passieren?', [
+    {label: 'Verschieben (Original wird entfernt)', value: 'move'},
+    {label: 'Kopieren (Original bleibt)', value: 'copy'},
+  ]);
+  if(mode === null) return;
+  const isCopy = mode === 'copy';
   const norm = (s) => (s || '').trim().toLowerCase();
   let tGroup = target.groups.find(g => norm(g.name) === norm(ctx.group.name));
   if(!tGroup){
-    const pick = await showChoice('Zielgruppe wählen', `${target.name} hat keine Gruppe „${ctx.group.name}“. In welche Gruppe verschieben?`, target.groups.map(g => ({label: g.name, value: g.id})));
+    const pick = await showChoice('Zielgruppe wählen', `${target.name} hat keine Gruppe „${ctx.group.name}“. In welche Gruppe ${isCopy ? 'kopieren' : 'verschieben'}?`, target.groups.map(g => ({label: g.name, value: g.id})));
     if(pick === null) return;
     tGroup = target.groups.find(g => g.id === pick);
   }
-  const ok = await showConfirm('In anderes Halbjahr verschieben',
-    `„${ctx.cat.name}“ mit allen Noten von ${sem.name} nach ${target.name} (${tGroup.name}) verschieben? Die Gewichtungen werden in beiden Halbjahren neu ausgeglichen.`,
-    {confirmLabel: 'Verschieben'});
+  const ok = await showConfirm(isCopy ? 'In anderes Halbjahr kopieren' : 'In anderes Halbjahr verschieben',
+    isCopy
+      ? `„${ctx.cat.name}“ mit allen Noten von ${sem.name} nach ${target.name} (${tGroup.name}) kopieren? Das Original bleibt bestehen. Die Gewichtungen in ${target.name} werden neu ausgeglichen.`
+      : `„${ctx.cat.name}“ mit allen Noten von ${sem.name} nach ${target.name} (${tGroup.name}) verschieben? Die Gewichtungen werden in beiden Halbjahren neu ausgeglichen.`,
+    {confirmLabel: isCopy ? 'Kopieren' : 'Verschieben'});
   if(!ok) return;
   const srcList = ctx.list;
-  const idx = srcList.findIndex(x => x.id === ctx.cat.id);
-  if(idx > -1) srcList.splice(idx, 1);
   let tList = tGroup.children;
   if(ctx.parentCat){
     const parentMatch = tGroup.children.find(x => isContainerCat(x) && norm(x.name) === norm(ctx.parentCat.name));
     if(parentMatch) tList = parentMatch.children;
   }
-  delete ctx.cat.manualWeight;
-  tList.push(ctx.cat);
+  let placed;
+  if(isCopy){
+    placed = cloneCategoryWithData(ctx.cat);
+  } else {
+    const idx = srcList.findIndex(x => x.id === ctx.cat.id);
+    if(idx > -1) srcList.splice(idx, 1);
+    delete ctx.cat.manualWeight;
+    placed = ctx.cat;
+  }
+  tList.push(placed);
   // Schüler mit Einträgen müssen im Ziel-Halbjahr sichtbar sein
   const idsWithData = new Set();
   const collect = (x) => {
@@ -3102,17 +3123,17 @@ async function moveCategoryToOtherSemester(cls, sem, ctx){
     Object.keys(x.overrides || {}).forEach(id => idsWithData.add(id));
     (x.children || []).forEach(collect);
   };
-  collect(ctx.cat);
+  collect(placed);
   let added = 0;
   if(target.studentIds){
     idsWithData.forEach(id => {
       if(cls.students.some(s => s.id === id) && !target.studentIds.includes(id)){ target.studentIds.push(id); added++; }
     });
   }
-  rebalanceEqualWeights(srcList);
+  if(!isCopy) rebalanceEqualWeights(srcList);
   rebalanceEqualWeights(tList);
   saveState(); render();
-  setStatus(`„${ctx.cat.name}“ nach ${target.name} verschoben` + (added ? ` (${added} Schüler*in${added > 1 ? 'nen' : ''} dort ergänzt)` : ''));
+  setStatus(`„${ctx.cat.name}“ nach ${target.name} ${isCopy ? 'kopiert' : 'verschoben'}` + (added ? ` (${added} Schüler*in${added > 1 ? 'nen' : ''} dort ergänzt)` : ''));
 }
 async function openCategoryMenu(cls, sem, groupId, catId){
   const ctx = findCategoryContext(sem, groupId, catId);
@@ -3130,15 +3151,15 @@ async function openCategoryMenu(cls, sem, groupId, catId){
   const choice = await showChoice(ctx.cat.name, menuMessage, [
     {label: `${typeLabel} bearbeiten`, value: 'edit'},
     {label: `${typeLabel} duplizieren`, value: 'dup'},
-    ...(otherSem ? [{label: `⇄ In ${otherSem.name} verschieben`, value: 'move'}] : []),
     {label: `${typeLabel} löschen`, value: 'del'},
+    ...(otherSem ? [{label: `⇄ In ${otherSem.name} verschieben / kopieren`, value: 'move'}] : []),
     ...(isSchriftlichLeaf ? [{label: '📊 Statistik', value: 'stats'}] : []),
   ]);
   if(choice === null) return;
   if(choice === 'edit'){
     editCategory(cls, sem, groupId, catId);
   } else if(choice === 'move'){
-    await moveCategoryToOtherSemester(cls, sem, ctx);
+    await moveOrCopyCategoryToOtherSemester(cls, sem, ctx);
   } else if(choice === 'stats'){
     openKlausurStatistik(cls, sem, groupId, catId);
   } else if(choice === 'dup'){
