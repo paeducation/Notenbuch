@@ -161,6 +161,7 @@
     box-shadow:0 1px 2px rgba(0,0,0,.25);z-index:2;}
   .note-pill{display:inline-block;min-width:26px;text-align:center;padding:2px 7px;border-radius:14px;
     font-weight:700;font-size:0.8rem;font-family:ui-monospace,'SF Mono',Menlo,monospace;}
+  .obs-cell{cursor:pointer;user-select:none;-webkit-user-select:none;-webkit-touch-callout:none;}
   .note-x{background:var(--surface-soft);color:var(--ink-soft);border:1px dashed var(--ink-soft);font-weight:700;}
   .note-1,.note-2{background:var(--pass-soft);color:var(--pass);}
   .note-3,.note-4{background:var(--warn-soft);color:var(--warn);}
@@ -357,7 +358,7 @@ function colorForGroupName(name){
 }
 
 function uid(){ return Math.random().toString(36).slice(2,10); }
-const APP_VERSION_INFO = 'v21.2 · Entwickler: G. Schulte';
+const APP_VERSION_INFO = 'v21.5 · Entwickler: G. Schulte';
 function setStatus(msg, isError){
   const el = document.getElementById('status');
   el.textContent = msg + ' · ' + APP_VERSION_INFO; el.style.color = isError ? 'var(--pen)' : 'var(--ink-soft)';
@@ -1383,6 +1384,16 @@ function pickColorDialog(title, currentColor){
 }
 function showChoice(title, message, options){ return showDialog({title, message, type:'choice', options}); }
 
+function localTodayIso(){
+  const d = new Date();
+  return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+}
+function formatDateShort(iso){
+  if(!iso) return '';
+  const parts = String(iso).split('-');
+  if(parts.length !== 3) return iso;
+  return `${parts[2]}.${parts[1]}.`;
+}
 function formatDate(iso){
   if(!iso) return '';
   const parts = String(iso).split('-');
@@ -2417,7 +2428,7 @@ function renderGrid(main, cls, sem){
       <div class="colhead" data-select-cat="${cat.id}" data-group="${g.id}">
         ${nameRow}
         <span class="weight">${cat.weight}%${cat.manualWeight ? lockIconSvg() : ''}${isContainerCat(cat) ? '' : ' · '+(cat.mode==='points'?'Punkte':'Note')}</span>
-        ${(cat.date && !isContainerCat(cat)) ? `<span class="weight">${formatDate(cat.date)}</span>` : ''}
+        ${(cat.date && !isContainerCat(cat)) ? `<span class="weight">${cat.mode === 'observation' ? formatDateShort(cat.date) : formatDate(cat.date)}</span>` : ''}
         <div class="row" style="gap:2px;">
           ${state.positionMode ? `<button class="colx dark" data-move-cat="${cat.id}" data-group="${g.id}" data-dir="-1">‹</button>` : ''}
           <button class="colx dark" data-add-near-cat="${cat.id}" data-group="${g.id}" style="font-size:1.15rem;font-weight:700;width:24px;height:24px;">+</button>
@@ -2873,7 +2884,28 @@ function renderGrid(main, cls, sem){
       render();
     };
   });
-  main.querySelectorAll('[data-open-entries]').forEach(el=>{ el.onclick = () => openEntriesModal(cls, sem, el.dataset.group, el.dataset.cat, el.dataset.student); });
+  main.querySelectorAll('[data-open-entries]').forEach(el => {
+    const openFull = () => openEntriesModal(cls, sem, el.dataset.group, el.dataset.cat, el.dataset.student);
+    const cellCtx = findCategoryContext(sem, el.dataset.group, el.dataset.cat);
+    const isObsCell = !!(cellCtx && cellCtx.cat.mode === 'observation' && !isContainerCat(cellCtx.cat));
+    if(!isObsCell){ el.onclick = openFull; return; }
+    // Unterrichtsbeobachtung: Tipp wechselt + → ○ → - → leer, langer Druck öffnet Notiz/Details
+    const td = el.closest('td') || el;
+    td.classList.add('obs-cell');
+    let timer = null, longPressed = false;
+    const clearTimer = () => clearTimeout(timer);
+    td.addEventListener('pointerdown', () => {
+      longPressed = false;
+      clearTimer();
+      timer = setTimeout(() => { longPressed = true; openFull(); }, 550);
+    });
+    ['pointerup', 'pointerleave', 'pointercancel'].forEach(t => td.addEventListener(t, clearTimer));
+    td.addEventListener('contextmenu', (ev) => ev.preventDefault());
+    td.addEventListener('click', () => {
+      if(longPressed){ longPressed = false; return; }
+      cycleObservation(cls, cellCtx, el);
+    });
+  });
   main.querySelectorAll('[data-open-endnote]').forEach(el=>{ el.onclick = () => openEndnoteModal(cls, sem, el.dataset.openEndnote); });
   main.querySelectorAll('[data-open-group]').forEach(el=>{ el.onclick = () => openGroupOverrideModal(cls, sem, el.dataset.openGroup, el.dataset.student); });
   main.querySelectorAll('[data-reset-endnote]').forEach(btn=>{
@@ -2965,9 +2997,15 @@ async function promptNewFromTemplate(defaultWeight, extraOptions){
     obs_ungraded: ['Beobachtung (ohne Wertung)', 'z.B. Beitrag 12.03.'],
     container: ['Sammelkategorie', 'z.B. Unterrichtsbeobachtungen'],
   };
-  const [title, placeholder] = namePrompts[template];
-  const name = await showPrompt(title, 'Name', '', {placeholder, confirmLabel:'Anlegen'});
-  if(name===null || !name.trim()) return null;
+  const isObsTemplate = template === 'obs_graded' || template === 'obs_ungraded';
+  let name;
+  if(isObsTemplate){
+    name = 'UB';
+  } else {
+    const [title, placeholder] = namePrompts[template];
+    name = await showPrompt(title, 'Name', '', {placeholder, confirmLabel:'Anlegen'});
+    if(name===null || !name.trim()) return null;
+  }
   const weight = parseFloat(defaultWeight) || 0;
   switch(template){
     case 'grade':
@@ -2975,9 +3013,9 @@ async function promptNewFromTemplate(defaultWeight, extraOptions){
     case 'points':
       return {id: uid(), name: name.trim(), weight, mode:'points', maxPoints: 100, date: '', entries: {}};
     case 'obs_graded':
-      return {id: uid(), name: name.trim(), weight, mode:'observation', ungraded: false, date: '', entries: {}};
+      return {id: uid(), name: name.trim(), weight, mode:'observation', ungraded: false, date: localTodayIso(), entries: {}};
     case 'obs_ungraded':
-      return {id: uid(), name: name.trim(), weight: 0, mode:'observation', ungraded: true, date: '', entries: {}};
+      return {id: uid(), name: name.trim(), weight: 0, mode:'observation', ungraded: true, date: localTodayIso(), entries: {}};
     case 'container':
       return {id: uid(), name: name.trim(), weight, containerOnly: true, children: [], entries: {}};
   }
@@ -3322,6 +3360,37 @@ async function editCategory(cls, sem, groupId, catId){
 }
 
 // ---------- entries modal ----------
+let obsRenderTimer = null;
+function renderKeepScroll(){
+  const pos = [...document.querySelectorAll('.grid-wrap')].map(w => [w.scrollLeft, w.scrollTop]);
+  const y = window.scrollY;
+  render();
+  document.querySelectorAll('.grid-wrap').forEach((w, i) => { if(pos[i]){ w.scrollLeft = pos[i][0]; w.scrollTop = pos[i][1]; } });
+  window.scrollTo(0, y);
+}
+function cycleObservation(cls, ctx, el){
+  const cat = ctx.cat, sid = el.dataset.student;
+  const SEQ = ['', ...OBSERVATION_SYMBOLS];
+  const e = {...(cat.entries[sid] || {})};
+  const next = SEQ[(SEQ.indexOf(e.observation || '') + 1) % SEQ.length];
+  if(next){
+    e.observation = next;
+    cat.entries[sid] = e;
+  } else {
+    delete e.observation;
+    if(Object.keys(e).some(k => e[k])) cat.entries[sid] = e; else delete cat.entries[sid];
+  }
+  saveState();
+  const ov = cat.overrides && cat.overrides[sid];
+  clearTimeout(obsRenderTimer);
+  if(ov !== undefined && ov !== null && ov !== ''){
+    renderKeepScroll();
+    return;
+  }
+  // nur das angetippte Feld sofort ändern, Summen/Mehrheitssymbole kurz danach neu berechnen
+  el.innerHTML = observationPill(cat.entries[sid]);
+  obsRenderTimer = setTimeout(renderKeepScroll, 800);
+}
 let lastEntryGroup = null;
 function openEntriesModal(cls, sem, groupId, catId, studentId){
   const ctx = findCategoryContext(sem, groupId, catId);
@@ -4304,7 +4373,8 @@ document.getElementById('helpBtn').onclick = async () => {
     'Eingabeart – wie eine Note eingegeben wird (Note/Punkte/Beobachtung).\n\n' +
     'Darstellung – wie eine Note nur angezeigt wird, unabhängig von der Eingabe.\n\n' +
     'Notenschema – die Skala der ganzen Lerngruppe (Noten 1-6 oder Notenpunkte 0-15).\n\n' +
-    'Grenzfälle – zeigt bei knappen Ergebnissen eine Empfehlung statt einer festen Note an.'
+    'Grenzfälle – zeigt bei knappen Ergebnissen eine Empfehlung statt einer festen Note an.\n\n' +
+    'Unterrichtsbeobachtung – Tipp auf das Feld wechselt + → ○ → − → leer. Langer Druck öffnet Notiz und weitere Angaben.'
   );
 };
 document.getElementById('borderlineToggleBtn').onclick = () => {
