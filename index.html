@@ -359,7 +359,7 @@ function colorForGroupName(name){
 }
 
 function uid(){ return Math.random().toString(36).slice(2,10); }
-const APP_VERSION_INFO = 'v21.9 · Entwickler: G. Schulte';
+const APP_VERSION_INFO = 'v22.0 · Entwickler: G. Schulte';
 function setStatus(msg, isError){
   const el = document.getElementById('status');
   el.textContent = msg + ' · ' + APP_VERSION_INFO; el.style.color = isError ? 'var(--pen)' : 'var(--ink-soft)';
@@ -2583,7 +2583,8 @@ function renderGrid(main, cls, sem){
         const entry = cat.entries[s.id];
         if(entry) subLabel = `${entry.points ?? '?'}/${entry.maxPoints ?? '?'}`;
       }
-      const cellMark = studentMark(cat, s.id);
+      // NB auf einer (noch leeren) Sammelkategorie wird als Überschreibung gespeichert, Marken an Einzelspalten am Eintrag
+      const cellMark = studentMark(cat, s.id) || totalNbMark(cat, s.id);
       if(cellMark){
         return `<td${colorCls}${bgAttr}><div class="cell-stack" data-open-entries data-cat="${cat.id}" data-group="${g.id}" data-student="${s.id}">${markPillHtml(cellMark)}</div></td>`;
       }
