@@ -161,6 +161,7 @@
     box-shadow:0 1px 2px rgba(0,0,0,.25);z-index:2;}
   .note-pill{display:inline-block;min-width:26px;text-align:center;padding:2px 7px;border-radius:14px;
     font-weight:700;font-size:0.8rem;font-family:ui-monospace,'SF Mono',Menlo,monospace;}
+  .fp-tag{font-size:0.7rem;font-weight:700;margin-left:4px;color:var(--ink-soft);white-space:nowrap;}
   .obs-cell{cursor:pointer;user-select:none;-webkit-user-select:none;-webkit-touch-callout:none;}
   .note-x{background:var(--surface-soft);color:var(--ink-soft);border:1px dashed var(--ink-soft);font-weight:700;}
   .note-1,.note-2{background:var(--pass-soft);color:var(--pass);}
@@ -358,7 +359,7 @@ function colorForGroupName(name){
 }
 
 function uid(){ return Math.random().toString(36).slice(2,10); }
-const APP_VERSION_INFO = 'v21.6 · Entwickler: G. Schulte';
+const APP_VERSION_INFO = 'v21.9 · Entwickler: G. Schulte';
 function setStatus(msg, isError){
   const el = document.getElementById('status');
   el.textContent = msg + ' · ' + APP_VERSION_INFO; el.style.color = isError ? 'var(--pen)' : 'var(--ink-soft)';
@@ -442,6 +443,31 @@ function studentMark(cat, studentId){
   return entryMark(cat && cat.entries && cat.entries[studentId]);
 }
 const MARK_TITLES = {NT: 'nicht teilgenommen (ohne Wertung)', NB: 'nicht bewertbar (ohne Wertung)'};
+// FP = Note ist Ergebnis einer Feststellungsprüfung (nur mündliche Noten): Flag am Eintrag bzw. in fpMarks bei berechneten Feldern
+const FP_TAG_HTML = '<span class="fp-tag" title="Ergebnis einer Feststellungsprüfung">(FP)</span>';
+function hasFp(holder, sid){
+  if(!holder) return false;
+  const e = holder.entries && holder.entries[sid];
+  if(e && e.fp && !entryMark(e)) return true;
+  return !!(holder.fpMarks && holder.fpMarks[sid]);
+}
+// Nur FP, keine Note: Feststellungsprüfung muss erst stattfinden -> im Notenfeld steht nur "FP"
+const FP_PILL_HTML = '<span class="note-pill note-x" title="Feststellungsprüfung erforderlich">FP</span>';
+function applyFp(pillHtml, holder, sid, value){
+  if(!hasFp(holder, sid)) return pillHtml;
+  const none = value === null || value === undefined || isNaN(value);
+  return none ? FP_PILL_HTML : pillHtml + FP_TAG_HTML;
+}
+function fpText(text, holder, sid){
+  if(!hasFp(holder, sid)) return text;
+  if(!text || text === '–') return 'FP';
+  return (text === 'NB' || text === 'NT') ? text : text + ' (FP)';
+}
+function excelWithFp(cell, holder, sid){
+  if(!hasFp(holder, sid)) return cell;
+  if(cell && typeof cell === 'object') return {...cell, text: cell.text + ' (FP)'};
+  return cell === '' || cell === undefined ? 'FP' : cell;
+}
 // NB auf berechneten Feldern (Sammelkategorie, Gesamt einer Gruppe, Endnote): wird als Überschreibung 'NB' gespeichert
 function totalNbMark(obj, sid){
   return obj && obj.overrides && obj.overrides[sid] === 'NB' ? 'NB' : null;
@@ -449,8 +475,12 @@ function totalNbMark(obj, sid){
 function endnoteNbMark(sem, sid){
   return sem && sem.endnoteOverrides && sem.endnoteOverrides[sid] === 'NB' ? 'NB' : null;
 }
-function nbOverrideRowHtml(isNb){
-  return `<div class="row" style="margin-top:14px;align-items:center;gap:8px;"><button class="${isNb ? '' : 'ghost'} small" id="nbOverrideBtn" style="min-width:46px;font-weight:700;">NB</button><span class="hint" style="margin:0;">${isNb ? 'Als nicht bewertbar markiert (ohne Wertung). Antippen zum Entfernen.' : 'NB = nicht bewertbar (ohne Wertung)'}</span></div>`;
+function markOverrideRowHtml(isNb, fpOn, showFp, showNb){
+  if(showNb === undefined) showNb = true;
+  const hint = isNb ? 'Als nicht bewertbar markiert (ohne Wertung). Antippen zum Entfernen.'
+    : (fpOn ? 'FP: Note ist Ergebnis einer Feststellungsprüfung (ohne Note: Prüfung steht noch aus). Antippen zum Entfernen.'
+      : (showFp && showNb ? 'NB = nicht bewertbar (ohne Wertung), FP = Feststellungsprüfung' : (showFp ? 'FP = Feststellungsprüfung' : 'NB = nicht bewertbar (ohne Wertung)')));
+  return `<div class="row" style="margin-top:14px;align-items:center;gap:8px;">${showNb ? `<button class="${isNb ? '' : 'ghost'} small" id="nbOverrideBtn" style="min-width:46px;font-weight:700;">NB</button>` : ''}${showFp ? `<button class="${fpOn ? '' : 'ghost'} small" id="fpOverrideBtn" style="min-width:46px;font-weight:700;">FP</button>` : ''}<span class="hint" style="margin:0;">${hint}</span></div>`;
 }
 function markPillHtml(mark){
   return `<span class="note-pill note-x" title="${MARK_TITLES[mark] || ''}">${mark}</span>`;
@@ -1829,11 +1859,11 @@ function buildKonferenzExportData(cls, sem){
   headers.push('Gesamt Mündlich', 'Endnote (NT)');
   const rows = students.map(s => {
     const row = [s.name];
-    schriftlichCats.forEach(c => row.push(excelCellForCategory(cls, c, s.id)));
-    row.push(totalNbMark(schriftlich, s.id) || excelCellForValue(cls, schriftlich ? groupGesamtForStudent(cls, schriftlich, s.id) : null));
-    if(soMi1) row.push(excelCellForCategory(cls, soMi1, s.id));
-    if(soMi2) row.push(excelCellForCategory(cls, soMi2, s.id));
-    row.push(totalNbMark(muendlich, s.id) || excelCellForValue(cls, muendlich ? groupGesamtForStudent(cls, muendlich, s.id) : null));
+    schriftlichCats.forEach(c => row.push(excelWithFp(excelCellForCategory(cls, c, s.id), c, s.id)));
+    row.push(totalNbMark(schriftlich, s.id) || excelWithFp(excelCellForValue(cls, schriftlich ? groupGesamtForStudent(cls, schriftlich, s.id) : null), schriftlich, s.id));
+    if(soMi1) row.push(excelWithFp(excelCellForCategory(cls, soMi1, s.id), soMi1, s.id));
+    if(soMi2) row.push(excelWithFp(excelCellForCategory(cls, soMi2, s.id), soMi2, s.id));
+    row.push(totalNbMark(muendlich, s.id) || excelWithFp(excelCellForValue(cls, muendlich ? groupGesamtForStudent(cls, muendlich, s.id) : null), muendlich, s.id));
     row.push(endnoteNbMark(sem, s.id) || excelCellForValue(cls, semesterEndnoteForStudent(cls, sem, s.id)));
     return row;
   });
@@ -2188,15 +2218,15 @@ function buildKonferenzPdf(cls, sem){
   const getters = [s => ({text: s.name, left: true, bold: true})];
   const cellFor = (c, s) => {
     const mk = studentMark(c, s.id) || totalNbMark(c, s.id);
-    return {text: mk || gradeTextForPdf(cls, categoryAvgForStudent(cls, c, s.id), c.displayScale)};
+    return {text: mk || fpText(gradeTextForPdf(cls, categoryAvgForStudent(cls, c, s.id), c.displayScale), c, s.id)};
   };
   cats.forEach(c => { cols.push({title: c.name, w: 1}); getters.push(s => cellFor(c, s)); });
   cols.push({title: 'G', w: 1});
-  getters.push(s => ({text: gradeTextForPdf(cls, schriftlich ? groupGesamtForStudent(cls, schriftlich, s.id) : null), bold: false}));
+  getters.push(s => ({text: fpText(gradeTextForPdf(cls, schriftlich ? groupGesamtForStudent(cls, schriftlich, s.id) : null), schriftlich, s.id), bold: false}));
   if(soMi1){ cols.push({title: 'SoMi 1', w: 1}); getters.push(s => cellFor(soMi1, s)); }
   if(soMi2){ cols.push({title: 'SoMi 2', w: 1}); getters.push(s => cellFor(soMi2, s)); }
   cols.push({title: 'G', w: 1});
-  getters.push(s => ({text: totalNbMark(muendlich, s.id) || gradeTextForPdf(cls, muendlich ? groupGesamtForStudent(cls, muendlich, s.id) : null)}));
+  getters.push(s => ({text: totalNbMark(muendlich, s.id) || fpText(gradeTextForPdf(cls, muendlich ? groupGesamtForStudent(cls, muendlich, s.id) : null), muendlich, s.id)}));
   cols.push({title: 'Endnote (NT)', w: 1.7});
   getters.push(s => ({text: endnoteNbMark(sem, s.id) || gradeTextForPdf(cls, semesterEndnoteForStudent(cls, sem, s.id)), bold: true}));
   const rest = (R - mx) - cols[0].w;
@@ -2228,7 +2258,7 @@ function buildKonferenzPdf(cls, sem){
       const cell = g(s);
       const w = widths[ci];
       let size = fs;
-      const font = (cell.bold || (cell.text === 'NT' || cell.text === 'NB')) ? 'B' : 'R';
+      const font = (cell.bold || (cell.text === 'NT' || cell.text === 'NB' || cell.text === 'FP')) ? 'B' : 'R';
       if(cell.left){
         const maxW = w - 10;
         const tw = pdf.width(cell.text, font, size);
@@ -2313,14 +2343,14 @@ function renderKonferenztabelleHtml(cls, sem){
     let row = `<tr><td class="name-col" style="text-align:left;">${escapeHtml(s.name)}</td>`;
     schriftlichCats.forEach(c => {
       const v = categoryAvgForStudent(cls, c, s.id);
-      row += `<td>${studentMark(c, s.id) ? markPillHtml(studentMark(c, s.id)) : notePill(cls, v, undefined, c.displayScale)}</td>`;
+      row += `<td>${studentMark(c, s.id) ? markPillHtml(studentMark(c, s.id)) : applyFp(notePill(cls, v, undefined, c.displayScale), c, s.id, v)}</td>`;
     });
     const gSchr = schriftlich ? groupGesamtForStudent(cls, schriftlich, s.id) : null;
-    row += `<td class="total-col">${notePill(cls, gSchr)}</td>`;
-    if(soMi1){ row += `<td>${totalNbMark(soMi1, s.id) ? markPillHtml('NB') : notePill(cls, categoryAvgForStudent(cls, soMi1, s.id))}</td>`; }
-    if(soMi2){ row += `<td>${totalNbMark(soMi2, s.id) ? markPillHtml('NB') : notePill(cls, categoryAvgForStudent(cls, soMi2, s.id))}</td>`; }
+    row += `<td class="total-col">${applyFp(notePill(cls, gSchr), schriftlich, s.id, gSchr)}</td>`;
+    if(soMi1){ const mk1 = studentMark(soMi1, s.id) || totalNbMark(soMi1, s.id); const v1 = categoryAvgForStudent(cls, soMi1, s.id); row += `<td>${mk1 ? markPillHtml(mk1) : applyFp(notePill(cls, v1), soMi1, s.id, v1)}</td>`; }
+    if(soMi2){ const mk2 = studentMark(soMi2, s.id) || totalNbMark(soMi2, s.id); const v2 = categoryAvgForStudent(cls, soMi2, s.id); row += `<td>${mk2 ? markPillHtml(mk2) : applyFp(notePill(cls, v2), soMi2, s.id, v2)}</td>`; }
     const gMue = muendlich ? groupGesamtForStudent(cls, muendlich, s.id) : null;
-    row += `<td class="total-col">${totalNbMark(muendlich, s.id) ? markPillHtml('NB') : notePill(cls, gMue)}</td>`;
+    row += `<td class="total-col">${totalNbMark(muendlich, s.id) ? markPillHtml('NB') : applyFp(notePill(cls, gMue), muendlich, s.id, gMue)}</td>`;
     const end = semesterEndnoteForStudent(cls, sem, s.id);
     row += `<td class="endnote-col">${endnoteNbMark(sem, s.id) ? markPillHtml('NB') : notePill(cls, end)}</td>`;
     body += row + `</tr>`;
@@ -2524,7 +2554,7 @@ function renderGrid(main, cls, sem){
           const majoritySym = majoritySymbolForCategory(cat, s.id);
           if(majoritySym) collapsedPill = observationPill({observation: majoritySym});
         }
-        if(totalNbMark(cat, s.id)) collapsedPill = markPillHtml('NB');
+        if(totalNbMark(cat, s.id)) collapsedPill = markPillHtml('NB'); else collapsedPill = applyFp(collapsedPill, cat, s.id, collapsedVal);
         return `<td class="total-col collapsed-col" data-toggle-cat-collapse="${cat.id}" data-group="${g.id}" style="cursor:pointer;text-align:center;${ownColor?`background:${ownColor};`:''}" title="Einblenden"><div class="cell-stack" style="display:flex;justify-content:center;width:100%;">${collapsedPill}</div></td>`;
       }
       const hasKids = cat.children && cat.children.length;
@@ -2535,7 +2565,7 @@ function renderGrid(main, cls, sem){
           const majoritySym = majoritySymbolForCategory(cat, s.id);
           if(majoritySym) pillHtml = observationPill({observation: majoritySym});
         }
-        if(totalNbMark(cat, s.id)) pillHtml = markPillHtml('NB');
+        if(totalNbMark(cat, s.id)) pillHtml = markPillHtml('NB'); else pillHtml = applyFp(pillHtml, cat, s.id, a);
         const gesamtColor = ownColor ? lightenColor(ownColor, rowLighten !== undefined ? rowLighten : GRADIENT_STEP) : undefined;
         const gesamtBgAttr = gesamtColor ? ` style="background:${gesamtColor};"` : '';
         let html = `<td class="total-col"${gesamtBgAttr}><div class="cell-stack" data-open-entries data-cat="${cat.id}" data-group="${g.id}" data-student="${s.id}">${pillHtml}${overrideMark(cat, g, s)}</div></td>`;
@@ -2557,7 +2587,7 @@ function renderGrid(main, cls, sem){
       if(cellMark){
         return `<td${colorCls}${bgAttr}><div class="cell-stack" data-open-entries data-cat="${cat.id}" data-group="${g.id}" data-student="${s.id}">${markPillHtml(cellMark)}</div></td>`;
       }
-      return `<td${colorCls}${bgAttr}><div class="cell-stack" data-open-entries data-cat="${cat.id}" data-group="${g.id}" data-student="${s.id}">${notePill(cls, a, subLabel, cat.displayScale)}${overrideMark(cat, g, s)}</div></td>`;
+      return `<td${colorCls}${bgAttr}><div class="cell-stack" data-open-entries data-cat="${cat.id}" data-group="${g.id}" data-student="${s.id}">${applyFp(notePill(cls, a, subLabel, cat.displayScale), cat, s.id, a)}${overrideMark(cat, g, s)}</div></td>`;
     }
     visibleStudents.forEach((s, rowIdx) => {
       const end = semesterEndnoteForStudent(cls, sem, s.id);
@@ -2584,7 +2614,7 @@ function renderGrid(main, cls, sem){
       groups.forEach(g => {
         if(g.collapsed){
           const collapsedGt = groupGesamtForStudent(cls, g, s.id);
-          row += `<td class="total-col collapsed-col" data-toggle-group-collapse="${g.id}" style="cursor:pointer;text-align:center;" title="Einblenden"><div class="cell-stack" style="display:flex;justify-content:center;width:100%;">${totalNbMark(g, s.id) ? markPillHtml('NB') : notePill(cls, collapsedGt)}</div></td>`;
+          row += `<td class="total-col collapsed-col" data-toggle-group-collapse="${g.id}" style="cursor:pointer;text-align:center;" title="Einblenden"><div class="cell-stack" style="display:flex;justify-content:center;width:100%;">${totalNbMark(g, s.id) ? markPillHtml('NB') : applyFp(notePill(cls, collapsedGt), g, s.id, collapsedGt)}</div></td>`;
           return;
         }
         const gt = groupGesamtForStudent(cls, g, s.id);
@@ -2605,6 +2635,7 @@ function renderGrid(main, cls, sem){
             }
           }
         }
+        if(!gNb) gPillHtml = applyFp(gPillHtml, g, s.id, gt);
         const groupColorBody = g.bgColor || colorForGroupName(g.name);
         const rowProgress = visibleStudents.length > 1 ? rowIdx / (visibleStudents.length - 1) : 0;
         const rowLighten = GRADIENT_STEP + rowProgress * ADDITIONAL_ROW_FADE;
@@ -2690,10 +2721,11 @@ function renderGrid(main, cls, sem){
       const stillEnrolled = cls.semesters.some(sm => sm.studentIds && sm.studentIds.includes(id));
       if(!stillEnrolled){
         cls.students = cls.students.filter(s=>s.id!==id);
-        function purge(c){ delete c.entries[id]; if(c.overrides) delete c.overrides[id]; if(c.children) c.children.forEach(purge); }
+        function purge(c){ delete c.entries[id]; if(c.overrides) delete c.overrides[id]; if(c.fpMarks) delete c.fpMarks[id]; if(c.children) c.children.forEach(purge); }
         cls.semesters.forEach(sm => {
           sm.groups.forEach(g => {
             if(g.overrides) delete g.overrides[id];
+            if(g.fpMarks) delete g.fpMarks[id];
             g.children.forEach(purge);
           });
           if(sm.endnoteOverrides) delete sm.endnoteOverrides[id];
@@ -3435,7 +3467,7 @@ function renderCategoryOverrideModal(cls, cat, student){
         <div class="sub">${escapeHtml(student.name)} · Sammelkategorie</div>
         <div class="hint" style="margin-top:8px;">Automatisch berechneter Vorschlag${cat.children && cat.children.length ? '' : ' (noch keine Unterkategorien)'}: ${auto===null ? 'keine Daten' : displayValue(cls, auto)}</div>
         <div style="margin-top:14px;">${gradeChipsHtml(cls, String(currentSelected))}</div>
-        ${!(lastEntryGroup && (lastEntryGroup.name || '').trim().toLowerCase() === 'schriftlich') ? nbOverrideRowHtml(overrideRaw === 'NB') : ''}
+        ${markOverrideRowHtml(overrideRaw === 'NB', !!(cat.fpMarks && cat.fpMarks[student.id]), true, !(lastEntryGroup && (lastEntryGroup.name || '').trim().toLowerCase() === 'schriftlich'))}
         ${isOverridden ? `<div class="row" style="margin-top:14px;"><button class="ghost small" id="resetCatOverrideBtn">Vorschlag automatisch übernehmen</button></div>` : ''}
       </div>
     </div>
@@ -3455,6 +3487,13 @@ function renderCategoryOverrideModal(cls, cat, student){
       cat.overrides = cat.overrides || {};
       if(cat.overrides[student.id] === 'NB') delete cat.overrides[student.id]; else cat.overrides[student.id] = 'NB';
       saveState(); root.innerHTML = ''; render();
+    };
+  }
+  if(document.getElementById('fpOverrideBtn')){
+    document.getElementById('fpOverrideBtn').onclick = () => {
+      cat.fpMarks = cat.fpMarks || {};
+      if(cat.fpMarks[student.id]) delete cat.fpMarks[student.id]; else cat.fpMarks[student.id] = true;
+      saveState(); renderCategoryOverrideModal(cls, cat, student);
     };
   }
   const resetBtn = document.getElementById('resetCatOverrideBtn');
@@ -3486,7 +3525,7 @@ function renderGroupOverrideModal(cls, group, student){
         <div class="sub">${escapeHtml(student.name)}</div>
         <div class="hint" style="margin-top:8px;">Automatisch berechneter Vorschlag: ${auto===null ? 'keine Daten' : displayValue(cls, auto)}</div>
         <div style="margin-top:14px;">${gradeChipsHtml(cls, String(currentSelected))}</div>
-        ${(group.name || '').trim().toLowerCase() !== 'schriftlich' ? nbOverrideRowHtml(overrideRaw === 'NB') : ''}
+        ${markOverrideRowHtml(overrideRaw === 'NB', !!(group.fpMarks && group.fpMarks[student.id]), true, (group.name || '').trim().toLowerCase() !== 'schriftlich')}
         ${isOverridden ? `<div class="row" style="margin-top:14px;"><button class="ghost small" id="resetGroupOverrideBtn">Vorschlag automatisch übernehmen</button></div>` : ''}
       </div>
     </div>
@@ -3506,6 +3545,13 @@ function renderGroupOverrideModal(cls, group, student){
       group.overrides = group.overrides || {};
       if(group.overrides[student.id] === 'NB') delete group.overrides[student.id]; else group.overrides[student.id] = 'NB';
       saveState(); root.innerHTML = ''; render();
+    };
+  }
+  if(document.getElementById('fpOverrideBtn')){
+    document.getElementById('fpOverrideBtn').onclick = () => {
+      group.fpMarks = group.fpMarks || {};
+      if(group.fpMarks[student.id]) delete group.fpMarks[student.id]; else group.fpMarks[student.id] = true;
+      saveState(); renderGroupOverrideModal(cls, group, student);
     };
   }
   const resetBtn = document.getElementById('resetGroupOverrideBtn');
@@ -4021,7 +4067,7 @@ function renderEndnoteModal(cls, sem, student){
         <div class="sub">${escapeHtml(student.name)} · ${escapeHtml(sem.name)}</div>
         <div class="hint" style="margin-top:8px;">Automatisch berechneter Vorschlag: ${auto===null ? 'keine Daten' : displayValue(cls, auto)}</div>
         <div style="margin-top:14px;">${gradeChipsHtml(cls, String(currentSelected))}</div>
-        ${nbOverrideRowHtml(overrideRaw === 'NB')}
+        ${markOverrideRowHtml(overrideRaw === 'NB', false, false)}
         ${isOverridden ? `<div class="row" style="margin-top:14px;"><button class="ghost small" id="resetEndnoteBtn">Vorschlag automatisch übernehmen</button></div>` : ''}
       </div>
     </div>
@@ -4126,6 +4172,8 @@ function renderModal(cls, cat, student){
   const entry = cat.entries[student.id];
   const inSchriftlich = !!(lastEntryGroup && (lastEntryGroup.name || '').trim().toLowerCase() === 'schriftlich');
   const showNb = !inSchriftlich || entryMark(entry) === 'NB';
+  const showFp = cat.mode !== 'observation';
+  const fpOn = !!(entry && entry.fp && !entryMark(entry));
   const unit = cls.gradingSystem === 'punkte' ? 'Notenpunkte (0-15)' : 'Note mit Tendenz';
   const modeLabel = cat.mode==='points' ? 'Klausurpunkte (automatisch berechnet)' : cat.mode==='observation' ? 'Unterrichtsbeobachtung' : unit;
   root.innerHTML = `
@@ -4150,7 +4198,8 @@ function renderModal(cls, cat, student){
         ${(cat.mode !== 'observation' || showNb) ? `<div class="row" style="margin-top:14px;align-items:center;gap:8px;">
           ${cat.mode !== 'observation' ? `<button class="${entryMark(entry) === 'NT' ? '' : 'ghost'} small" data-mark-btn="NT" style="min-width:46px;font-weight:700;">NT</button>` : ''}
           ${showNb ? `<button class="${entryMark(entry) === 'NB' ? '' : 'ghost'} small" data-mark-btn="NB" style="min-width:46px;font-weight:700;">NB</button>` : ''}
-          <span class="hint" style="margin:0;">${entryMark(entry) ? `${MARK_TITLES[entryMark(entry)]}. Antippen zum Entfernen.` : (cat.mode === 'observation' ? 'NB = nicht bewertbar (ohne Wertung)' : (showNb ? 'NT = nicht teilgenommen, NB = nicht bewertbar (jeweils ohne Wertung)' : 'NT = nicht teilgenommen (ohne Wertung)'))}</span>
+          ${showFp ? `<button class="${fpOn ? '' : 'ghost'} small" data-fp-btn style="min-width:46px;font-weight:700;">FP</button>` : ''}
+          <span class="hint" style="margin:0;">${entryMark(entry) ? `${MARK_TITLES[entryMark(entry)]}. Antippen zum Entfernen.` : (fpOn ? 'FP: Note ist Ergebnis einer Feststellungsprüfung (ohne Note: Prüfung steht noch aus). Antippen zum Entfernen.' : (cat.mode === 'observation' ? 'NB = nicht bewertbar (ohne Wertung)' : (showNb ? 'NT = nicht teilgenommen, NB = nicht bewertbar (ohne Wertung), FP = Feststellungsprüfung' : 'NT = nicht teilgenommen (ohne Wertung), FP = Feststellungsprüfung')))}</span>
         </div>` : ''}
         <div style="margin-top:14px;">
           <textarea id="entryNote" rows="2" placeholder="Notiz (optional)" style="width:100%;resize:vertical;">${escapeHtml(entry?.note || '')}</textarea>
@@ -4166,8 +4215,10 @@ function renderModal(cls, cat, student){
     const pts = document.getElementById('entryPoints').value;
     const max = document.getElementById('entryMax').value;
     const note = currentNote();
-    if(pts==='' && max==='' && !note){ delete cat.entries[student.id]; saveState(); return; }
-    cat.entries[student.id] = {points: pts===''?'':parseFloat(pts), maxPoints: max===''?'':parseFloat(max), note};
+    const prevEntry = cat.entries[student.id];
+    const keepFp = !!(prevEntry && prevEntry.fp && !entryMark(prevEntry));
+    if(pts==='' && max==='' && !note && !keepFp){ delete cat.entries[student.id]; saveState(); return; }
+    cat.entries[student.id] = {points: pts===''?'':parseFloat(pts), maxPoints: max===''?'':parseFloat(max), note, ...(keepFp ? {fp: true} : {})};
     if(max!=='') cat.maxPoints = parseFloat(max);
     saveState();
   };
@@ -4192,7 +4243,9 @@ function renderModal(cls, cat, student){
   } else {
     root.querySelectorAll('[data-chip-value]').forEach(btn=>{
       btn.onclick = () => {
-        cat.entries[student.id] = {grade: btn.dataset.chipValue, note: currentNote()};
+        const prevEntry = cat.entries[student.id];
+        const keepFp = !!(prevEntry && prevEntry.fp && !entryMark(prevEntry));
+        cat.entries[student.id] = {grade: btn.dataset.chipValue, note: currentNote(), ...(keepFp ? {fp: true} : {})};
         saveState();
         root.innerHTML = ''; render();
       };
@@ -4208,6 +4261,18 @@ function renderModal(cls, cat, student){
       }
       saveState();
       root.innerHTML = ''; render();
+    };
+  });
+  root.querySelectorAll('[data-fp-btn]').forEach(btn => {
+    btn.onclick = () => {
+      const prev = cat.entries[student.id];
+      const e = entryMark(prev) ? {} : {...(prev || {})};
+      if(e.fp) delete e.fp; else if(!(prev && prev.fp && !entryMark(prev))) e.fp = true;
+      e.note = currentNote();
+      if(e.fp || e.grade || (e.points !== undefined && e.points !== '') || e.note) cat.entries[student.id] = e;
+      else delete cat.entries[student.id];
+      saveState();
+      renderModal(cls, cat, student);
     };
   });
   const noteInput = document.getElementById('entryNote');
