@@ -161,6 +161,8 @@
     box-shadow:0 1px 2px rgba(0,0,0,.25);z-index:2;}
   .note-pill{display:inline-block;min-width:26px;text-align:center;padding:2px 7px;border-radius:14px;
     font-weight:700;font-size:0.8rem;font-family:ui-monospace,'SF Mono',Menlo,monospace;}
+  #toast{position:fixed;left:50%;bottom:64px;transform:translateX(-50%);max-width:90vw;background:#1D1D1F;color:#fff;padding:10px 16px;border-radius:12px;font-size:0.85rem;line-height:1.35;z-index:70;box-shadow:0 6px 20px rgba(0,0,0,.35);opacity:0;pointer-events:none;transition:opacity .25s;text-align:center;}
+  #toast.show{opacity:1;}
   .fp-tag{font-size:0.7rem;font-weight:700;margin-left:4px;color:var(--ink-soft);white-space:nowrap;}
   .obs-cell{cursor:pointer;user-select:none;-webkit-user-select:none;-webkit-touch-callout:none;}
   .note-x{background:var(--surface-soft);color:var(--ink-soft);border:1px dashed var(--ink-soft);font-weight:700;}
@@ -230,6 +232,8 @@
     font-family:ui-monospace,'SF Mono',Menlo,monospace;font-size:0.8rem;font-weight:700;color:var(--ink);cursor:pointer;}
   .grade-chip.selected{background:var(--accent);color:#fff;border-color:var(--accent);}
   .dlg-choices{display:flex;flex-direction:column;gap:8px;margin-top:12px;}
+  .dlg-heading{font-size:0.7rem;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--ink-soft);margin:10px 2px -2px;}
+  .dlg-heading:first-child{margin-top:0;}
   .dlg-choice-btn{width:100%;text-align:left;background:var(--surface-soft);color:var(--ink);
     border:1px solid var(--line);border-radius:10px;padding:12px 14px;font-size:0.92rem;font-weight:600;}
   .dlg-choice-btn:active{background:var(--accent-soft);border-color:var(--accent);}
@@ -359,10 +363,67 @@ function colorForGroupName(name){
 }
 
 function uid(){ return Math.random().toString(36).slice(2,10); }
-const APP_VERSION_INFO = 'v22.0 · Entwickler: G. Schulte';
+const APP_VERSION_INFO = 'v22.4 · Entwickler: G. Schulte';
 function setStatus(msg, isError){
   const el = document.getElementById('status');
-  el.textContent = msg + ' · ' + APP_VERSION_INFO; el.style.color = isError ? 'var(--pen)' : 'var(--ink-soft)';
+  const hasData = typeof state !== 'undefined' && state && state.classes && state.classes.length;
+  el.textContent = msg + ' · ' + APP_VERSION_INFO + (hasData ? ' · Backup ' + backupAgeText() : '');
+  el.style.color = isError ? 'var(--pen)' : ((hasData && backupOverdue()) ? 'var(--warn)' : 'var(--ink-soft)');
+}
+const BACKUP_LAST_KEY = 'notenbuch-last-backup';
+const BACKUP_DAYS_KEY = 'notenbuch-backup-days';
+const BACKUP_SNOOZE_KEY = 'notenbuch-backup-snooze';
+function getLastBackup(){
+  try{ const v = localStorage.getItem(BACKUP_LAST_KEY); const d = v ? new Date(v) : null; return d && !isNaN(d) ? d : null; }catch(e){ return null; }
+}
+function getBackupDays(){
+  try{ const v = localStorage.getItem(BACKUP_DAYS_KEY); return v === null ? 7 : (parseInt(v, 10) || 0); }catch(e){ return 7; }
+}
+function backupAgeDays(){
+  const d = getLastBackup();
+  return d ? Math.max(0, Math.floor((Date.now() - d.getTime()) / 86400000)) : null;
+}
+function backupAgeText(){
+  const n = backupAgeDays();
+  if(n === null) return 'noch nie';
+  if(n === 0) return 'heute';
+  if(n === 1) return 'gestern';
+  return `vor ${n} Tagen`;
+}
+function backupOverdue(){
+  const days = getBackupDays();
+  if(!days) return false;
+  const age = backupAgeDays();
+  return age === null || age >= days;
+}
+function markBackupDone(){
+  try{ localStorage.setItem(BACKUP_LAST_KEY, new Date().toISOString()); localStorage.removeItem(BACKUP_SNOOZE_KEY); }catch(e){}
+}
+let backupReminderShown = false;
+async function maybeShowBackupReminder(){
+  if(backupReminderShown) return;
+  if(!state.classes || !state.classes.length || !backupOverdue()) return;
+  try{ const sn = localStorage.getItem(BACKUP_SNOOZE_KEY); if(sn && Date.now() < parseInt(sn, 10)) return; }catch(e){}
+  backupReminderShown = true;
+  const age = backupAgeDays();
+  const msg = (age === null ? 'Du hast noch kein Backup erstellt.' : `Dein letztes Backup ist ${age} Tage alt.`) + ' Alle Daten liegen nur auf diesem Gerät. Jetzt sichern?';
+  const ok = await showConfirm('Backup empfohlen', msg, {confirmLabel: 'Jetzt sichern', cancelLabel: 'Später'});
+  if(ok) exportBackup();
+  else { try{ localStorage.setItem(BACKUP_SNOOZE_KEY, String(Date.now() + 24 * 3600 * 1000)); }catch(e){} }
+}
+async function setupBackupReminder(){
+  const cur = getBackupDays();
+  const pick = await showChoice('Backup-Erinnerung', 'Wie oft soll die App ans Backup erinnern?', [
+    {label: `${cur === 3 ? '✓ ' : ''}Nach 3 Tagen`, value: '3'},
+    {label: `${cur === 7 ? '✓ ' : ''}Nach 7 Tagen`, value: '7'},
+    {label: `${cur === 14 ? '✓ ' : ''}Nach 14 Tagen`, value: '14'},
+    {label: `${cur === 30 ? '✓ ' : ''}Nach 30 Tagen`, value: '30'},
+    {label: `${cur === 0 ? '✓ ' : ''}Aus`, value: '0'},
+  ]);
+  if(pick === null) return;
+  try{ localStorage.setItem(BACKUP_DAYS_KEY, pick); localStorage.removeItem(BACKUP_SNOOZE_KEY); }catch(e){}
+  backupReminderShown = false;
+  setStatus(pick === '0' ? 'Backup-Erinnerung aus' : `Backup-Erinnerung nach ${pick} Tagen`);
 }
 
 // ---------- grade/value helpers ----------
@@ -933,10 +994,12 @@ function exportBackup(){
       const stamp = now.toISOString().slice(0,10) + '_' + String(now.getHours()).padStart(2,'0') + '-' + String(now.getMinutes()).padStart(2,'0');
       if(pw && pw.trim()){
         const encryptedStr = await encryptBackupJson(data, pw.trim());
-        await downloadBlobAsFile(encryptedStr, `notenbuch-backup-verschluesselt-${stamp}.json`);
+        const okEnc = await downloadBlobAsFile(encryptedStr, `notenbuch-backup-verschluesselt-${stamp}.json`);
+        if(okEnc) markBackupDone();
         setStatus('Verschlüsseltes Backup exportiert · ' + new Date().toLocaleTimeString('de-DE'));
       } else {
-        await downloadBlobAsFile(data, `notenbuch-backup-${stamp}.json`);
+        const okPlain = await downloadBlobAsFile(data, `notenbuch-backup-${stamp}.json`);
+        if(okPlain) markBackupDone();
         setStatus('Backup exportiert · ' + new Date().toLocaleTimeString('de-DE'));
       }
     }catch(e){ setStatus('Export fehlgeschlagen.', true); }
@@ -948,15 +1011,15 @@ async function downloadBlobAsFile(str, filename){
     const plainFile = new File([blob], filename, {type: 'text/plain'});
     if(navigator.canShare && navigator.canShare({files: [plainFile]})){
       await navigator.share({files: [plainFile], title: filename});
-      return; // shared successfully (e.g. saved to IServ/Drive/etc.)
+      return true; // shared successfully (e.g. saved to IServ/Drive/etc.)
     }
     const jsonFile = new File([blob], filename, {type: 'application/json'});
     if(navigator.canShare && navigator.canShare({files: [jsonFile]})){
       await navigator.share({files: [jsonFile], title: filename});
-      return;
+      return true;
     }
   }catch(e){
-    if(e && e.name === 'AbortError') return; // user deliberately cancelled the share sheet
+    if(e && e.name === 'AbortError') return false; // user deliberately cancelled the share sheet
     // any other share failure: fall through to the plain download below
   }
   const url = URL.createObjectURL(blob);
@@ -964,6 +1027,7 @@ async function downloadBlobAsFile(str, filename){
   a.href = url; a.download = filename;
   document.body.appendChild(a); a.click(); document.body.removeChild(a);
   URL.revokeObjectURL(url);
+  return true;
 }
 function stripCategoryToStructure(c){
   return {
@@ -1067,7 +1131,7 @@ async function importCSV(file){
     return;
   }
 
-  let targetCls = state.classes.find(c => c.name.trim().toLowerCase() === klasseName.toLowerCase());
+  let targetCls = state.classes.find(c => !c.archived && c.name.trim().toLowerCase() === klasseName.toLowerCase());
   const isNewClass = !targetCls;
 
   const ok = await showConfirm('CSV importieren?',
@@ -1165,7 +1229,7 @@ function showDialog(opts){
       }
     }
     if(type === 'choice'){
-      body += `<div class="dlg-choices">${options.map((o,i) => `<button type="button" class="dlg-choice-btn" data-choice-idx="${i}">${escapeHtml(o.label)}</button>`).join('')}</div>`;
+      body += `<div class="dlg-choices">${options.map((o,i) => o.heading ? `<div class="dlg-heading">${escapeHtml(o.heading)}</div>` : `<button type="button" class="dlg-choice-btn" data-choice-idx="${i}">${escapeHtml(o.label)}</button>`).join('')}</div>`;
     }
     let footer = '';
     if(type === 'alert') footer = `<div class="row" style="margin-top:16px;justify-content:flex-end;"><button id="dlgOk">${escapeHtml(confirmLabel)}</button></div>`;
@@ -1628,10 +1692,10 @@ function renderEditLerngruppeModal(cls){
 }
 function renderClassRow(){
   const row = document.getElementById('classRow');
-  row.innerHTML = state.classes.map(c => `
+  row.innerHTML = visibleClasses().map(c => `
     <button class="sem-tab ${c.id===state.activeClassId?'active':''}" data-class="${c.id}">${escapeHtml(c.name)}</button>
   `).join('') + `<button class="icon-add-btn labeled" id="addClassIconBtn" title="Lerngruppe hinzufügen"><span>Lerngruppe hinzufügen</span> +</button>` +
-    (state.classes.length ? `<button class="ghost small" id="renameClassBtn" title="Lerngruppe bearbeiten">✎</button><button class="ghost small" id="deleteClassBtn" title="Lerngruppe löschen">✕</button>` : '');
+    (visibleClasses().length ? `<button class="ghost small" id="renameClassBtn" title="Lerngruppe bearbeiten">✎</button><button class="ghost small" id="deleteClassBtn" title="Lerngruppe löschen">✕</button>` : '');
   row.querySelectorAll('[data-class]').forEach(btn=>{
     btn.onclick = () => { state.activeClassId = btn.dataset.class; saveState(); render(); };
   });
@@ -1650,7 +1714,7 @@ function renderClassRow(){
       const ok = await showConfirm('Lerngruppe löschen', `"${cls.name}" wirklich löschen? Alle Daten dieser Lerngruppe gehen verloren.`, {confirmLabel:'Löschen', danger:true});
       if(!ok) return;
       state.classes = state.classes.filter(c=>c.id!==cls.id);
-      state.activeClassId = state.classes.length ? state.classes[0].id : null;
+      ensureActiveClassVisible();
       saveState(); render();
     };
   }
@@ -1659,7 +1723,7 @@ function renderSemRow(cls){
   const row = document.getElementById('semRow');
   if(!cls){ row.innerHTML=''; return; }
   row.innerHTML = cls.semesters.map(s => `
-    <button class="sem-tab ${(!state.compareView && s.id===cls.activeSemesterId)?'active':''}" data-sem="${s.id}">${escapeHtml(s.name)}</button>
+    <button class="sem-tab ${(!state.compareView && s.id===cls.activeSemesterId)?'active':''}" data-sem="${s.id}">${escapeHtml(s.name)}${s.locked ? ' 🔒' : ''}</button>
   `).join('') + `<button class="sem-tab ${state.compareView?'active':''}" id="compareTab" title="Beide Halbjahre nebeneinander">1|2</button>
     <button class="ghost small" id="renameSemBtn">✎</button>`;
   row.querySelectorAll('[data-sem]').forEach(btn=>{
@@ -1673,12 +1737,14 @@ function renderSemRow(cls){
   };
 }
 function render(){
+  ensureActiveClassVisible();
   renderClassRow();
   const cls = getActiveClass();
   document.documentElement.style.setProperty('--name-col-w', ((cls && cls.nameColWidth) || 290) + 'px');
   renderSemRow(cls);
   syncStickyOffsets();
   const main = document.getElementById('main');
+  main.__lockSem = null;
   const prevWraps = Array.from(main.querySelectorAll('.grid-wrap'));
   const prevScrolls = prevWraps.map(w => w.scrollLeft);
   document.getElementById('toggleScaleBtn').disabled = !cls;
@@ -1758,7 +1824,7 @@ function findSomiCategoriesForClass(cls){
 async function openQuartaleModal(cls){
   const root = document.getElementById('modalRoot');
   const cats = findSomiCategoriesForClass(cls);
-  const otherClasses = state.classes.filter(c => c.id !== cls.id);
+  const otherClasses = state.classes.filter(c => c.id !== cls.id && !c.archived);
   const rows = [
     {key:'q1', label:'1. Quartal (SoMi 1, 1. HJ)', cat: cats.q1},
     {key:'q2', label:'2. Quartal (SoMi 2, 1. HJ)', cat: cats.q2},
@@ -1823,7 +1889,7 @@ async function openQuartaleModal(cls){
 }
 function printHeaderHtml(cls, sem){
   const today = new Date().toLocaleDateString('de-DE');
-  const schoolYear = state.schoolYear ? escapeHtml(state.schoolYear) : '–';
+  const schoolYear = classYear(cls) ? escapeHtml(classYear(cls)) : '–';
   return `<div class="print-header">
     <span><strong>Schuljahr:</strong> ${schoolYear}</span>
     <span><strong>Lerngruppe:</strong> ${escapeHtml(cls.name)}</span>
@@ -1900,7 +1966,7 @@ function excelFillForBucket(bucket){
 }
 function printHeaderLines(cls, sem){
   const today = new Date().toLocaleDateString('de-DE');
-  const schoolYear = state.schoolYear ? state.schoolYear : '–';
+  const schoolYear = classYear(cls) || '–';
   return [
     `Schuljahr: ${schoolYear}`,
     `Lerngruppe: ${cls.name}`,
@@ -1969,8 +2035,13 @@ function pdfEsc(bin){
   return bin.replace(/\\/g, '\\\\').replace(/\(/g, '\\(').replace(/\)/g, '\\)');
 }
 function MiniPdf(w, h){
-  this.w = w; this.h = h; this.ops = []; this.img = null;
+  this.w = w; this.h = h; this.pages = [[]]; this.ops = this.pages[0]; this.img = null;
 }
+MiniPdf.prototype.addPage = function(){
+  const p = [];
+  this.pages.push(p);
+  this.ops = p;
+};
 MiniPdf.prototype.widthBin = function(bin, font, size){
   if(font === 'S') return bin.length * 0.713 * size;
   const tab = font === 'B' ? PDF_W.B : PDF_W.R;
@@ -2005,24 +2076,34 @@ MiniPdf.prototype.rect = function(x, y, w, h, o){
   if(o.fill != null) this.ops.push(`${o.fill} g ${rect} f`);
   else this.ops.push(`${o.gray != null ? o.gray : 0} G ${o.lw || 0.5} w ${rect} S`);
 };
+MiniPdf.prototype.poly = function(pts, fill){
+  const path = pts.map((p, i) => `${p[0].toFixed(2)} ${(this.h - p[1]).toFixed(2)} ${i ? 'l' : 'm'}`).join(' ');
+  this.ops.push(`${fill != null ? fill : 0} g ${path} h f`);
+};
 MiniPdf.prototype.image = function(jpegBin, pxW, pxH, x, y, w, h){
   this.img = {bin: jpegBin, pxW, pxH};
   this.ops.push(`q ${w.toFixed(2)} 0 0 ${h.toFixed(2)} ${x.toFixed(2)} ${(this.h - y - h).toFixed(2)} cm /Im1 Do Q`);
 };
 MiniPdf.prototype.build = function(){
   const objs = [];
-  const content = this.ops.join('\n');
+  const hasImg = !!this.img;
+  const firstPage = hasImg ? 8 : 7;
+  const n = this.pages.length;
   objs[1] = '<< /Type /Catalog /Pages 2 0 R >>';
-  objs[2] = '<< /Type /Pages /Kids [3 0 R] /Count 1 >>';
-  objs[3] = `<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ${this.w} ${this.h}] /Resources << /Font << /F1 5 0 R /F2 6 0 R /F3 7 0 R /F4 8 0 R >>${this.img ? ' /XObject << /Im1 9 0 R >>' : ''} >> /Contents 4 0 R >>`;
-  objs[4] = `<< /Length ${content.length} >>\nstream\n${content}\nendstream`;
-  objs[5] = '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>';
-  objs[6] = '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold /Encoding /WinAnsiEncoding >>';
-  objs[7] = '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Oblique /Encoding /WinAnsiEncoding >>';
-  objs[8] = '<< /Type /Font /Subtype /Type1 /BaseFont /Symbol >>';
-  if(this.img){
-    objs[9] = `<< /Type /XObject /Subtype /Image /Width ${this.img.pxW} /Height ${this.img.pxH} /ColorSpace /DeviceGray /BitsPerComponent 8 /Filter /DCTDecode /Length ${this.img.bin.length} >>\nstream\n${this.img.bin}\nendstream`;
+  objs[2] = `<< /Type /Pages /Kids [${this.pages.map((_, i) => (firstPage + i * 2) + ' 0 R').join(' ')}] /Count ${n} >>`;
+  objs[3] = '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>';
+  objs[4] = '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold /Encoding /WinAnsiEncoding >>';
+  objs[5] = '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Oblique /Encoding /WinAnsiEncoding >>';
+  objs[6] = '<< /Type /Font /Subtype /Type1 /BaseFont /Symbol >>';
+  if(hasImg){
+    objs[7] = `<< /Type /XObject /Subtype /Image /Width ${this.img.pxW} /Height ${this.img.pxH} /ColorSpace /DeviceGray /BitsPerComponent 8 /Filter /DCTDecode /Length ${this.img.bin.length} >>\nstream\n${this.img.bin}\nendstream`;
   }
+  this.pages.forEach((ops, i) => {
+    const pageNo = firstPage + i * 2, contentNo = pageNo + 1;
+    const content = ops.join('\n');
+    objs[pageNo] = `<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ${this.w} ${this.h}] /Resources << /Font << /F1 3 0 R /F2 4 0 R /F3 5 0 R /F4 6 0 R >>${hasImg ? ' /XObject << /Im1 7 0 R >>' : ''} >> /Contents ${contentNo} 0 R >>`;
+    objs[contentNo] = `<< /Length ${content.length} >>\nstream\n${content}\nendstream`;
+  });
   let out = '%PDF-1.4\n%\xE2\xE3\xCF\xD3\n';
   const offs = [];
   for(let i = 1; i < objs.length; i++){
@@ -2039,7 +2120,8 @@ MiniPdf.prototype.build = function(){
 };
 async function sharePdf(filename, bytes, title){
   const file = new File([bytes], filename, {type: 'application/pdf'});
-  if(navigator.canShare && navigator.canShare({files: [file]})){
+  const preferShare = IS_IOS || /Android/i.test(navigator.userAgent);
+  if(preferShare && navigator.canShare && navigator.canShare({files: [file]})){
     try{
       await navigator.share({files: [file], title: title || filename});
       return true;
@@ -2154,26 +2236,7 @@ function buildSlFormPdf(d){
   T(' Gesetzliche Grundlagen: § 59 Absatz 2 Nummer 3 SchulG und § 22 Absatz 1 Nummer 3 ADO.', 74.4, 790.1, {size: 10.1});
   return pdf.build();
 }
-function buildStatPdf(cls, sem, cat, st){
-  const pdf = new MiniPdf(595.28, 841.89);
-  const mx = 42.52, R = 595.28 - mx;
-  const today = new Date().toLocaleDateString('de-DE');
-  const schoolYear = state.schoolYear || '–';
-  pdf.text('Statistik: ' + cat.name, mx, 60, {size: 22, font: 'B'});
-  let x = mx;
-  [['Schuljahr:', schoolYear], ['Lerngruppe:', cls.name], ['Halbjahr:', sem.name], ['Gedruckt am:', today]].forEach(pair => {
-    x += pdf.text(pair[0], x, 82, {size: 11, font: 'B', gray: 0.2}) + 3;
-    x += pdf.text(pair[1], x, 82, {size: 11, gray: 0.2}) + 16;
-  });
-  pdf.line(mx, 92, R, 92, 0.7, 0.6);
-  const rows = [['Anzahl Schüler*innen', String(st.total)], ['Anzahl vergebene Noten', String(st.n)], ['Durchschnitt', st.n ? st.meanText.replace('≈', 'ca.') : '–']];
-  let y = 92;
-  rows.forEach(r => {
-    pdf.text(r[0], mx, y + 23, {size: 14});
-    pdf.text(r[1], R, y + 23, {size: 14, font: 'B', align: 'right'});
-    y += 32;
-    pdf.line(mx, y, R, y, 0.5, 0.8);
-  });
+function pdfDrawSpiegel(pdf, st, mx, R, y){
   pdf.text('Notenspiegel', mx, y + 34, {size: 14, font: 'B'});
   const slot = (R - mx) / st.spiegel.length, bw = 22, maxH = 170;
   const yb = y + 34 + 20 + maxH + 18;
@@ -2202,6 +2265,85 @@ function buildStatPdf(cls, sem, cat, st){
   pdf.line(mx, ty, mx, ty + tRows.length * rowH, 0.6, 0.45);
   pdf.line(mx + c0, ty, mx + c0, ty + tRows.length * rowH, 0.6, 0.45);
   for(let ci = 1; ci <= st.spiegel.length; ci++) pdf.line(mx + c0 + ci * cw, ty, mx + c0 + ci * cw, ty + tRows.length * rowH, 0.6, 0.45);
+  return ty + tRows.length * rowH;
+}
+function buildStatPdf(cls, sem, cat, st){
+  const pdf = new MiniPdf(595.28, 841.89);
+  const mx = 42.52, R = 595.28 - mx;
+  const today = new Date().toLocaleDateString('de-DE');
+  const schoolYear = classYear(cls) || '–';
+  pdf.text('Statistik: ' + cat.name, mx, 60, {size: 22, font: 'B'});
+  let x = mx;
+  [['Schuljahr:', schoolYear], ['Lerngruppe:', cls.name], ['Halbjahr:', sem.name], ['Gedruckt am:', today]].forEach(pair => {
+    x += pdf.text(pair[0], x, 82, {size: 11, font: 'B', gray: 0.2}) + 3;
+    x += pdf.text(pair[1], x, 82, {size: 11, gray: 0.2}) + 16;
+  });
+  pdf.line(mx, 92, R, 92, 0.7, 0.6);
+  const rows = [['Anzahl Schüler*innen', String(st.total)], ['Anzahl vergebene Noten', String(st.n)], ['Durchschnitt', st.n ? st.meanText.replace('≈', 'ca.') : '–']];
+  let y = 92;
+  rows.forEach(r => {
+    pdf.text(r[0], mx, y + 23, {size: 14});
+    pdf.text(r[1], R, y + 23, {size: 14, font: 'B', align: 'right'});
+    y += 32;
+    pdf.line(mx, y, R, y, 0.5, 0.8);
+  });
+  pdfDrawSpiegel(pdf, st, mx, R, y);
+  return pdf.build();
+}
+function buildEndnoteStatPdf(cls, sem, st, cmp){
+  const pdf = new MiniPdf(595.28, 841.89);
+  const mx = 42.52, R = 595.28 - mx, bottom = 841.89 - 52;
+  const today = new Date().toLocaleDateString('de-DE');
+  pdf.text('Endnoten-Statistik', mx, 60, {size: 22, font: 'B'});
+  let x = mx;
+  [['Schuljahr:', classYear(cls) || '–'], ['Lerngruppe:', cls.name], ['Halbjahr:', sem.name], ['Gedruckt am:', today]].forEach(pair => {
+    x += pdf.text(pair[0], x, 82, {size: 11, font: 'B', gray: 0.2}) + 3;
+    x += pdf.text(pair[1], x, 82, {size: 11, gray: 0.2}) + 16;
+  });
+  pdf.line(mx, 92, R, 92, 0.7, 0.6);
+  const rows = [['Anzahl Schüler*innen', String(st.total)], ['Anzahl Endnoten', String(st.n)], ['Durchschnitt', st.n ? st.meanText.replace('≈', 'ca.') : '–']];
+  let y = 92;
+  rows.forEach(r => {
+    pdf.text(r[0], mx, y + 23, {size: 14});
+    pdf.text(r[1], R, y + 23, {size: 14, font: 'B', align: 'right'});
+    y += 32;
+    pdf.line(mx, y, R, y, 0.5, 0.8);
+  });
+  pdfDrawSpiegel(pdf, st, mx, R, y);
+  if(cmp){
+    pdf.addPage();
+    let yy = 60;
+    pdf.text('Vergleich ' + cls.semesters[0].name + ' - ' + cls.semesters[1].name, mx, yy, {size: 18, font: 'B'});
+    pdf.text(`${cls.name} · besser: ${cmp.up} · gleich: ${cmp.same} · schlechter: ${cmp.down}`, mx, yy + 20, {size: 10.5, gray: 0.3});
+    yy += 38;
+    const cName = mx + 6, c1 = mx + 270, c2 = mx + 340, c3 = mx + 410, rowH = 17;
+    const header = () => {
+      pdf.rect(mx, yy, R - mx, 20, {fill: 0.9});
+      pdf.text('Schüler', cName, yy + 14, {size: 10, font: 'B'});
+      pdf.text(cls.semesters[0].name, c1, yy + 14, {size: 10, font: 'B', align: 'center'});
+      pdf.text(cls.semesters[1].name, c2, yy + 14, {size: 10, font: 'B', align: 'center'});
+      pdf.text('Entwicklung', c3, yy + 14, {size: 10, font: 'B'});
+      yy += 20;
+    };
+    header();
+    cmp.rows.forEach(r => {
+      if(yy + rowH > bottom){ pdf.addPage(); yy = 60; header(); }
+      pdf.text(pdfFit(pdf, r.name, 250, 10.5, 'B'), cName, yy + 12, {size: 10.5, font: 'B'});
+      pdf.text(r.t1, c1, yy + 12, {size: 10.5, align: 'center'});
+      pdf.text(r.t2, c2, yy + 12, {size: 10.5, align: 'center'});
+      if(r.dir === 'up'){ pdf.poly([[c3, yy + 12], [c3 + 10, yy + 12], [c3 + 5, yy + 3]], 0.15); pdf.text('besser', c3 + 16, yy + 12, {size: 9, gray: 0.35}); }
+      else if(r.dir === 'down'){ pdf.poly([[c3, yy + 3], [c3 + 10, yy + 3], [c3 + 5, yy + 12]], 0.15); pdf.text('schlechter', c3 + 16, yy + 12, {size: 9, gray: 0.35}); }
+      else if(r.dir === 'same'){ pdf.line(c3, yy + 7.5, c3 + 10, yy + 7.5, 1.4); pdf.text('gleich', c3 + 16, yy + 12, {size: 9, gray: 0.35}); }
+      pdf.line(mx, yy + rowH, R, yy + rowH, 0.3, 0.85);
+      yy += rowH;
+    });
+  }
+  const total = pdf.pages.length;
+  pdf.pages.forEach((ops, i) => {
+    pdf.ops = ops;
+    pdf.text('Endnoten-Statistik · ' + cls.name, mx, 841.89 - 28, {size: 8, gray: 0.5});
+    pdf.text(`Seite ${i + 1} von ${total}`, R, 841.89 - 28, {size: 8, gray: 0.5, align: 'right'});
+  });
   return pdf.build();
 }
 function buildKonferenzPdf(cls, sem){
@@ -2234,7 +2376,7 @@ function buildKonferenzPdf(cls, sem){
   const widths = cols.map((c, i) => i === 0 ? c.w : rest * c.w / weightSum);
   // Kopf
   let x = mx;
-  [['Schuljahr:', state.schoolYear || '–'], ['Lerngruppe:', cls.name], ['Halbjahr:', sem.name], ['Gedruckt am:', today]].forEach(pair => {
+  [['Schuljahr:', classYear(cls) || '–'], ['Lerngruppe:', cls.name], ['Halbjahr:', sem.name], ['Gedruckt am:', today]].forEach(pair => {
     x += pdf.text(pair[0], x, 40, {size: 11, font: 'B', gray: 0.2}) + 3;
     x += pdf.text(pair[1], x, 40, {size: 11, gray: 0.2}) + 16;
   });
@@ -2281,6 +2423,351 @@ function buildKonferenzPdf(cls, sem){
     if(i < cols.length) gx += widths[i];
   }
   return pdf.build();
+}
+function pdfWrap(pdf, text, maxW, size, font){
+  const words = String(text).split(/\s+/).filter(Boolean);
+  const lines = [];
+  let line = '';
+  words.forEach(w => {
+    const t = line ? line + ' ' + w : w;
+    if(!line || pdf.width(t, font, size) <= maxW) line = t;
+    else { lines.push(line); line = w; }
+  });
+  if(line) lines.push(line);
+  return lines;
+}
+function pdfFit(pdf, text, maxW, size, font){
+  let t = String(text);
+  if(pdf.width(t, font, size) <= maxW) return t;
+  while(t.length > 1 && pdf.width(t + '...', font, size) > maxW) t = t.slice(0, -1);
+  return t + '...';
+}
+function buildStudentSheetPdf(cls, semesters, student, opts){
+  const pdf = new MiniPdf(595.28, 841.89);
+  const mx = 42.52, R = 595.28 - mx, bottom = 841.89 - 52;
+  const today = new Date().toLocaleDateString('de-DE');
+  const sid = student.id;
+  const symText = (sym) => sym === '○' ? 'o' : sym;
+  const fmtW = (w) => (Math.abs(w - Math.round(w)) < 0.05 ? String(Math.round(w)) : w.toFixed(1).replace('.', ',')) + ' %';
+  const fmtAvg = (v) => (v === null || v === undefined || isNaN(v)) ? '' : (cls.gradingSystem === 'punkte' ? v.toFixed(1) : v.toFixed(2)).replace('.', ',');
+  let y = 0;
+  let curSem = null;
+  const ensure = (h) => { if(y + h > bottom){ pdf.addPage(); y = 50; } };
+  // Kopf
+  pdf.text('Beratungsblatt', mx, 58, {size: 20, font: 'B'});
+  pdf.text(student.name, mx, 82, {size: 15, font: 'B'});
+  const kuerzel = cls.slForm && cls.slForm.kuerzel ? ' · Lehrkraft: ' + cls.slForm.kuerzel : '';
+  pdf.text(`Lerngruppe: ${cls.name} · Schuljahr: ${classYear(cls) || '–'} · Stand: ${today}${kuerzel}`, mx, 99, {size: 9.5, gray: 0.3});
+  pdf.line(mx, 107, R, 107, 0.7, 0.6);
+  y = 124;
+  const notes = [];
+  const catText = (cat, g) => {
+    const mk = studentMark(cat, sid) || totalNbMark(cat, sid);
+    if(mk) return mk;
+    if(!isContainerCat(cat) && cat.mode === 'observation'){
+      const e = cat.entries && cat.entries[sid];
+      return e && e.observation ? symText(e.observation) : '–';
+    }
+    const v = categoryAvgForStudent(cls, cat, sid);
+    let t = gradeTextForPdf(cls, v, cat.displayScale);
+    if(t === '–' && isContainerCat(cat)){
+      const maj = majoritySymbolForCategory(cat, sid);
+      if(maj) t = symText(maj);
+    }
+    if(!isContainerCat(cat) && cat.mode === 'points'){
+      const e = cat.entries && cat.entries[sid];
+      if(e && e.points !== undefined && e.points !== '' && t !== '–') t += `  (${e.points}/${e.maxPoints ?? cat.maxPoints ?? '?'} P.)`;
+    }
+    return fpText(t, cat, sid);
+  };
+  const drawCat = (cat, g, depth) => {
+    ensure(17);
+    const container = isContainerCat(cat);
+    const x0 = mx + 6 + depth * 12;
+    const dateTxt = cat.date ? '  ' + (cat.mode === 'observation' ? formatDateShort(cat.date) : formatDate(cat.date)) : '';
+    const noteTxt = catText(cat, g);
+    const noteW = pdf.width(noteTxt, container ? 'B' : 'R', 10.5);
+    const nameMax = R - 150 - x0;
+    const nm = pdfFit(pdf, cat.name, nameMax - 70, 10, container ? 'B' : 'R');
+    const w1 = pdf.text(nm, x0, y + 11, {size: 10, font: container ? 'B' : 'R'});
+    if(dateTxt) pdf.text(dateTxt, x0 + w1, y + 11, {size: 8.5, gray: 0.5});
+    if(opts.weights){
+      const wt = (cat.ungraded || cat.mode === 'observation' && cat.ungraded) ? '–' : (cat.weight ? fmtW(cat.weight) : '–');
+      pdf.text(wt, R - 92, y + 11, {size: 9, gray: 0.45, align: 'right'});
+    }
+    pdf.text(noteTxt, R - 4, y + 11, {size: 10.5, font: container ? 'B' : 'R', align: 'right'});
+    pdf.line(mx, y + 15, R, y + 15, 0.3, 0.85);
+    const e = !container && cat.entries && cat.entries[sid];
+    if(opts.notes && e && e.note) notes.push({name: cat.name, date: cat.date, text: e.note, sem: curSem ? curSem.name : ''});
+    y += 17;
+    if(container) (cat.children || []).forEach(ch => drawCat(ch, g, depth + 1));
+  };
+  semesters.forEach(sem => {
+    curSem = sem;
+    ensure(70);
+    const end = semesterEndnoteForStudent(cls, sem, sid);
+    const endTxt = endnoteNbMark(sem, sid) || gradeTextForPdf(cls, end);
+    pdf.rect(mx, y, R - mx, 22, {fill: 0.9});
+    pdf.text(sem.name, mx + 8, y + 15, {size: 12, font: 'B'});
+    const avgEnd = endnoteNbMark(sem, sid) ? '' : fmtAvg(end);
+    let ex = R - 8;
+    pdf.text('Endnote: ' + endTxt, ex, y + 15, {size: 12, font: 'B', align: 'right'});
+    if(avgEnd) pdf.text('(Ø ' + avgEnd + ')', ex - pdf.width('Endnote: ' + endTxt, 'B', 12) - 6, y + 15, {size: 9, gray: 0.4, align: 'right'});
+    y += 32;
+    (sem.groups || []).forEach(g => {
+      ensure(40);
+      const gv = groupGesamtForStudent(cls, g, sid);
+      let gTxt = totalNbMark(g, sid) || fpText(gradeTextForPdf(cls, gv), g, sid);
+      const gnW = pdf.text(g.name, mx + 2, y + 11, {size: 11.5, font: 'B'});
+      if(opts.weights && g.weight) pdf.text('(' + fmtW(g.weight) + ')', mx + 2 + gnW + 6, y + 11, {size: 9, gray: 0.45});
+      pdf.text('Gesamt: ' + gTxt, R - 4, y + 11, {size: 11, font: 'B', align: 'right'});
+      if(!totalNbMark(g, sid) && fmtAvg(gv)) pdf.text('Ø ' + fmtAvg(gv), R - 4 - pdf.width('Gesamt: ' + gTxt, 'B', 11) - 6, y + 11, {size: 8.5, gray: 0.4, align: 'right'});
+      pdf.line(mx, y + 16, R, y + 16, 0.8, 0.5);
+      y += 20;
+      (g.children || []).forEach(ch => drawCat(ch, g, 0));
+      y += 8;
+    });
+    y += 6;
+  });
+  if(opts.notes && notes.length){
+    ensure(90);
+    pdf.text('Notizen', mx, y + 12, {size: 12, font: 'B'});
+    pdf.line(mx, y + 17, R, y + 17, 0.8, 0.5);
+    y += 26;
+    notes.forEach(n => {
+      const head = (semesters.length > 1 ? n.sem + ' · ' : '') + n.name + (n.date ? ' (' + formatDate(n.date) + ')' : '') + ': ';
+      const lines = pdfWrap(pdf, head + n.text, R - mx - 8, 9.5, 'R');
+      ensure(lines.length * 12 + 6);
+      lines.forEach((ln, i) => { pdf.text(ln, mx + 4, y + 9, {size: 9.5}); y += 12; });
+      y += 4;
+    });
+  }
+  // Fußzeile mit Seitenzahl
+  const total = pdf.pages.length;
+  pdf.pages.forEach((ops, i) => {
+    pdf.ops = ops;
+    pdf.text(`Beratungsblatt · ${student.name}`, mx, 841.89 - 28, {size: 8, gray: 0.5});
+    pdf.text(`Seite ${i + 1} von ${total}`, R, 841.89 - 28, {size: 8, gray: 0.5, align: 'right'});
+  });
+  return pdf.build();
+}
+function openStudentSheetDialog(cls, sem, studentId){
+  const student = cls.students.find(s => s.id === studentId);
+  if(!student) return;
+  const root = document.getElementById('modalRoot');
+  const inSems = cls.semesters.filter(s => !s.studentIds || s.studentIds.includes(studentId));
+  const chk = (id, label, checked) => `<label style="display:flex;align-items:center;gap:10px;font-size:0.92rem;"><input type="checkbox" id="${id}" ${checked ? 'checked' : ''}> ${label}</label>`;
+  root.innerHTML = `
+    <div class="overlay" id="overlay">
+      <div class="modal">
+        <div class="modal-close"><button class="ghost small" id="sheetCancel">Abbrechen</button></div>
+        <h3>Beratungsblatt</h3>
+        <div class="sub">${escapeHtml(student.name)}</div>
+        <div style="margin-top:14px;display:flex;flex-direction:column;gap:12px;">
+          ${inSems.length > 1 ? chk('sheetBoth', 'Beide Halbjahre', false) : ''}
+          ${chk('sheetWeights', 'Gewichtung anzeigen', true)}
+          ${chk('sheetNotes', 'Notizen einschließen (nur für dich gedacht)', false)}
+        </div>
+        <div class="row" style="margin-top:16px;justify-content:flex-end;"><button id="sheetCreate">PDF erstellen</button></div>
+      </div>
+    </div>`;
+  const close = () => { root.innerHTML = ''; };
+  document.getElementById('sheetCancel').onclick = close;
+  document.getElementById('overlay').addEventListener('click', (ev) => { if(ev.target.id === 'overlay') close(); });
+  document.getElementById('sheetCreate').onclick = () => {
+    const both = !!(document.getElementById('sheetBoth') && document.getElementById('sheetBoth').checked);
+    const opts = {weights: document.getElementById('sheetWeights').checked, notes: document.getElementById('sheetNotes').checked};
+    close();
+    const sems = both ? inSems : [sem];
+    try{
+      const bytes = buildStudentSheetPdf(cls, sems, student, opts);
+      setStatus('Beratungsblatt erstellt');
+      sharePdf('Beratungsblatt-' + sanitizeForFilename(student.name.replace(',', '')) + '.pdf', bytes, 'Beratungsblatt');
+    }catch(err){
+      console.error(err);
+      showAlert('Fehler', 'Das Beratungsblatt konnte nicht erstellt werden: ' + err.message);
+    }
+  };
+}
+// ---------- Hinweis-Einblendung ----------
+let toastTimer = null;
+function showToast(msg){
+  let el = document.getElementById('toast');
+  if(!el){ el = document.createElement('div'); el.id = 'toast'; document.body.appendChild(el); }
+  el.textContent = msg;
+  el.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => el.classList.remove('show'), 3200);
+}
+// ---------- Schreibschutz (Halbjahr abschließen) ----------
+const LOCK_BLOCK_SELECTOR = '[data-open-entries],[data-open-group],[data-open-endnote],[data-reset-cat],[data-reset-group],[data-reset-endnote],[data-borderline-resolve],[data-endnote-borderline-resolve],[data-add-cat],[data-add-first-cat],[data-add-near-cat],[data-del-group],[data-del-student],[data-edit-cat],[data-edit-endnote-color],[data-move-cat],[data-move-group],[data-rename-group],[data-select-cat],[data-select-group],[data-select-student-col],[data-name-resize],[data-name-step],.obs-cell,#addStudentBtn,#newStudentName';
+const LOCK_ALLOW_SELECTOR = '[data-toggle-cat-collapse],[data-toggle-group-collapse],[data-toggle-incognito],[data-show-ub-notes],[data-student-sheet],#searchStudent';
+function lockedNotice(sem){
+  showToast(`🔒 ${sem.name} ist abgeschlossen (Schreibschutz). Zum Bearbeiten: Verwaltung → Halbjahr wieder öffnen.`);
+}
+function lockedSemesterInView(cls){
+  if(!cls) return null;
+  if(state.compareView && cls.semesters.length >= 2) return cls.semesters.find(s => s.locked) || null;
+  const s = getActiveSemester(cls);
+  return s && s.locked ? s : null;
+}
+function installLockGuard(main, sem){
+  main.__lockSem = sem;
+  if(main.__lockGuard) return;
+  main.__lockGuard = (e) => {
+    const lsem = main.__lockSem;
+    if(!lsem || !lsem.locked || !e.target.closest) return;
+    if(e.target.closest(LOCK_ALLOW_SELECTOR)) return;
+    if(!e.target.closest(LOCK_BLOCK_SELECTOR)) return;
+    e.stopImmediatePropagation();
+    e.preventDefault();
+    if(e.type === 'click') lockedNotice(lsem);
+  };
+  ['click', 'pointerdown'].forEach(t => main.addEventListener(t, main.__lockGuard, true));
+}
+async function toggleSemesterLock(cls, sem){
+  if(sem.locked){
+    const ok = await showConfirm('Halbjahr wieder öffnen', `${sem.name} wieder zum Bearbeiten freigeben?`, {confirmLabel: 'Öffnen'});
+    if(!ok) return;
+    delete sem.locked;
+    delete sem.lockedAt;
+    saveState(); render();
+    showToast(`🔓 ${sem.name} ist wieder bearbeitbar.`);
+  } else {
+    const ok = await showConfirm('Halbjahr abschließen', `${sem.name} abschließen? Der Schreibschutz verhindert versehentliche Änderungen an Noten, Spalten und Schülerlisten. Ansehen, Drucken, Statistik und Beratungsblatt bleiben möglich. Du kannst das Halbjahr jederzeit wieder öffnen.`, {confirmLabel: 'Abschließen'});
+    if(!ok) return;
+    sem.locked = true;
+    sem.lockedAt = new Date().toISOString();
+    saveState(); render();
+    showToast(`🔒 ${sem.name} ist abgeschlossen.`);
+  }
+}
+// ---------- Schuljahr je Lerngruppe, Archiv, neues Schuljahr ----------
+function classYear(cls){ return (cls && cls.schoolYear) || state.schoolYear || ''; }
+function visibleClasses(){ return state.classes.filter(c => !c.archived); }
+function ensureActiveClassVisible(){
+  const cur = state.classes.find(c => c.id === state.activeClassId);
+  if(cur && !cur.archived) return;
+  const first = visibleClasses()[0];
+  state.activeClassId = first ? first.id : null;
+}
+function incrementSchoolYear(label){
+  const s = String(label || '').trim();
+  let m = s.match(/^(\d{4})\s*\/\s*(\d{2})$/);
+  if(m){ const a = parseInt(m[1], 10) + 1; return `${a}/${String((parseInt(m[2], 10) + 1) % 100).padStart(2, '0')}`; }
+  m = s.match(/^(\d{4})\s*\/\s*(\d{4})$/);
+  if(m) return `${parseInt(m[1], 10) + 1}/${parseInt(m[2], 10) + 1}`;
+  m = s.match(/^(\d{4})$/);
+  if(m) return String(parseInt(m[1], 10) + 1);
+  return s;
+}
+function clearCategoryDates(x){ x.date = ''; (x.children || []).forEach(clearCategoryDates); }
+function cloneClassForNewYear(cls, withStudents){
+  const semesters = (cls.semesters || []).map(sem => {
+    const o = {id: uid(), name: sem.name, studentIds: [], endnoteOverrides: {}, groups: cloneGroupsStructure(sem.groups || [])};
+    if(sem.endnoteColor) o.endnoteColor = sem.endnoteColor;
+    if(sem.studentColColor) o.studentColColor = sem.studentColColor;
+    o.groups.forEach(g => { g.overrides = {}; g.children.forEach(clearCategoryDates); });
+    return o;
+  });
+  const students = withStudents
+    ? cls.students.filter(st => (cls.semesters || []).some(sm => !sm.studentIds || sm.studentIds.includes(st.id))).map(st => ({id: uid(), name: st.name}))
+    : [];
+  if(withStudents) semesters.forEach(sm => { sm.studentIds = students.map(st => st.id); });
+  return {
+    id: uid(), name: cls.name, students,
+    gradingSystem: cls.gradingSystem, gradeTableNoten: cls.gradeTableNoten, gradeTablePunkte: cls.gradeTablePunkte,
+    stufe: cls.stufe, slForm: cls.slForm ? {...cls.slForm} : undefined, nameColWidth: cls.nameColWidth,
+    semesters, activeSemesterId: semesters.length ? semesters[0].id : null
+  };
+}
+function newSchoolYearDialog(){
+  const classes = visibleClasses();
+  if(!classes.length){ showAlert('Keine Lerngruppe', 'Es gibt keine Lerngruppe, die übernommen werden könnte.'); return; }
+  const root = document.getElementById('modalRoot');
+  const newYear = incrementSchoolYear(state.schoolYear);
+  const chk = (id, label, checked) => `<label style="display:flex;align-items:center;gap:10px;font-size:0.92rem;"><input type="checkbox" id="${id}" ${checked ? 'checked' : ''}> ${label}</label>`;
+  root.innerHTML = `
+    <div class="overlay" id="overlay">
+      <div class="modal" style="max-height:92vh;overflow:auto;">
+        <div class="modal-close"><button class="ghost small" id="nsyCancel">Abbrechen</button></div>
+        <h3>Neues Schuljahr</h3>
+        <div class="sub">Legt die gewählten Lerngruppen mit leerer Struktur neu an (Gruppen, Spalten, Gewichtungen, Farben, Notenschema, Kürzel; ohne Noten und Daten).</div>
+        <label style="display:flex;flex-direction:column;gap:3px;font-size:0.78rem;color:var(--ink-soft);margin-top:12px;"><span>Neues Schuljahr</span><input type="text" id="nsyYear" value="${escapeHtml(newYear)}" style="width:100%;"></label>
+        <div style="margin-top:12px;font-size:0.82rem;color:var(--ink-soft);">Lerngruppen übernehmen:</div>
+        <div style="display:flex;flex-direction:column;gap:8px;margin-top:6px;">
+          ${classes.map(cl => chk('nsy_' + cl.id, escapeHtml(cl.name), true)).join('')}
+        </div>
+        <div style="display:flex;flex-direction:column;gap:10px;margin-top:14px;padding-top:12px;border-top:1px solid var(--line);">
+          ${chk('nsyStudents', 'Schüler übernehmen (nur die Namen)', false)}
+          ${chk('nsyArchive', 'Alte Lerngruppen archivieren (aus der Liste ausblenden)', true)}
+        </div>
+        <div class="row" style="margin-top:16px;justify-content:flex-end;"><button id="nsyCreate">Neues Schuljahr anlegen</button></div>
+      </div>
+    </div>`;
+  const close = () => { root.innerHTML = ''; };
+  document.getElementById('nsyCancel').onclick = close;
+  document.getElementById('overlay').addEventListener('click', (ev) => { if(ev.target.id === 'overlay') close(); });
+  document.getElementById('nsyCreate').onclick = async () => {
+    const year = document.getElementById('nsyYear').value.trim();
+    const picked = classes.filter(cl => document.getElementById('nsy_' + cl.id).checked);
+    const withStudents = document.getElementById('nsyStudents').checked;
+    const archive = document.getElementById('nsyArchive').checked;
+    if(!picked.length){ showToast('Bitte mindestens eine Lerngruppe wählen.'); return; }
+    close();
+    const oldYear = state.schoolYear;
+    // Bestehende Lerngruppen behalten ihr bisheriges Schuljahr, damit Ausdrucke nicht das neue Jahr tragen
+    state.classes.forEach(cl => { if(!cl.schoolYear) cl.schoolYear = oldYear; });
+    const created = picked.map(cl => cloneClassForNewYear(cl, withStudents));
+    if(archive) picked.forEach(cl => { cl.archived = true; cl.archivedAt = new Date().toISOString(); });
+    state.classes.push(...created);
+    state.schoolYear = year;
+    const yi = document.getElementById('schoolYearInput');
+    if(yi) yi.value = year;
+    state.activeClassId = created[0].id;
+    state.compareView = false;
+    saveState(); render();
+    await showAlert('Neues Schuljahr angelegt', `${created.length} Lerngruppe${created.length > 1 ? 'n' : ''} für ${year || 'das neue Schuljahr'} angelegt` + (archive ? `, ${picked.length} alte Lerngruppe${picked.length > 1 ? 'n' : ''} archiviert (Verwaltung → Archiv).` : '.'));
+  };
+}
+async function openArchiveMenu(){
+  const active = getActiveClass();
+  const archived = state.classes.filter(c => c.archived);
+  const options = [];
+  if(active) options.push({label: `🗄 „${active.name}“ archivieren`, value: 'archive-active'});
+  archived.forEach(c => options.push({label: `📂 ${c.name} (${c.schoolYear || 'ohne Schuljahr'})`, value: 'a:' + c.id}));
+  if(!options.length){ await showAlert('Archiv', 'Es gibt noch keine Lerngruppe und kein archiviertes Schuljahr.'); return; }
+  const choice = await showChoice('Archiv', archived.length ? 'Archivierte Lerngruppen antippen, um sie wieder einzublenden oder zu löschen.' : 'Noch keine archivierten Lerngruppen.', options);
+  if(choice === null) return;
+  if(choice === 'archive-active'){
+    const ok = await showConfirm('Lerngruppe archivieren', `„${active.name}“ in das Archiv verschieben? Die Daten bleiben erhalten und lassen sich jederzeit wieder einblenden.`, {confirmLabel: 'Archivieren'});
+    if(!ok) return;
+    if(!active.schoolYear) active.schoolYear = state.schoolYear;
+    active.archived = true;
+    active.archivedAt = new Date().toISOString();
+    ensureActiveClassVisible();
+    saveState(); render();
+    showToast(`🗄 „${active.name}“ archiviert.`);
+    return;
+  }
+  const cl = state.classes.find(c => 'a:' + c.id === choice);
+  if(!cl) return;
+  const act = await showChoice(cl.name, `${cl.schoolYear || 'ohne Schuljahr'} · archiviert`, [
+    {label: 'Wieder einblenden', value: 'show'},
+    {label: 'Endgültig löschen', value: 'del'},
+  ]);
+  if(act === 'show'){
+    delete cl.archived; delete cl.archivedAt;
+    state.activeClassId = cl.id;
+    saveState(); render();
+    showToast(`📂 „${cl.name}“ ist wieder eingeblendet.`);
+  } else if(act === 'del'){
+    const ok = await showConfirm('Endgültig löschen', `„${cl.name}“ (${cl.schoolYear || 'ohne Schuljahr'}) wirklich löschen? Alle Daten dieser Lerngruppe gehen verloren.`, {confirmLabel: 'Löschen', danger: true});
+    if(!ok) return;
+    state.classes = state.classes.filter(c => c.id !== cl.id);
+    ensureActiveClassVisible();
+    saveState(); render();
+  }
 }
 function printViaOverlay(bodyHtml, css, pageCss){
   const body = document.body;
@@ -2596,7 +3083,7 @@ function renderGrid(main, cls, sem){
       const overridden = !endNb && sem.endnoteOverrides && sem.endnoteOverrides[s.id] !== undefined && sem.endnoteOverrides[s.id] !== '';
       const isSelected = state.selectedStudentId === s.id;
       const hasNotes = studentHasObservationNotes(sem, s.id);
-      let row = `<tr class="${isSelected?'student-selected':''}"><td class="name-col${sem.studentColColor?' has-custom-color':''}" data-select-student="${s.id}" style="cursor:pointer;text-align:left;${sem.studentColColor?`background:${sem.studentColColor};`:''}"><div class="name-cell-row" style="justify-content:flex-start;"><span style="display:flex;align-items:center;gap:4px;text-align:left;flex:1;">${escapeHtml(s.name)}${hasNotes ? `<button class="colx dark" data-show-ub-notes="${s.id}" title="Unterrichtsbeobachtungen mit Notizen ansehen" style="flex-shrink:0;">📝</button>` : ''}</span><button class="colx dark" data-del-student="${s.id}" title="Aus ${escapeHtml(sem.name)} entfernen" style="flex-shrink:0;margin-left:6px;">✕</button></div></td>`;
+      let row = `<tr class="${isSelected?'student-selected':''}"><td class="name-col${sem.studentColColor?' has-custom-color':''}" data-select-student="${s.id}" style="cursor:pointer;text-align:left;${sem.studentColColor?`background:${sem.studentColColor};`:''}"><div class="name-cell-row" style="justify-content:flex-start;"><span style="display:flex;align-items:center;gap:4px;text-align:left;flex:1;">${escapeHtml(s.name)}${hasNotes ? `<button class="colx dark" data-show-ub-notes="${s.id}" title="Unterrichtsbeobachtungen mit Notizen ansehen" style="flex-shrink:0;">📝</button>` : ''}${isSelected ? `<button class="colx dark" data-student-sheet="${s.id}" title="Beratungsblatt (PDF)" style="flex-shrink:0;">📄</button>` : ''}</span><button class="colx dark" data-del-student="${s.id}" title="Aus ${escapeHtml(sem.name)} entfernen" style="flex-shrink:0;margin-left:6px;">✕</button></div></td>`;
       let endPillHtml = endNb ? markPillHtml('NB') : notePill(cls, end);
       let endBadge = '';
       if(borderlineEnabled && !endNb){
@@ -2661,7 +3148,7 @@ function renderGrid(main, cls, sem){
     let pressTimer = null, longPressed = false, startX = 0, startY = 0;
     const clear = () => { clearTimeout(pressTimer); };
     el.addEventListener('pointerdown', (e) => {
-      if(e.target.closest('[data-del-student], [data-show-ub-notes]')) return;
+      if(e.target.closest('[data-del-student], [data-show-ub-notes], [data-student-sheet]')) return;
       longPressed = false;
       startX = e.clientX; startY = e.clientY;
       pressTimer = setTimeout(() => {
@@ -2675,7 +3162,7 @@ function renderGrid(main, cls, sem){
     el.addEventListener('pointerup', clear);
     el.addEventListener('pointercancel', clear);
     el.onclick = (e) => {
-      if(e.target.closest('[data-del-student], [data-show-ub-notes]')) return;
+      if(e.target.closest('[data-del-student], [data-show-ub-notes], [data-student-sheet]')) return;
       if(longPressed){ longPressed = false; return; }
       const id = el.dataset.selectStudent;
       const wasSelected = state.selectedStudentId === id;
@@ -2683,6 +3170,10 @@ function renderGrid(main, cls, sem){
       if(wasSelected && state.incognito) state.incognito = false;
       render();
     };
+  });
+  installLockGuard(main, sem);
+  main.querySelectorAll('[data-student-sheet]').forEach(btn => {
+    btn.onclick = (e) => { e.stopPropagation(); openStudentSheetDialog(cls, sem, btn.dataset.studentSheet); };
   });
   main.querySelectorAll('[data-toggle-incognito]').forEach(btn=>{
     btn.onclick = (e) => {
@@ -3139,6 +3630,7 @@ async function swapSemestersDialog(){
   const cls = getActiveClass();
   if(!cls || cls.semesters.length < 2) return;
   const a = cls.semesters[0], b = cls.semesters[1];
+  if(a.locked || b.locked){ await showAlert('Nicht möglich', 'Ein Halbjahr ist abgeschlossen. Bitte zuerst über Verwaltung → Halbjahr wieder öffnen.'); return; }
   const ok = await showConfirm('Halbjahre tauschen',
     `Der komplette Inhalt von ${a.name} und ${b.name} wird vertauscht (Noten, Spalten, Gewichtungen, Farben, Zeiträume, Schülerlisten). Tipp: vorher ein Backup erstellen. Über „Rückgängig“ lässt sich der Tausch zurücknehmen.`,
     {confirmLabel: 'Tauschen'});
@@ -3165,6 +3657,7 @@ function cloneCategoryWithData(cat){
 async function moveOrCopyCategoryToOtherSemester(cls, sem, ctx){
   const target = cls.semesters.find(s => s.id !== sem.id);
   if(!target) return;
+  if(target.locked){ await showAlert('Nicht möglich', `${target.name} ist abgeschlossen. Bitte zuerst über Verwaltung → Halbjahr wieder öffnen.`); return; }
   if(!target.groups.length){
     await showAlert('Nicht möglich', `${target.name} hat noch keine Notengruppe.`);
     return;
@@ -3751,7 +4244,7 @@ async function exportNotennachweisJson(cls, sem, cfg){
   }));
   const data = {
     meta: {
-      stufe: '', kurs: cls.name, schuljahr: state.schoolYear || '', mode: cfg.mode,
+      stufe: '', kurs: cls.name, schuljahr: classYear(cls) || '', mode: cfg.mode,
       siK1Enabled: !!cfg.siK1, siK2Enabled: !!cfg.siK2, siK3Enabled: !!cfg.siK3,
     },
     rows
@@ -3770,15 +4263,7 @@ function sanitizeForFilename(s){
 function fmtStatNum(x, d){
   return (Math.round(x * Math.pow(10, d)) / Math.pow(10, d)).toFixed(d).replace('.', ',');
 }
-function computeKlausurStats(cls, sem, cat){
-  const students = getSemesterStudents(cls, sem);
-  const scale = cat.displayScale || cls.gradingSystem;
-  const vals = [];
-  students.forEach(s => {
-    const v = categoryAvgForStudent(cls, cat, s.id);
-    if(v === null || v === undefined || isNaN(v)) return;
-    vals.push(convertValueScale(v, cls.gradingSystem, scale));
-  });
+function buildSpiegelStats(vals, scale, total){
   // Notenspiegel: immer alle 16 Stufen von 1+ bis 6 (Notenpunkte 15 bis 0 entsprechen ihnen 1:1)
   const spiegel = NOTEN_TABLE.map((row, i) => ({label: row.note, points: PUNKTE_TABLE[i].note, count: 0}));
   vals.forEach(v => {
@@ -3792,13 +4277,7 @@ function computeKlausurStats(cls, sem, cat){
     }
     if(idx > -1) spiegel[idx].count++;
   });
-  const stats = {scale, total: students.length, n: vals.length, ntAuto: students.filter(s => {
-      const mk = studentMark(cat, s.id);
-      if(mk === 'NT') return true;
-      if(mk === 'NB') return false;
-      const v = categoryAvgForStudent(cls, cat, s.id);
-      return v === null || v === undefined || isNaN(v);
-    }).length, spiegel, mean: null, meanText: ''};
+  const stats = {scale, total, n: vals.length, spiegel, mean: null, meanText: ''};
   if(vals.length){
     const mean = vals.reduce((s, v) => s + v, 0) / vals.length;
     stats.mean = mean;
@@ -3809,6 +4288,60 @@ function computeKlausurStats(cls, sem, cat){
       : `${fmtStatNum(mean, 2)} (≈ ${valueToGradeStr(mean)})`;
   }
   return stats;
+}
+function computeKlausurStats(cls, sem, cat){
+  const students = getSemesterStudents(cls, sem);
+  const scale = cat.displayScale || cls.gradingSystem;
+  const vals = [];
+  students.forEach(s => {
+    const v = categoryAvgForStudent(cls, cat, s.id);
+    if(v === null || v === undefined || isNaN(v)) return;
+    vals.push(convertValueScale(v, cls.gradingSystem, scale));
+  });
+  const stats = buildSpiegelStats(vals, scale, students.length);
+  stats.ntAuto = students.filter(s => {
+    const mk = studentMark(cat, s.id);
+    if(mk === 'NT') return true;
+    if(mk === 'NB') return false;
+    const v = categoryAvgForStudent(cls, cat, s.id);
+    return v === null || v === undefined || isNaN(v);
+  }).length;
+  return stats;
+}
+// Endnoten-Statistik eines Halbjahres (NB und fehlende Endnoten zählen nicht mit)
+function computeEndnoteStats(cls, sem){
+  const students = getSemesterStudents(cls, sem);
+  const vals = [];
+  students.forEach(s => {
+    const v = semesterEndnoteForStudent(cls, sem, s.id);
+    if(v === null || v === undefined || isNaN(v)) return;
+    vals.push(v);
+  });
+  return buildSpiegelStats(vals, cls.gradingSystem, students.length);
+}
+// Vergleich der Endnoten 1. HJ / 2. HJ je Schüler (Richtung: up = besser, down = schlechter, same = gleich)
+function computeHjComparison(cls){
+  if(!cls.semesters || cls.semesters.length < 2) return null;
+  const s1 = cls.semesters[0], s2 = cls.semesters[1];
+  const inSem = (sem, id) => !sem.studentIds || sem.studentIds.includes(id);
+  const valid = (v) => v !== null && v !== undefined && !isNaN(v);
+  const rows = [];
+  [...cls.students].sort(compareStudents).forEach(st => {
+    if(!inSem(s1, st.id) && !inSem(s2, st.id)) return;
+    const v1 = inSem(s1, st.id) ? semesterEndnoteForStudent(cls, s1, st.id) : null;
+    const v2 = inSem(s2, st.id) ? semesterEndnoteForStudent(cls, s2, st.id) : null;
+    const t1 = endnoteNbMark(s1, st.id) || (valid(v1) ? displayValue(cls, v1) : '–');
+    const t2 = endnoteNbMark(s2, st.id) || (valid(v2) ? displayValue(cls, v2) : '–');
+    let dir = null;
+    if(valid(v1) && valid(v2)){
+      const diff = convertValueScale(v2, cls.gradingSystem, 'noten') - convertValueScale(v1, cls.gradingSystem, 'noten');
+      dir = diff <= -0.15 ? 'up' : (diff >= 0.15 ? 'down' : 'same');
+    }
+    rows.push({name: st.name, t1, t2, dir});
+  });
+  const anyS2 = rows.some(r => r.t2 !== '–');
+  if(!anyS2) return null;
+  return {rows, up: rows.filter(r => r.dir === 'up').length, same: rows.filter(r => r.dir === 'same').length, down: rows.filter(r => r.dir === 'down').length};
 }
 function statSpiegelChartHtml(st, forPrint){
   const maxCount = Math.max(...st.spiegel.map(b => b.count), 1);
@@ -3845,7 +4378,7 @@ function printKlausurStatistik(cls, sem, cat, st){
 }
 function printKlausurStatistikOverlay(cls, sem, cat, st){
   const today = new Date().toLocaleDateString('de-DE');
-  const schoolYear = state.schoolYear ? escapeHtml(state.schoolYear) : '–';
+  const schoolYear = classYear(cls) ? escapeHtml(classYear(cls)) : '–';
   const spiegelRows = `
     <tr><th style="text-align:left;">Note</th>${st.spiegel.map(b => `<th>${b.label}</th>`).join('')}</tr>
     ${st.scale === 'punkte' ? `<tr><td style="text-align:left;">Punkte</td>${st.spiegel.map(b => `<td>${b.points}</td>`).join('')}</tr>` : ''}
@@ -4049,6 +4582,64 @@ function openKlausurStatistik(cls, sem, groupId, catId){
   document.getElementById('closeModal').onclick = () => { root.innerHTML = ''; };
   document.getElementById('printStatBtn').onclick = () => { printKlausurStatistik(cls, sem, cat, st); };
   document.getElementById('slFormBtn').onclick = () => { openSlFormDialog(cls, sem, cat, st); };
+}
+function openEndnoteStatistik(cls, startSem){
+  let curSem = startSem;
+  const root = document.getElementById('modalRoot');
+  const render_ = () => {
+    const st = computeEndnoteStats(cls, curSem);
+    const cmp = computeHjComparison(cls);
+    const rows = [
+      ['Anzahl Schüler*innen', String(st.total)],
+      ['Anzahl Endnoten', String(st.n)],
+      ['Durchschnitt', st.n ? st.meanText : '–'],
+    ];
+    const arrow = {up: ['↑', 'pass', 'besser'], same: ['=', 'ink-soft', 'gleich'], down: ['↓', 'danger', 'schlechter']};
+    root.innerHTML = `
+      <div class="overlay" id="overlay">
+        <div class="modal" style="max-height:92vh;overflow:auto;">
+          <div class="modal-close" style="display:flex;gap:8px;justify-content:flex-end;">
+            <button class="ghost small" id="printEndStatBtn">🖨 PDF</button>
+            <button class="ghost small" id="closeModal">Fertig</button>
+          </div>
+          <h3>Endnoten-Statistik</h3>
+          <div class="sub">${escapeHtml(cls.name)}</div>
+          <div class="row" style="margin-top:10px;gap:8px;">
+            ${cls.semesters.map(s => `<button class="${s.id === curSem.id ? '' : 'ghost'} small" data-end-sem="${s.id}">${escapeHtml(s.name)}</button>`).join('')}
+          </div>
+          <table style="width:100%;border-collapse:collapse;margin-top:10px;font-size:0.9rem;">
+            ${rows.map(r => `<tr><td style="padding:7px 0;border-bottom:1px solid var(--line);color:var(--ink-soft);">${r[0]}</td><td style="padding:7px 0;border-bottom:1px solid var(--line);text-align:right;font-weight:600;">${r[1]}</td></tr>`).join('')}
+          </table>
+          <div style="margin-top:16px;font-weight:600;font-size:0.85rem;">Notenspiegel der Endnoten (${escapeHtml(curSem.name)})</div>
+          <div style="display:flex;align-items:flex-end;gap:1px;height:${st.scale === 'punkte' ? 150 : 140}px;margin-top:6px;">${statSpiegelChartHtml(st, false)}</div>
+          ${cmp ? `
+            <div style="margin-top:20px;font-weight:600;font-size:0.85rem;">Vergleich ${escapeHtml(cls.semesters[0].name)} → ${escapeHtml(cls.semesters[1].name)}</div>
+            <div class="hint" style="margin:4px 0 6px;">besser: ${cmp.up} · gleich: ${cmp.same} · schlechter: ${cmp.down}</div>
+            <div style="max-height:42vh;overflow:auto;border:1px solid var(--line);border-radius:10px;">
+              <table style="width:100%;border-collapse:collapse;font-size:0.88rem;">
+                <tr style="background:var(--surface-soft);position:sticky;top:0;"><th style="text-align:left;padding:6px 8px;">Schüler</th><th style="padding:6px 4px;">${escapeHtml(cls.semesters[0].name)}</th><th style="padding:6px 4px;">${escapeHtml(cls.semesters[1].name)}</th><th style="padding:6px 8px;"></th></tr>
+                ${cmp.rows.map(r => { const a = r.dir ? arrow[r.dir] : null; return `<tr><td style="padding:6px 8px;border-top:1px solid var(--line);font-weight:600;">${escapeHtml(r.name)}</td><td style="padding:6px 4px;border-top:1px solid var(--line);text-align:center;">${r.t1}</td><td style="padding:6px 4px;border-top:1px solid var(--line);text-align:center;">${r.t2}</td><td style="padding:6px 8px;border-top:1px solid var(--line);text-align:center;font-weight:800;color:var(--${a ? a[1] : 'ink-soft'});" title="${a ? a[2] : ''}">${a ? a[0] : ''}</td></tr>`; }).join('')}
+              </table>
+            </div>` : `<div class="hint" style="margin-top:16px;">Für den Halbjahresvergleich werden Endnoten in beiden Halbjahren benötigt.</div>`}
+        </div>
+      </div>`;
+    document.getElementById('overlay').addEventListener('click', (e) => { if(e.target.id === 'overlay') root.innerHTML = ''; });
+    document.getElementById('closeModal').onclick = () => { root.innerHTML = ''; };
+    root.querySelectorAll('[data-end-sem]').forEach(b => {
+      b.onclick = () => { curSem = cls.semesters.find(s => s.id === b.dataset.endSem) || curSem; render_(); };
+    });
+    document.getElementById('printEndStatBtn').onclick = () => {
+      try{
+        const bytes = buildEndnoteStatPdf(cls, curSem, st, cmp);
+        setStatus('Endnoten-Statistik als PDF erstellt');
+        sharePdf('Endnoten-Statistik-' + sanitizeForFilename(cls.name) + '.pdf', bytes, 'Endnoten-Statistik');
+      }catch(err){
+        console.error(err);
+        showAlert('Fehler', 'Die PDF-Datei konnte nicht erstellt werden: ' + err.message);
+      }
+    };
+  };
+  render_();
 }
 function openEndnoteModal(cls, sem, studentId){
   const student = cls.students.find(s=>s.id===studentId);
@@ -4345,20 +4936,29 @@ function renderScalePanel(cls){
 
 // ---------- global wiring ----------
 function cloneCategoryStructure(c){
-  return {id: uid(), name: c.name, weight: c.weight, mode: c.mode, maxPoints: c.maxPoints, date: c.date, entries: {}, bgColor: c.bgColor, displayScale: c.displayScale,
+  const o = {id: uid(), name: c.name, weight: c.weight, mode: c.mode, maxPoints: c.maxPoints, date: c.date, entries: {}, bgColor: c.bgColor, displayScale: c.displayScale,
     children: c.children ? c.children.map(cloneCategoryStructure) : undefined};
+  if(c.containerOnly) o.containerOnly = true;
+  if(c.ungraded) o.ungraded = true;
+  if(c.manualWeight) o.manualWeight = true;
+  return o;
 }
 function cloneGroupsStructure(groups){
-  return groups.map(g => ({
-    id: uid(), name: g.name, color: g.color, bgColor: g.bgColor, weight: g.weight, locked: g.locked || false,
-    children: g.children.map(cloneCategoryStructure)
-  }));
+  return groups.map(g => {
+    const o = {
+      id: uid(), name: g.name, color: g.color, bgColor: g.bgColor, weight: g.weight, locked: g.locked || false,
+      children: g.children.map(cloneCategoryStructure)
+    };
+    if(g.manualWeight) o.manualWeight = true;
+    return o;
+  });
 }
 document.getElementById('copyStructureBtn').onclick = async () => {
   const cls = getActiveClass(); if(!cls) return;
   const source = cls.semesters[0];
   const target = getActiveSemester(cls);
   if(target === source){ await showAlert('Nicht möglich', 'Im 1. HJ gibt es kein früheres Halbjahr, aus dem übernommen werden könnte.'); return; }
+  if(target.locked){ lockedNotice(target); return; }
   const ok = await showConfirm('Struktur übernehmen?', `Kategorienbaum aus "${source.name}" nach "${target.name}" übernehmen? Gruppen und Kategorien in "${target.name}" werden dabei ersetzt (Noteneinträge dort gehen verloren). Es werden nur Namen/Gewichtungen/Modus kopiert, keine Noten – "${source.name}" bleibt unverändert.`, {confirmLabel:'Übernehmen', danger:true});
   if(!ok) return;
   target.groups = cloneGroupsStructure(source.groups);
@@ -4432,6 +5032,8 @@ document.getElementById('colorizeSammelBtn').onclick = () => {
   saveState(); render();
 };
 document.getElementById('colorizeToggle').onchange = (e) => {
+  const lsC = e.target.checked && lockedSemesterInView(getActiveClass());
+  if(lsC){ e.target.checked = false; lockedNotice(lsC); return; }
   state.colorizeMode = e.target.checked;
   document.body.classList.toggle('colorize-active', state.colorizeMode);
   const label = document.getElementById('colorizeSammelBtn');
@@ -4490,7 +5092,11 @@ document.getElementById('borderlineToggleBtn').onclick = () => {
   saveBorderlineToggle(borderlineEnabled);
   render();
 };
-document.getElementById('positionModeBtn').onclick = () => { state.positionMode = !state.positionMode; render(); };
+document.getElementById('positionModeBtn').onclick = () => {
+  const ls = !state.positionMode && lockedSemesterInView(getActiveClass());
+  if(ls){ lockedNotice(ls); return; }
+  state.positionMode = !state.positionMode; render();
+};
 async function performAppUpdate(){
   try{
     if('serviceWorker' in navigator){
@@ -4688,28 +5294,44 @@ async function runExcelExportFlow(cls, sem){
 document.getElementById('dataManagementBtn').onclick = async () => {
   const cls = getActiveClass();
   const sem = cls ? getActiveSemester(cls) : null;
+  const archivedCount = state.classes.filter(c => c.archived).length;
   const options = [
-    {label: '🔄 Update prüfen', value: 'update'},
-    {label: '🗓 Zeiträume', value: 'zeitraeume'},
-    ...(cls && cls.semesters.length >= 2 ? [{label: '⇄ Halbjahre tauschen', value: 'swaphj'}] : []),
-    {label: '⬇ Backup', value: 'backup'},
+    {heading: 'Sichern'},
+    {label: `⬇ Backup (zuletzt ${backupAgeText()})`, value: 'backup'},
+    {label: `🔔 Backup-Erinnerung (${getBackupDays() ? 'nach ' + getBackupDays() + ' Tagen' : 'aus'})`, value: 'backupremind'},
     {label: '⬆ Wiederherstellen', value: 'restore'},
-    {label: '⟲ Alles zurücksetzen', value: 'reset'},
+    {heading: 'Auswertung und Export'},
+    ...(cls ? [{label: '📊 Endnoten-Statistik', value: 'endstat'}] : []),
     {label: 'Export für Excel', value: 'excel'},
     {label: 'Export für externe Tabelle (Zusatztool)', value: 'notennachweis'},
-    {label: '🎲 Demomodus', value: 'demo'},
+    {heading: 'Halbjahr und Schuljahr'},
+    {label: '🗓 Zeiträume', value: 'zeitraeume'},
+    ...(cls && sem ? [{label: sem.locked ? `🔓 Halbjahr wieder öffnen (${sem.name})` : `🔒 Halbjahr abschließen (${sem.name})`, value: 'lockhj'}] : []),
+    ...(cls && cls.semesters.length >= 2 ? [{label: '⇄ Halbjahre tauschen', value: 'swaphj'}] : []),
+    {label: '📅 Neues Schuljahr', value: 'newyear'},
+    {label: `🗄 Archiv${archivedCount ? ' (' + archivedCount + ')' : ''}`, value: 'archive'},
+    {heading: 'Sicherheit'},
     {label: '🔒 PIN-Sperre', value: 'pinlock'},
     {label: `⏱ Sperr-Zeit (${getIdleBlurSeconds()}s)`, value: 'idletime'},
+    {heading: 'System'},
+    {label: '🔄 Update prüfen', value: 'update'},
+    {label: '🎲 Demomodus', value: 'demo'},
+    {label: '⟲ Alles zurücksetzen', value: 'reset'},
   ];
   const choice = await showChoice('Verwaltung', '', options);
   if(choice === null) return;
   if(choice === 'update'){ await checkForAppUpdate(); }
   else if(choice === 'backup') exportBackup();
+  else if(choice === 'backupremind'){ await setupBackupReminder(); }
   else if(choice === 'restore') document.getElementById('importFile').click();
   else if(choice === 'reset') resetAllData();
   else if(choice === 'demo'){ await generateDemoClass(); }
   else if(choice === 'pinlock'){ await setupPinLock(); }
   else if(choice === 'swaphj'){ await swapSemestersDialog(); }
+  else if(choice === 'lockhj'){ await toggleSemesterLock(cls, sem); }
+  else if(choice === 'newyear'){ newSchoolYearDialog(); }
+  else if(choice === 'archive'){ await openArchiveMenu(); }
+  else if(choice === 'endstat'){ openEndnoteStatistik(cls, sem); }
   else if(choice === 'idletime'){ await setupIdleBlurTime(); }
   else if(choice === 'zeitraeume'){
     if(!cls){ await showAlert('Keine Lerngruppe', 'Bitte zuerst eine Lerngruppe auswählen.'); return; }
@@ -4838,6 +5460,7 @@ window.addEventListener('resize', syncStickyOffsets);
   syncStickyOffsets();
   autoCheckForUpdateSilently();
   initIdleBlurWatcher();
+  setTimeout(maybeShowBackupReminder, 1500);
 })();
 if('serviceWorker' in navigator){
   window.addEventListener('load', () => { navigator.serviceWorker.register('sw.js').catch(()=>{}); });
