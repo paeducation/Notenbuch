@@ -106,7 +106,8 @@
     font-weight:600;font-size:0.82rem;cursor:pointer;}
   .sem-tab.active{background:var(--surface);color:var(--ink);box-shadow:var(--shadow);}
 
-  .toolbar{display:flex;gap:8px;align-items:center;overflow-x:auto;padding:10px 16px;
+  .tb-sep{flex:none;width:1px;height:22px;background:var(--line);margin:0 2px;}
+  .toolbar{display:flex;gap:6px;align-items:center;overflow-x:auto;padding:10px 16px;
     background:var(--surface);border-bottom:1px solid var(--line);position:sticky;top:192px;z-index:29;}
   .weight-warn{font-size:0.76rem;color:var(--warn);background:var(--warn-soft);padding:4px 10px;
     border-radius:20px;margin-left:auto;white-space:nowrap;font-weight:600;}
@@ -234,6 +235,7 @@
   .dlg-choices{display:flex;flex-direction:column;gap:8px;margin-top:12px;}
   table.grid th.tally-head, table.grid td.tally-cell{padding-left:2px;padding-right:2px;width:42px;min-width:42px;max-width:42px;}
   td.tally-cell{cursor:pointer;-webkit-user-select:none;user-select:none;-webkit-touch-callout:none;}
+  .dlg-choice-btn.danger-choice{color:var(--danger);}
   .dlg-scrollwrap{position:relative;}
   .dlg-scrollwrap .dlg-choices{max-height:min(60vh,calc(80vh - 150px));overflow-y:auto;-webkit-overflow-scrolling:touch;padding-bottom:4px;}
   .dlg-scrollwrap .dlg-choices::-webkit-scrollbar{width:6px;-webkit-appearance:none;}
@@ -306,10 +308,12 @@
 </header>
 
 <div class="toolbar">
-  <button class="ghost small" id="positionModeBtn">↔ Position</button>
-  <button class="ghost small" id="copyStructureBtn">⇄ Struktur aus 1. HJ übernehmen</button>
   <button class="ghost small" id="toggleScaleBtn">Notenschema</button>
   <button class="ghost small" id="tallyToggleBtn" title="Strichlisten HA, HAu, M ein-/ausblenden">📋 Strichlisten</button>
+  <button class="ghost small" id="borderlineToggleBtn">🎯 Grenzfälle</button>
+  <span class="tb-sep" aria-hidden="true"></span>
+  <button class="ghost small" id="positionModeBtn">↔ Position</button>
+  <button class="ghost small" id="copyStructureBtn">⇄ Struktur aus 1. HJ übernehmen</button>
   <span style="display:inline-flex;align-items:center;gap:8px;font-family:inherit;font-size:0.78rem;font-weight:600;padding:6px 8px 6px 14px;border-radius:20px;border:1px solid var(--line);background:var(--surface);color:var(--ink);box-shadow:var(--shadow);white-space:nowrap;">
     <span id="colorizeSammelBtn" style="cursor:default;opacity:0.5;">🎨 Färben</span>
     <label class="mini-toggle" title="Ein-/Ausschalten (Aus = Farben fixieren)">
@@ -317,19 +321,18 @@
       <span class="mini-slider"></span>
     </label>
   </span>
-  <button class="ghost small" id="quickBackupBtn" title="Backup jetzt herunterladen">💾</button>
   <span style="display:inline-flex;align-items:center;gap:8px;font-family:inherit;font-size:0.78rem;font-weight:600;padding:6px 8px 6px 14px;border-radius:20px;border:1px solid var(--line);background:var(--surface);color:var(--ink);box-shadow:var(--shadow);white-space:nowrap;">
-    <span id="undoBtn" style="cursor:default;opacity:0.5;">↩️ Rückgängig</span>
+    <span id="undoBtn" style="cursor:default;opacity:0.5;">↩️ Undo</span>
     <label class="mini-toggle" title="Ein-/Ausschalten (Sicherung gegen versehentliches Tippen)">
       <input type="checkbox" id="undoToggle">
       <span class="mini-slider"></span>
     </label>
   </span>
-  <button class="ghost small" id="borderlineToggleBtn">🎯 Grenzfälle</button>
+  <span class="tb-sep" aria-hidden="true"></span>
   <button class="ghost small" id="dataManagementBtn">🗂 Verwaltung</button>
   <input type="file" id="csvImportFile" accept=".csv,text/csv" style="position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0;">
   <button class="ghost small" id="printBtn">🖨 Drucken</button>
-  <button class="ghost small icon-btn" id="helpBtn" title="Begriffe erklärt">?</button>
+  <span class="tb-sep" aria-hidden="true"></span>
   <button class="ghost small icon-btn" id="darkToggle" title="Dunkelmodus ein-/ausschalten" aria-pressed="false"><svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor" xmlns="http://www.w3.org/2000/svg" style="display:block;"><path d="M20.5 14.6A8.6 8.6 0 0 1 9.4 3.5a.7.7 0 0 0-.9-.9A10 10 0 1 0 21.4 15.5a.7.7 0 0 0-.9-.9z"/></svg></button>
   <input type="file" id="importFile" accept=".json,application/json" style="position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0;">
 </div>
@@ -377,7 +380,7 @@ function colorForGroupName(name){
 }
 
 function uid(){ return Math.random().toString(36).slice(2,10); }
-const APP_VERSION_INFO = 'v22.15 · Entwickler: G. Schulte';
+const APP_VERSION_INFO = 'v22.19 · Entwickler: G. Schulte';
 function setStatus(msg, isError){
   const el = document.getElementById('status');
   const hasData = typeof state !== 'undefined' && state && state.classes && state.classes.length;
@@ -1235,7 +1238,7 @@ function showDialog(opts){
       }
     }
     if(type === 'choice'){
-      body += `<div class="dlg-scrollwrap"><div class="dlg-choices">${options.map((o,i) => o.heading ? `<div class="dlg-heading">${escapeHtml(o.heading)}</div>` : (o.toggle ? `<div class="dlg-choice-row"><button type="button" class="dlg-choice-btn" data-choice-idx="${i}">${escapeHtml(o.label)}</button><label class="dlg-toggle" title="${escapeHtml(o.toggle.title || '')}"><span class="mini-toggle"><input type="checkbox" data-choice-toggle="${i}" ${o.toggle.checked ? 'checked' : ''}><span class="mini-slider"></span></span><span>${escapeHtml(o.toggle.caption || '')}</span></label></div>` : `<button type="button" class="dlg-choice-btn" data-choice-idx="${i}">${escapeHtml(o.label)}</button>`)).join('')}</div><div class="dlg-more" id="dlgMore">▼ weitere Punkte ▼</div></div>`;
+      body += `<div class="dlg-scrollwrap"><div class="dlg-choices">${options.map((o,i) => o.heading ? `<div class="dlg-heading">${escapeHtml(o.heading)}</div>` : (o.toggle ? `<div class="dlg-choice-row"><button type="button" class="dlg-choice-btn" data-choice-idx="${i}">${escapeHtml(o.label)}</button><label class="dlg-toggle" title="${escapeHtml(o.toggle.title || '')}"><span class="mini-toggle"><input type="checkbox" data-choice-toggle="${i}" ${o.toggle.checked ? 'checked' : ''}><span class="mini-slider"></span></span><span>${escapeHtml(o.toggle.caption || '')}</span></label></div>` : `<button type="button" class="dlg-choice-btn${o.danger ? ' danger-choice' : ''}" data-choice-idx="${i}">${escapeHtml(o.label)}</button>`)).join('')}</div><div class="dlg-more" id="dlgMore">▼ weitere Punkte ▼</div></div>`;
     }
     let footer = '';
     if(type === 'alert') footer = `<div class="row" style="margin-top:16px;justify-content:flex-end;"><button id="dlgOk">${escapeHtml(confirmLabel)}</button></div>`;
@@ -1755,6 +1758,46 @@ const TSCALE_KEY = 'notenbuch-tscale';
 const TSCALES = [{v:'0.9',l:'Klein'},{v:'1',l:'Normal'},{v:'1.2',l:'Groß'},{v:'1.45',l:'Sehr groß (Beamer)'}];
 function getTableScale(){ try{ const v = localStorage.getItem(TSCALE_KEY); if(TSCALES.some(t=>t.v===v)) return v; }catch(e){} return '1'; }
 function applyTableScale(){ document.documentElement.style.setProperty('--tscale', getTableScale()); }
+// ---------- Neuerungen nach einem Update ----------
+const WHATS_NEW_KEY = 'notenbuch-last-seen-version';
+const CHANGELOG = [
+  {v:'22.19', items:['Werkzeugleiste neu geordnet: Ansicht (Notenschema, Strichlisten, Grenzfälle) | Bearbeiten (Position, Färben, Undo) | Datei (Verwaltung, Drucken). Das Speichern-Symbol ist entfallen (Backup: Verwaltung), „Rückgängig“ heißt jetzt „Undo“.', 'Das Fragezeichen („Begriffe erklärt“) steht jetzt in der Verwaltung unter „Über die App“.', 'Der Export (Excel, externe Tabelle) liegt wieder nur in der Verwaltung; „Drucken“ enthält Drucken und Formulare.']},
+  {v:'22.18', items:['Verwaltung: neu gegliedert in Sichern, Halbjahr und Schuljahr, Sicherheit, Anzeige, Über die App und Zurücksetzen („Alles zurücksetzen“ steht abgesetzt und in Rot).', 'Spalte bearbeiten: Name, Eingabeart und Maximalpunktzahl stehen jetzt oben, Gewichtung, Datum, Farbe und Darstellung darunter.']},
+  {v:'22.17', items:['Menü „Drucken / Export“: Drucken, Beratungsblatt, SL-Formular und Excel-Export stehen jetzt gemeinsam in einem Menü (Excel-Export ist aus der Verwaltung hierher umgezogen).', 'Spaltenmenü: Löschen steht jetzt ganz unten, in Rot.']},
+  {v:'22.16', items:['Nach jedem Update erscheint einmalig eine Übersicht der Neuerungen. Später nachlesen: Verwaltung → System → Neuerungen.']},
+  {v:'22.15', items:['Strichlisten-Spalten (HA, HAu, M) etwas breiter.']},
+  {v:'22.14', items:['Button „Strichlisten“ steht jetzt direkt rechts neben „Notenschema“.']},
+  {v:'22.11', items:['Neu: Strichlisten für Hausaufgaben nicht gemacht (HA), unvollständig (HAu) und Material vergessen (M). Button „Strichlisten“ in der Werkzeugleiste blendet sie rechts neben dem aktiven SoMi-Quartal ein. Tippen = Eintrag mit heutigem Datum, langer Druck = Einträge ansehen, ändern, löschen.', 'Die Einträge erscheinen im Beratungsblatt des Schülers.']},
+  {v:'22.9', items:['Neu: Notenschlüssel pro Klausur. Im Menü einer Klausur (Punktemodus) zeigt „Notenschlüssel“ die Punktegrenzen je Note in ganzen Punkten, mit PDF zum Drucken.']},
+  {v:'22.7', items:['Lange Auswahlmenüs (z. B. Verwaltung) zeigen jetzt „weitere Punkte“ am unteren Rand; ein Tipp darauf scrollt weiter.']},
+  {v:'22.6', items:['Neu im Noteneditor: Schalter „Danach nächster Schüler“ öffnet nach der Eingabe direkt den nächsten Schüler.', 'Neu: Tabellengröße (Verwaltung → System) für Beamer und iPad.', 'Speicherschutz: Die App bittet den Browser, die Daten dauerhaft zu behalten.']},
+];
+function versionParts(v){ return String(v).split('.').map(n => parseInt(n, 10) || 0); }
+function versionCmp(a, b){
+  const x = versionParts(a), y = versionParts(b);
+  for(let i = 0; i < Math.max(x.length, y.length); i++){ const d = (x[i]||0) - (y[i]||0); if(d) return d; }
+  return 0;
+}
+function currentAppVersion(){ const m = APP_VERSION_INFO.match(/v(\d+(?:\.\d+)*)/); return m ? m[1] : ''; }
+function whatsNewText(sinceVersion){
+  const list = CHANGELOG.filter(c => !sinceVersion || versionCmp(c.v, sinceVersion) > 0);
+  return list.map(c => 'Version ' + c.v + '\n' + c.items.map(t => '• ' + t).join('\n')).join('\n\n');
+}
+async function showWhatsNewIfNeeded(){
+  const cur = currentAppVersion();
+  let last = null;
+  try{ last = localStorage.getItem(WHATS_NEW_KEY); }catch(e){}
+  try{ localStorage.setItem(WHATS_NEW_KEY, cur); }catch(e){}
+  if(!cur) return;
+  if(!last){
+    // Erststart nach Einführung dieser Funktion: bestehende Nutzer sehen alles seit 22.5, ganz neue Nutzer nichts
+    if(!(state.classes && state.classes.length)) return;
+    last = '22.5';
+  }
+  if(versionCmp(cur, last) <= 0) return;
+  const txt = whatsNewText(last);
+  if(txt) await showAlert('Neu in diesem Update', txt);
+}
 const TALLY_KEY = 'notenbuch-tally-visible';
 const TALLY_COLS = [
   {key:'HA', label:'HA', title:'Hausaufgaben nicht gemacht'},
@@ -3860,11 +3903,11 @@ async function openCategoryMenu(cls, sem, groupId, catId){
   const otherSem = cls.semesters.length >= 2 ? cls.semesters.find(s => s.id !== sem.id) : null;
   const choice = await showChoice(ctx.cat.name, menuMessage, [
     {label: `${typeLabel} bearbeiten`, value: 'edit'},
-    {label: `${typeLabel} duplizieren`, value: 'dup'},
-    {label: `${typeLabel} löschen`, value: 'del'},
-    ...(otherSem ? [{label: `⇄ In ${otherSem.name} verschieben / kopieren`, value: 'move'}] : []),
     ...(!isContainerCat(ctx.cat) && ctx.cat.mode === 'points' ? [{label: '🧮 Notenschlüssel', value: 'key'}] : []),
     ...(isSchriftlichLeaf ? [{label: '📊 Statistik', value: 'stats'}] : []),
+    {label: `${typeLabel} duplizieren`, value: 'dup'},
+    ...(otherSem ? [{label: `⇄ In ${otherSem.name} verschieben / kopieren`, value: 'move'}] : []),
+    {label: `${typeLabel} löschen`, value: 'del', danger: true},
   ]);
   if(choice === null) return;
   if(choice === 'edit'){
@@ -3947,15 +3990,15 @@ async function editCategory(cls, sem, groupId, catId){
     const modeLabel = cat.mode==='points' ? 'Klausurpunkte' : cat.mode==='observation' ? 'Beobachtung' : 'Note';
     const scaleLabel = cat.displayScale === 'noten' ? 'Noten' : cat.displayScale === 'punkte' ? 'Punkte' : 'wie Lerngruppe';
     const options = [
-      ...(isContainer ? [] : [{label: `📅 Datum hinzufügen${cat.date ? ` (${formatDate(cat.date)})` : ''}`, value: 'date'}]),
-      {label: `Gewichtung ändern${cat.manualWeight?' 🔒':''}`, value: 'weight'},
       {label: 'Name ändern', value: 'name'},
-      {label: `Farbe ändern${cat.bgColor?' (eigene Farbe)':''}`, value: 'color'},
       ...(isContainer ? [] : [
         {label: `Eingabeart ändern (Leistungsdaten)`, value: 'mode'},
         ...(cat.mode==='points' ? [{label: `Maximalpunktzahl (${cat.maxPoints ?? 100})`, value: 'maxpoints'}] : []),
-        ...(cat.mode!=='observation' ? [{label: `Darstellung ändern (Leistungsdaten)`, value: 'scale'}] : []),
       ]),
+      {label: `Gewichtung ändern${cat.manualWeight?' 🔒':''}`, value: 'weight'},
+      ...(isContainer ? [] : [{label: `📅 Datum hinzufügen${cat.date ? ` (${formatDate(cat.date)})` : ''}`, value: 'date'}]),
+      {label: `Farbe ändern${cat.bgColor?' (eigene Farbe)':''}`, value: 'color'},
+      ...(!isContainer && cat.mode!=='observation' ? [{label: `Darstellung ändern (Leistungsdaten)`, value: 'scale'}] : []),
       {label: 'Fertig', value: 'done'},
     ];
     const choice = await showChoice(isContainer ? 'Sammelkategorie bearbeiten' : 'Leistungsdaten bearbeiten', cat.name, options);
@@ -5111,7 +5154,6 @@ document.getElementById('colorizeToggle').onchange = (e) => {
   }
   render();
 };
-document.getElementById('quickBackupBtn').onclick = exportBackup;
 document.getElementById('undoBtn').onclick = () => {
   if(!undoArmed || !undoStack.length) return;
   undoLastChange();
@@ -5135,7 +5177,7 @@ function applyTheme(dark){
   btn.setAttribute('aria-pressed', dark ? 'true' : 'false');
   btn.onclick = () => applyTheme(document.documentElement.getAttribute('data-theme') !== 'dark');
 })();
-document.getElementById('helpBtn').onclick = async () => {
+async function showHelpTerms(){
   await showAlert('Begriffe erklärt',
     'Notengruppe – oberste Ebene (Mündlich/Schriftlich/eigene). Fließt direkt in die Endnote ein.\n\n' +
     'Sammelkategorie – reiner Überbau innerhalb einer Notengruppe, zeigt nur eine berechnete Note, nie direkt eingetragen.\n\n' +
@@ -5146,7 +5188,7 @@ document.getElementById('helpBtn').onclick = async () => {
     'Grenzfälle – zeigt bei knappen Ergebnissen eine Empfehlung statt einer festen Note an.\n\n' +
     'Unterrichtsbeobachtung – Tipp auf das Feld wechselt + → ○ → − → leer. Langer Druck öffnet Notiz und weitere Angaben.'
   );
-};
+}
 document.getElementById('tallyToggleBtn').onclick = () => { setTallyVisible(!tallyVisible()); render(); };
 document.getElementById('borderlineToggleBtn').onclick = () => {
   borderlineEnabled = !borderlineEnabled;
@@ -5378,15 +5420,29 @@ document.getElementById('dataManagementBtn').onclick = async () => {
     {heading: 'Sicherheit'},
     {label: '🔒 PIN-Sperre', value: 'pinlock'},
     {label: `⏱ Sperr-Zeit (${getIdleBlurSeconds()}s)`, value: 'idletime'},
-    {heading: 'System'},
+    {heading: 'Anzeige'},
     {label: `🔠 Tabellengröße (${(TSCALES.find(t=>t.v===getTableScale())||TSCALES[1]).l})`, value: 'tscale'},
+    {heading: 'Über die App'},
+    {label: '🆕 Neuerungen', value: 'whatsnew'},
     {label: '🔄 Update prüfen', value: 'update'},
     {label: '🎲 Demomodus', value: 'demo'},
-    {label: '⟲ Alles zurücksetzen', value: 'reset'},
+    {label: '❓ Begriffe erklärt', value: 'help'},
+    {heading: 'Zurücksetzen'},
+    {label: '⟲ Alles zurücksetzen', value: 'reset', danger: true},
   ];
   const choice = await showChoice('Verwaltung', '', options);
   if(choice === null) return;
   if(choice === 'update'){ await checkForAppUpdate(); }
+  else if(choice === 'whatsnew'){ await showAlert('Neuerungen', whatsNewText(null)); }
+  else if(choice === 'help'){ await showHelpTerms(); }
+  else if(choice === 'notennachweis'){
+    if(!cls){ await showAlert('Keine Lerngruppe', 'Bitte zuerst eine Lerngruppe auswählen.'); return; }
+    openNotennachweisModal(cls, sem);
+  }
+  else if(choice === 'excel'){
+    if(!cls){ await showAlert('Keine Lerngruppe', 'Bitte zuerst eine Lerngruppe auswählen.'); return; }
+    await runExcelExportFlow(cls, sem);
+  }
   else if(choice === 'backup') exportBackup();
   else if(choice === 'restore') document.getElementById('importFile').click();
   else if(choice === 'reset') resetAllData();
@@ -5405,13 +5461,6 @@ document.getElementById('dataManagementBtn').onclick = async () => {
   else if(choice === 'zeitraeume'){
     if(!cls){ await showAlert('Keine Lerngruppe', 'Bitte zuerst eine Lerngruppe auswählen.'); return; }
     openQuartaleModal(cls);
-  }
-  else if(choice === 'notennachweis'){
-    if(!cls){ await showAlert('Keine Lerngruppe', 'Bitte zuerst eine Lerngruppe auswählen.'); return; }
-    openNotennachweisModal(cls, sem);
-  } else if(choice === 'excel'){
-    if(!cls){ await showAlert('Keine Lerngruppe', 'Bitte zuerst eine Lerngruppe auswählen.'); return; }
-    await runExcelExportFlow(cls, sem);
   }
 };
 function scaleTablesForPrint(){
@@ -5457,22 +5506,16 @@ function resetPrintScale(){
   });
 }
 window.addEventListener('afterprint', resetPrintScale);
-document.getElementById('printBtn').onclick = async () => {
-  const cls = getActiveClass();
-  if(!cls){ await showAlert('Keine Lerngruppe', 'Bitte zuerst eine Lerngruppe auswählen.'); return; }
-  const sem = getActiveSemester(cls);
-  const reportChoice = await showChoice('Drucken', 'Was möchtest du drucken?', [
-    {label: 'Notenbuch (alles)', value: 'alles'},
-    {label: 'Konferenztabelle (Schriftlich, Mündlich, Endnote)', value: 'konferenz'},
-  ]);
-  if(reportChoice === null) return;
-  const methodChoice = await showChoice('Drucken', '', [
-    {label: 'Direkt drucken', value: 'direct'},
-    {label: 'Als PDF speichern', value: 'pdf'},
-  ]);
-  if(methodChoice === null) return;
-  if(methodChoice === 'pdf'){
-    await showAlert('Als PDF speichern', 'Im nächsten Fenster als Ziel/Drucker "Als PDF sichern" (bzw. "Auf iPad sichern" o.ä.) auswählen statt eines echten Druckers.');
+async function runPrintFlow(cls, sem, reportChoice){
+  if(!IS_IOS){
+    const methodChoice = await showChoice('Drucken', '', [
+      {label: 'Direkt drucken', value: 'direct'},
+      {label: 'Als PDF speichern', value: 'pdf'},
+    ]);
+    if(methodChoice === null) return;
+    if(methodChoice === 'pdf'){
+      await showAlert('Als PDF speichern', 'Im nächsten Fenster als Ziel/Drucker "Als PDF sichern" (bzw. "Auf iPad sichern" o.ä.) auswählen statt eines echten Druckers.');
+    }
   }
   if(reportChoice === 'konferenz'){
     try{
@@ -5495,6 +5538,38 @@ document.getElementById('printBtn').onclick = async () => {
   };
   window.addEventListener('afterprint', restore, {once: true});
   setTimeout(restore, 1500);
+}
+function schriftlichLeaves(sem){
+  const out = [];
+  const walk = (list, g) => (list || []).forEach(c => { if(c.children && c.children.length) walk(c.children, g); else if(!isContainerCat(c)) out.push({cat: c, group: g}); });
+  (sem.groups || []).filter(g => (g.name || '').trim().toLowerCase() === 'schriftlich').forEach(g => walk(g.children, g));
+  return out;
+}
+document.getElementById('printBtn').onclick = async () => {
+  const cls = getActiveClass();
+  if(!cls){ await showAlert('Keine Lerngruppe', 'Bitte zuerst eine Lerngruppe auswählen.'); return; }
+  const sem = getActiveSemester(cls);
+  const choice = await showChoice('Drucken', '', [
+    {heading: 'Drucken'},
+    {label: 'Notenbuch (alles)', value: 'alles'},
+    {label: 'Konferenztabelle (Schriftlich, Mündlich, Endnote)', value: 'konferenz'},
+    {heading: 'Formulare (PDF)'},
+    {label: 'Beratungsblatt (Schüler wählen)', value: 'beratung'},
+    {label: 'SL-Formular (Klausur wählen)', value: 'slform'},
+  ]);
+  if(choice === null) return;
+  if(choice === 'alles' || choice === 'konferenz'){ await runPrintFlow(cls, sem, choice); }
+  else if(choice === 'beratung'){
+    const list = getSemesterStudents(cls, sem);
+    if(!list.length){ await showAlert('Keine Schüler', 'In diesem Halbjahr gibt es noch keine Schüler.'); return; }
+    const sid = await showChoice('Beratungsblatt', 'Für welchen Schüler?', list.map(s => ({label: s.name, value: s.id})));
+    if(sid !== null) openStudentSheetDialog(cls, sem, sid);
+  } else if(choice === 'slform'){
+    const leaves = schriftlichLeaves(sem);
+    if(!leaves.length){ await showAlert('Keine Klausur', 'In der Gruppe Schriftlich gibt es noch keine Klausur.'); return; }
+    const pick = await showChoice('SL-Formular', 'Für welche Klausur?', leaves.map(l => ({label: l.cat.name + (l.cat.date ? ' (' + formatDate(l.cat.date) + ')' : ''), value: l.cat})));
+    if(pick !== null) openSlFormDialog(cls, sem, pick, computeKlausurStats(cls, sem, pick));
+  }
 };
 document.getElementById('importFile').addEventListener('change', (e) => {
   const file = e.target.files[0];
@@ -5530,7 +5605,7 @@ window.addEventListener('resize', syncStickyOffsets);
   syncStickyOffsets();
   autoCheckForUpdateSilently();
   initIdleBlurWatcher();
-  setTimeout(maybeShowBackupReminder, 1500);
+  showWhatsNewIfNeeded().catch(()=>{}).then(() => setTimeout(maybeShowBackupReminder, 800));
 })();
 if('serviceWorker' in navigator){
   window.addEventListener('load', () => { navigator.serviceWorker.register('sw.js').catch(()=>{}); });
