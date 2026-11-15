@@ -118,11 +118,11 @@
   .compare-col h3{margin-bottom:8px;font-size:0.95rem;color:var(--ink-soft);}
   .grid-wrap{position:relative;overflow:auto;border:1px solid var(--line);border-radius:var(--radius);
     background:var(--surface);max-width:100%;box-shadow:var(--shadow);}
-  table.grid{border-collapse:separate;border-spacing:0;font-size:0.84rem;min-width:100%;}
+  table.grid{border-collapse:separate;border-spacing:0;font-size:calc(0.84rem * var(--tscale,1));min-width:100%;}
   table.grid th, table.grid td{border-bottom:1px solid var(--line);border-right:1px solid var(--line);
-    padding:6px 8px;text-align:center;white-space:nowrap;}
+    padding:calc(6px * var(--tscale,1)) 8px;text-align:center;white-space:nowrap;}
   table.grid th:last-child, table.grid td:last-child{border-right:none;}
-  table.grid thead th{background:var(--surface);font-weight:600;color:var(--ink);font-size:0.76rem;}
+  table.grid thead th{background:var(--surface);font-weight:600;color:var(--ink);font-size:calc(0.76rem * var(--tscale,1));}
   .grp-head{color:#fff;font-weight:700;font-size:0.68rem;
     padding:4px 8px;text-transform:uppercase;letter-spacing:0.03em;}
   .grp-head-wrap{position:relative;display:block;}
@@ -153,14 +153,14 @@
     border-radius:50%;cursor:pointer;font-weight:700;line-height:1;}
   .colx.dark{background:transparent;color:var(--ink-soft);width:auto;height:auto;border-radius:4px;padding:0 4px;}
   .colx.dark:hover{color:var(--danger);}
-  .cell-stack{display:flex;flex-direction:column;align-items:center;gap:1px;cursor:pointer;padding:3px 2px;border-radius:8px;position:relative;}
+  .cell-stack{display:flex;flex-direction:column;align-items:center;gap:1px;cursor:pointer;padding:calc(3px * var(--tscale,1)) 2px;border-radius:8px;position:relative;}
   .cell-stack:hover{background:var(--surface-soft);}
   .reset-arrow{position:absolute;top:-6px;right:-6px;width:19px;height:19px;border-radius:50%;
     background:var(--accent);color:#fff;font-size:0.72rem;font-weight:800;border:none;
     display:flex;align-items:center;justify-content:center;cursor:pointer;line-height:1;padding:0;
     box-shadow:0 1px 2px rgba(0,0,0,.25);z-index:2;}
   .note-pill{display:inline-block;min-width:26px;text-align:center;padding:2px 7px;border-radius:14px;
-    font-weight:700;font-size:0.8rem;font-family:ui-monospace,'SF Mono',Menlo,monospace;}
+    font-weight:700;font-size:calc(0.8rem * var(--tscale,1));font-family:ui-monospace,'SF Mono',Menlo,monospace;}
   #toast{position:fixed;left:50%;bottom:64px;transform:translateX(-50%);max-width:90vw;background:#1D1D1F;color:#fff;padding:10px 16px;border-radius:12px;font-size:0.85rem;line-height:1.35;z-index:70;box-shadow:0 6px 20px rgba(0,0,0,.35);opacity:0;pointer-events:none;transition:opacity .25s;text-align:center;}
   #toast.show{opacity:1;}
   .fp-tag{font-size:0.7rem;font-weight:700;margin-left:4px;color:var(--ink-soft);white-space:nowrap;}
@@ -232,6 +232,15 @@
     font-family:ui-monospace,'SF Mono',Menlo,monospace;font-size:0.8rem;font-weight:700;color:var(--ink);cursor:pointer;}
   .grade-chip.selected{background:var(--accent);color:#fff;border-color:var(--accent);}
   .dlg-choices{display:flex;flex-direction:column;gap:8px;margin-top:12px;}
+  table.grid th.tally-head, table.grid td.tally-cell{padding-left:2px;padding-right:2px;width:42px;min-width:42px;max-width:42px;}
+  td.tally-cell{cursor:pointer;-webkit-user-select:none;user-select:none;-webkit-touch-callout:none;}
+  .dlg-scrollwrap{position:relative;}
+  .dlg-scrollwrap .dlg-choices{max-height:min(60vh,calc(80vh - 150px));overflow-y:auto;-webkit-overflow-scrolling:touch;padding-bottom:4px;}
+  .dlg-scrollwrap .dlg-choices::-webkit-scrollbar{width:6px;-webkit-appearance:none;}
+  .dlg-scrollwrap .dlg-choices::-webkit-scrollbar-thumb{background:var(--ink-soft);border-radius:3px;}
+  .dlg-more{position:absolute;left:0;right:0;bottom:0;height:46px;display:none;align-items:flex-end;justify-content:center;cursor:pointer;
+    background:linear-gradient(to bottom,transparent,var(--surface) 80%);font-size:0.72rem;font-weight:700;color:var(--accent);padding-bottom:2px;}
+  .dlg-more.show{display:flex;}
   .dlg-choice-row{display:flex;align-items:center;gap:10px;}
   .dlg-choice-row .dlg-choice-btn{flex:1;min-width:0;}
   .dlg-toggle{display:flex;flex-direction:column;align-items:center;gap:3px;font-size:0.62rem;color:var(--ink-soft);cursor:pointer;flex-shrink:0;}
@@ -256,6 +265,7 @@
   @page{size:A4 portrait;margin:10mm;}
   .print-header{display:none;}
   @media print{
+    :root{--tscale:1!important;}
     .titlebar, header.app, .toolbar, #scalePanel, #modalRoot, .status{display:none!important;}
     body{padding-bottom:0!important;background:#fff!important;filter:grayscale(100%);}
     th.name-col, td.name-col{min-width:120px!important;}
@@ -299,6 +309,7 @@
   <button class="ghost small" id="positionModeBtn">↔ Position</button>
   <button class="ghost small" id="copyStructureBtn">⇄ Struktur aus 1. HJ übernehmen</button>
   <button class="ghost small" id="toggleScaleBtn">Notenschema</button>
+  <button class="ghost small" id="tallyToggleBtn" title="Strichlisten HA, HAu, M ein-/ausblenden">📋 Strichlisten</button>
   <span style="display:inline-flex;align-items:center;gap:8px;font-family:inherit;font-size:0.78rem;font-weight:600;padding:6px 8px 6px 14px;border-radius:20px;border:1px solid var(--line);background:var(--surface);color:var(--ink);box-shadow:var(--shadow);white-space:nowrap;">
     <span id="colorizeSammelBtn" style="cursor:default;opacity:0.5;">🎨 Färben</span>
     <label class="mini-toggle" title="Ein-/Ausschalten (Aus = Farben fixieren)">
@@ -366,7 +377,7 @@ function colorForGroupName(name){
 }
 
 function uid(){ return Math.random().toString(36).slice(2,10); }
-const APP_VERSION_INFO = 'v22.5 · Entwickler: G. Schulte';
+const APP_VERSION_INFO = 'v22.15 · Entwickler: G. Schulte';
 function setStatus(msg, isError){
   const el = document.getElementById('status');
   const hasData = typeof state !== 'undefined' && state && state.classes && state.classes.length;
@@ -1224,7 +1235,7 @@ function showDialog(opts){
       }
     }
     if(type === 'choice'){
-      body += `<div class="dlg-choices">${options.map((o,i) => o.heading ? `<div class="dlg-heading">${escapeHtml(o.heading)}</div>` : (o.toggle ? `<div class="dlg-choice-row"><button type="button" class="dlg-choice-btn" data-choice-idx="${i}">${escapeHtml(o.label)}</button><label class="dlg-toggle" title="${escapeHtml(o.toggle.title || '')}"><span class="mini-toggle"><input type="checkbox" data-choice-toggle="${i}" ${o.toggle.checked ? 'checked' : ''}><span class="mini-slider"></span></span><span>${escapeHtml(o.toggle.caption || '')}</span></label></div>` : `<button type="button" class="dlg-choice-btn" data-choice-idx="${i}">${escapeHtml(o.label)}</button>`)).join('')}</div>`;
+      body += `<div class="dlg-scrollwrap"><div class="dlg-choices">${options.map((o,i) => o.heading ? `<div class="dlg-heading">${escapeHtml(o.heading)}</div>` : (o.toggle ? `<div class="dlg-choice-row"><button type="button" class="dlg-choice-btn" data-choice-idx="${i}">${escapeHtml(o.label)}</button><label class="dlg-toggle" title="${escapeHtml(o.toggle.title || '')}"><span class="mini-toggle"><input type="checkbox" data-choice-toggle="${i}" ${o.toggle.checked ? 'checked' : ''}><span class="mini-slider"></span></span><span>${escapeHtml(o.toggle.caption || '')}</span></label></div>` : `<button type="button" class="dlg-choice-btn" data-choice-idx="${i}">${escapeHtml(o.label)}</button>`)).join('')}</div><div class="dlg-more" id="dlgMore">▼ weitere Punkte ▼</div></div>`;
     }
     let footer = '';
     if(type === 'alert') footer = `<div class="row" style="margin-top:16px;justify-content:flex-end;"><button id="dlgOk">${escapeHtml(confirmLabel)}</button></div>`;
@@ -1259,6 +1270,12 @@ function showDialog(opts){
       }
     }
     if(type === 'choice'){
+      const sc = root.querySelector('.dlg-choices'), more = document.getElementById('dlgMore');
+      if(sc && more){
+        const upd = () => more.classList.toggle('show', sc.scrollHeight - sc.scrollTop - sc.clientHeight > 8);
+        sc.addEventListener('scroll', upd);
+        more.addEventListener('click', (e) => { e.preventDefault(); e.stopPropagation(); sc.scrollBy({top: Math.max(120, sc.clientHeight * 0.8), behavior: 'smooth'}); }); setTimeout(upd, 0); setTimeout(upd, 120);
+      }
       root.querySelectorAll('[data-choice-idx]').forEach(btn => {
         btn.onclick = () => finish(options[+btn.dataset.choiceIdx].value);
       });
@@ -1734,11 +1751,101 @@ function renderSemRow(cls){
     if(name && name.trim()){ sem.name = name.trim(); saveState(); render(); }
   };
 }
+const TSCALE_KEY = 'notenbuch-tscale';
+const TSCALES = [{v:'0.9',l:'Klein'},{v:'1',l:'Normal'},{v:'1.2',l:'Groß'},{v:'1.45',l:'Sehr groß (Beamer)'}];
+function getTableScale(){ try{ const v = localStorage.getItem(TSCALE_KEY); if(TSCALES.some(t=>t.v===v)) return v; }catch(e){} return '1'; }
+function applyTableScale(){ document.documentElement.style.setProperty('--tscale', getTableScale()); }
+const TALLY_KEY = 'notenbuch-tally-visible';
+const TALLY_COLS = [
+  {key:'HA', label:'HA', title:'Hausaufgaben nicht gemacht'},
+  {key:'HAu', label:'HAu', title:'Hausaufgaben unvollständig'},
+  {key:'M', label:'M', title:'Material vergessen'},
+];
+function tallyVisible(){ try{ return localStorage.getItem(TALLY_KEY) === '1'; }catch(e){ return false; } }
+function setTallyVisible(on){ try{ localStorage.setItem(TALLY_KEY, on ? '1' : '0'); }catch(e){} }
+function isSomiCat(c){ return /^SoMi\s*\d+$/i.test((c.name || '').trim()); }
+// Die Strichlisten stehen rechts neben dem SoMi-Quartal, das gerade aktiv ist (sonst zuletzt begonnenes, sonst erstes)
+function tallyHostCat(sem){
+  const somis = [];
+  (sem.groups || []).forEach(g => (g.children || []).forEach(c => { if(isSomiCat(c)) somis.push(c); }));
+  if(!somis.length) return null;
+  const today = localTodayIso();
+  const active = somis.find(c => c.dateStart && c.dateEnd && today >= c.dateStart && today <= c.dateEnd);
+  if(active) return active;
+  const started = somis.filter(c => c.dateStart && c.dateStart <= today).sort((a,b) => a.dateStart < b.dateStart ? 1 : -1);
+  return started[0] || somis[0];
+}
+function tallyList(host, key, sid){
+  return (host.tally && host.tally[key] && host.tally[key][sid]) || [];
+}
+function tallySet(host, key, sid, list){
+  host.tally = host.tally || {};
+  host.tally[key] = host.tally[key] || {};
+  if(list.length) host.tally[key][sid] = list.slice().sort(); else delete host.tally[key][sid];
+}
+function tallyCellHtml(host, key, sid){
+  const l = tallyList(host, key, sid);
+  const tip = l.length ? l.map(formatDate).join(', ') : 'Antippen: +1 (heute) · lang drücken: Einträge';
+  return `<td class="tally-cell" data-tally-cell="${key}" data-tally-host="${host.id}" data-student="${sid}" title="${escapeHtml(tip)}"><div class="cell-stack" style="min-height:24px;display:flex;align-items:center;justify-content:center;">${l.length ? `<span style="font-weight:700;">${l.length}</span>` : '<span style="opacity:0.25;">·</span>'}</div></td>`;
+}
+function tallyHeadHtml(host, rowspan){
+  const bg = host.bgColor ? `background:${lightenColor(host.bgColor, 0.55)};` : '';
+  return TALLY_COLS.map(c => `<th class="cat-head tally-head" ${rowspan>1?`rowspan="${rowspan}"`:''} style="${bg}" title="${c.title}"><div class="colhead"><span style="font-weight:700;">${c.label}</span></div></th>`).join('');
+}
+async function openTallyList(cls, sem, host, key, sid){
+  const col = TALLY_COLS.find(c => c.key === key);
+  const st = cls.students.find(x => x.id === sid);
+  const root = document.getElementById('modalRoot');
+  const draw = () => {
+    const l = tallyList(host, key, sid);
+    root.innerHTML = `
+      <div class="overlay" id="overlay"><div class="modal">
+        <div class="modal-close"><button class="ghost small" id="tlClose">Fertig</button></div>
+        <h3>${escapeHtml(col.title)}</h3>
+        <div class="sub">${escapeHtml(st ? st.name : '')} · ${escapeHtml(host.name)}</div>
+        <div style="margin-top:12px;display:flex;flex-direction:column;gap:8px;">
+          ${l.length ? l.map((d, i) => `<div class="row" style="align-items:center;gap:8px;"><input type="date" data-tl-date="${i}" value="${d}" style="flex:1;"><button class="ghost small" data-tl-del="${i}">✕</button></div>`).join('') : '<div style="color:var(--ink-soft);">Noch keine Einträge.</div>'}
+        </div>
+        <div class="row" style="margin-top:14px;justify-content:flex-end;"><button id="tlAdd">+ Eintrag (heute)</button></div>
+      </div></div>`;
+    const close = () => { root.innerHTML = ''; render(); };
+    document.getElementById('tlClose').onclick = close;
+    document.getElementById('overlay').addEventListener('click', (e) => { if(e.target.id === 'overlay') close(); });
+    document.getElementById('tlAdd').onclick = () => { tallySet(host, key, sid, [...tallyList(host, key, sid), localTodayIso()]); saveState(); draw(); };
+    root.querySelectorAll('[data-tl-del]').forEach(b => b.onclick = () => { const n = tallyList(host, key, sid).slice(); n.splice(+b.dataset.tlDel, 1); tallySet(host, key, sid, n); saveState(); draw(); });
+    root.querySelectorAll('[data-tl-date]').forEach(inp => inp.onchange = () => { const n = tallyList(host, key, sid).slice(); if(inp.value){ n[+inp.dataset.tlDate] = inp.value; tallySet(host, key, sid, n); saveState(); } draw(); });
+  };
+  draw();
+}
+function wireTallyCells(main, cls, sem){
+  main.querySelectorAll('[data-tally-cell]').forEach(td => {
+    let timer = null, fired = false;
+    const host = () => { let h = null; (sem.groups || []).forEach(g => (g.children || []).forEach(c => { if(c.id === td.dataset.tallyHost) h = c; })); return h; };
+    const start = () => { fired = false; timer = setTimeout(() => { fired = true; const h = host(); if(h) openTallyList(cls, sem, h, td.dataset.tallyCell, td.dataset.student); }, 550); };
+    const stop = () => { clearTimeout(timer); };
+    td.addEventListener('pointerdown', start);
+    td.addEventListener('pointerup', stop);
+    td.addEventListener('pointerleave', stop);
+    td.addEventListener('pointercancel', stop);
+    td.addEventListener('contextmenu', (e) => e.preventDefault());
+    td.addEventListener('click', () => {
+      if(fired){ fired = false; return; }
+      const h = host(); if(!h) return;
+      const key = td.dataset.tallyCell, sid = td.dataset.student;
+      tallySet(h, key, sid, [...tallyList(h, key, sid), localTodayIso()]);
+      saveState(); render();
+    });
+  });
+}
+const NEXT_STUDENT_KEY = 'notenbuch-next-student';
+function nextStudentEnabled(){ try{ return localStorage.getItem(NEXT_STUDENT_KEY) === '1'; }catch(e){ return false; } }
+function setNextStudentEnabled(on){ try{ localStorage.setItem(NEXT_STUDENT_KEY, on ? '1' : '0'); }catch(e){} }
 function render(){
   ensureActiveClassVisible();
   renderClassRow();
   const cls = getActiveClass();
   document.documentElement.style.setProperty('--name-col-w', ((cls && cls.nameColWidth) || 290) + 'px');
+  applyTableScale();
   renderSemRow(cls);
   syncStickyOffsets();
   const main = document.getElementById('main');
@@ -1749,6 +1856,7 @@ function render(){
   document.getElementById('positionModeBtn').disabled = !cls;
   document.getElementById('positionModeBtn').classList.toggle('active-toggle', state.positionMode);
   document.getElementById('borderlineToggleBtn').classList.toggle('active-toggle', borderlineEnabled);
+  document.getElementById('tallyToggleBtn').classList.toggle('active-toggle', tallyVisible());
   {
     const copyBtn = document.getElementById('copyStructureBtn');
     const showCopyBtn = cls && cls.semesters.length >= 2 && getActiveSemester(cls) !== cls.semesters[0];
@@ -2380,6 +2488,64 @@ function pdfFit(pdf, text, maxW, size, font){
   while(t.length > 1 && pdf.width(t + '...', font, size) > maxW) t = t.slice(0, -1);
   return t + '...';
 }
+function fmtPts(v){ return (Math.abs(v - Math.round(v)) < 0.001 ? String(Math.round(v)) : v.toFixed(1).replace('.', ',')); }
+function notenschluesselRows(cls, maxPts){
+  const table = [...activeGradeTable(cls)].sort((a,b) => b.min - a.min);
+  const lows = table.map(r => Math.ceil(r.min * maxPts / 100 - 1e-9));
+  return table.map((r, i) => {
+    const hi = i === 0 ? maxPts : lows[i-1] - 1;
+    return {note: String(r.note), pct: r.min, lo: lows[i], hi, empty: hi < lows[i]};
+  });
+}
+function buildNotenschluesselPdf(cls, cat, maxPts){
+  const pdf = new MiniPdf(595.28, 841.89);
+  const mx = 60, R = 595.28 - mx;
+  const rows = notenschluesselRows(cls, maxPts);
+  const punkte = cls.gradingSystem === 'punkte';
+  pdf.text('Notenschlüssel', mx, 70, {size: 20, font: 'B'});
+  pdf.text(`${cat.name} · ${cls.name} · Maximalpunktzahl: ${fmtPts(maxPts)} P.`, mx, 92, {size: 11, gray: 0.3});
+  pdf.line(mx, 102, R, 102, 0.7, 0.6);
+  let y = 132;
+  const cx = [mx + 8, mx + 110, mx + 250, mx + 380];
+  ['Note', 'ab Prozent', 'Punkte von – bis'].forEach((h, i) => pdf.text(punkte && i === 0 ? 'Notenpunkte' : h, [cx[0], cx[1], cx[2]][i], y, {size: 10, font: 'B', gray: 0.3}));
+  y += 8; pdf.line(mx, y, R, y, 0.5, 0.5); y += 18;
+  rows.forEach((r, i) => {
+    if(i % 2 === 0) pdf.rect(mx, y - 14, R - mx, 22, {fill: 0.95});
+    pdf.text(r.note, cx[0], y, {size: 12, font: 'B'});
+    pdf.text(fmtPts(r.pct) + ' %', cx[1], y, {size: 12});
+    pdf.text(r.empty ? '–' : (r.lo === r.hi ? fmtPts(r.lo) : `${fmtPts(r.lo)} – ${fmtPts(r.hi)}`), cx[2], y, {size: 12});
+    y += 24;
+  });
+  pdf.text('Stand: ' + new Date().toLocaleDateString('de-DE'), mx, 841.89 - 40, {size: 8, gray: 0.5});
+  return pdf.build();
+}
+function openNotenschluessel(cls, cat){
+  const root = document.getElementById('modalRoot');
+  let maxPts = Math.round(parseFloat(cat.maxPoints)) || 100;
+  const draw = () => {
+    const rows = notenschluesselRows(cls, maxPts);
+    root.innerHTML = `
+      <div class="overlay" id="overlay"><div class="modal">
+        <div class="modal-close"><button class="ghost small" id="nsClose">Schließen</button></div>
+        <h3>Notenschlüssel</h3>
+        <div class="sub">${escapeHtml(cat.name)}</div>
+        <div class="row" style="margin-top:12px;align-items:center;gap:8px;">Maximalpunktzahl
+          <input type="number" class="mono" style="width:80px;" id="nsMax" min="1" step="1" value="${maxPts}"></div>
+        <table class="scale" style="margin-top:12px;width:100%;"><thead><tr><th style="text-align:left;">${cls.gradingSystem === 'punkte' ? 'Notenpunkte' : 'Note'}</th><th>ab %</th><th style="text-align:right;">Punkte</th></tr></thead><tbody>
+          ${rows.map(r => `<tr><td><b>${escapeHtml(r.note)}</b></td><td>${fmtPts(r.pct)} %</td><td style="text-align:right;">${r.empty ? '–' : (r.lo === r.hi ? fmtPts(r.lo) : fmtPts(r.lo) + ' – ' + fmtPts(r.hi))}</td></tr>`).join('')}
+        </tbody></table>
+        <div class="row" style="margin-top:14px;justify-content:flex-end;"><button id="nsPdf">PDF / Drucken</button></div>
+      </div></div>`;
+    document.getElementById('nsClose').onclick = () => { root.innerHTML = ''; };
+    document.getElementById('overlay').addEventListener('click', (e) => { if(e.target.id === 'overlay') root.innerHTML = ''; });
+    document.getElementById('nsMax').onchange = (e) => { const v = parseFloat(String(e.target.value).replace(',', '.')); if(v >= 1){ maxPts = Math.round(v); draw(); } };
+    document.getElementById('nsPdf').onclick = () => {
+      try{ sharePdf('Notenschluessel-' + sanitizeForFilename(cat.name) + '.pdf', buildNotenschluesselPdf(cls, cat, maxPts), 'Notenschlüssel'); }
+      catch(err){ console.error(err); showAlert('Fehler', 'PDF konnte nicht erstellt werden: ' + err.message); }
+    };
+  };
+  draw();
+}
 function buildStudentSheetPdf(cls, semesters, student, opts){
   const pdf = new MiniPdf(595.28, 841.89);
   const mx = 42.52, R = 595.28 - mx, bottom = 841.89 - 52;
@@ -2465,6 +2631,28 @@ function buildStudentSheetPdf(cls, semesters, student, opts){
       (g.children || []).forEach(ch => drawCat(ch, g, 0));
       y += 8;
     });
+    const tallyHosts = [];
+    (sem.groups || []).forEach(g => (g.children || []).forEach(c => {
+      if(c.tally && TALLY_COLS.some(t => tallyList(c, t.key, sid).length)) tallyHosts.push(c);
+    }));
+    if(tallyHosts.length){
+      ensure(60);
+      pdf.text('Hausaufgaben und Material', mx + 2, y + 11, {size: 11.5, font: 'B'});
+      pdf.line(mx, y + 16, R, y + 16, 0.8, 0.5);
+      y += 22;
+      tallyHosts.forEach(h => {
+        TALLY_COLS.forEach(t => {
+          const l = tallyList(h, t.key, sid);
+          if(!l.length) return;
+          const head = `${h.name} · ${t.title} (${t.label}): ${l.length} – `;
+          const lines = pdfWrap(pdf, head + l.map(d => formatDate(d).slice(0, 6)).join(', '), R - mx - 8, 9.5, 'R');
+          ensure(lines.length * 12 + 6);
+          lines.forEach(ln => { pdf.text(ln, mx + 4, y + 9, {size: 9.5}); y += 12; });
+          y += 3;
+        });
+      });
+      y += 6;
+    }
     y += 6;
   });
   if(opts.notes && notes.length){
@@ -2538,7 +2726,7 @@ function showToast(msg){
   toastTimer = setTimeout(() => el.classList.remove('show'), 3200);
 }
 // ---------- Schreibschutz (Halbjahr abschließen) ----------
-const LOCK_BLOCK_SELECTOR = '[data-open-entries],[data-open-group],[data-open-endnote],[data-reset-cat],[data-reset-group],[data-reset-endnote],[data-borderline-resolve],[data-endnote-borderline-resolve],[data-add-cat],[data-add-first-cat],[data-add-near-cat],[data-del-group],[data-del-student],[data-edit-cat],[data-edit-endnote-color],[data-move-cat],[data-move-group],[data-rename-group],[data-select-cat],[data-select-group],[data-select-student-col],[data-name-resize],[data-name-step],.obs-cell,#addStudentBtn,#newStudentName';
+const LOCK_BLOCK_SELECTOR = '[data-tally-cell],[data-open-entries],[data-open-group],[data-open-endnote],[data-reset-cat],[data-reset-group],[data-reset-endnote],[data-borderline-resolve],[data-endnote-borderline-resolve],[data-add-cat],[data-add-first-cat],[data-add-near-cat],[data-del-group],[data-del-student],[data-edit-cat],[data-edit-endnote-color],[data-move-cat],[data-move-group],[data-rename-group],[data-select-cat],[data-select-group],[data-select-student-col],[data-name-resize],[data-name-step],.obs-cell,#addStudentBtn,#newStudentName';
 const LOCK_ALLOW_SELECTOR = '[data-toggle-cat-collapse],[data-toggle-group-collapse],[data-toggle-incognito],[data-show-ub-notes],[data-student-sheet],#searchStudent';
 function lockedNotice(sem){
   showToast(`🔒 ${sem.name} ist abgeschlossen (Schreibschutz). Zum Bearbeiten: Verwaltung → Halbjahr wieder öffnen.`);
@@ -2839,6 +3027,7 @@ function renderGrid(main, cls, sem){
   const groups = sem.groups;
   const maxDepth = maxCatDepth(groups);
   const topRowspan = maxDepth + 1;
+  const tallyHost = tallyVisible() ? tallyHostCat(sem) : null;
 
   const studentCount = getSemesterStudents(cls, sem).length;
   const studentColSelected = state.colorizeMode && isColorizeSelected('studentcol', 'schueler');
@@ -2854,7 +3043,7 @@ function renderGrid(main, cls, sem){
       </th>`;
       return;
     }
-    const span = g.children.length === 0 ? 2 : g.children.reduce((s,c)=>s+catWidth(c), 0) + 1;
+    const span = g.children.length === 0 ? 2 : g.children.reduce((s,c)=>s+catWidth(c), 0) + 1 + (tallyHost && g.children.includes(tallyHost) ? TALLY_COLS.length : 0);
     const groupSelected = state.colorizeMode && isColorizeSelected('group', g.id);
     const groupSelectStyle = groupSelected ? 'box-shadow:inset 0 0 0 3px var(--accent);' : '';
     groupHeadRow += `<th class="grp-head" colspan="${span}" data-select-group="${g.id}" style="background:${(g.bgColor || colorForGroupName(g.name))};${groupSelectStyle}">
@@ -2944,13 +3133,14 @@ function renderGrid(main, cls, sem){
       g.children.forEach(cat => {
         const rowSet = buildCatRows(cat, g, 0, undefined);
         for(let r=0; r<maxDepth; r++){ catRowStrings[r] += rowSet[r] || ''; }
+        if(tallyHost && cat === tallyHost) catRowStrings[0] += tallyHeadHtml(cat, maxDepth);
       });
     }
   });
   const catHeaderRows = catRowStrings.map(r => `<tr>${r}</tr>`).join('');
 
   let body = '';
-  const colCount = 2 + groups.reduce((s,g)=>s+(g.collapsed ? 1 : (g.children.length === 0 ? 2 : g.children.reduce((s2,c)=>s2+catWidth(c),0)+1)),0);
+  const colCount = 2 + groups.reduce((s,g)=>s+(g.collapsed ? 1 : (g.children.length === 0 ? 2 : g.children.reduce((s2,c)=>s2+catWidth(c),0)+1+(tallyHost && g.children.includes(tallyHost) ? TALLY_COLS.length : 0))),0);
   const term = state.searchTerm.trim().toLowerCase();
   const semStudents = getSemesterStudents(cls, sem);
   let visibleStudents = term ? semStudents.filter(s=>s.name.toLowerCase().includes(term)) : semStudents;
@@ -3070,7 +3260,7 @@ function renderGrid(main, cls, sem){
         if(g.children.length === 0){
           row += `<td></td>`;
         } else {
-          g.children.forEach(cat => { row += catCell(cat, g, s, 0, undefined, rowLighten); });
+          g.children.forEach(cat => { row += catCell(cat, g, s, 0, undefined, rowLighten); if(tallyHost && cat === tallyHost) row += TALLY_COLS.map(c => tallyCellHtml(cat, c.key, s.id)).join(''); });
         }
       });
       body += row + `</tr>`;
@@ -3082,6 +3272,7 @@ function renderGrid(main, cls, sem){
 
   main.innerHTML = `<div class="grid-wrap"><table class="grid"><thead>${groupHeadRow}${catHeaderRows}</thead><tbody>${body}${addRow}</tbody></table>${state.positionMode ? `<div class="name-resize-handle" title="Namensspalte schmaler/breiter: Pfeile antippen oder Strich ziehen"><button type="button" class="nr-step" data-name-step="-1">‹</button><span class="nr-drag" data-name-resize><span class="nr-line"></span></span><button type="button" class="nr-step" data-name-step="1">›</button></div>` : ''}</div>`;
 
+  wireTallyCells(main, cls, sem);
   main.querySelectorAll('[data-select-student]').forEach(el=>{
     let pressTimer = null, longPressed = false, startX = 0, startY = 0;
     const clear = () => { clearTimeout(pressTimer); };
@@ -3672,6 +3863,7 @@ async function openCategoryMenu(cls, sem, groupId, catId){
     {label: `${typeLabel} duplizieren`, value: 'dup'},
     {label: `${typeLabel} löschen`, value: 'del'},
     ...(otherSem ? [{label: `⇄ In ${otherSem.name} verschieben / kopieren`, value: 'move'}] : []),
+    ...(!isContainerCat(ctx.cat) && ctx.cat.mode === 'points' ? [{label: '🧮 Notenschlüssel', value: 'key'}] : []),
     ...(isSchriftlichLeaf ? [{label: '📊 Statistik', value: 'stats'}] : []),
   ]);
   if(choice === null) return;
@@ -3679,6 +3871,8 @@ async function openCategoryMenu(cls, sem, groupId, catId){
     editCategory(cls, sem, groupId, catId);
   } else if(choice === 'move'){
     await moveOrCopyCategoryToOtherSemester(cls, sem, ctx);
+  } else if(choice === 'key'){
+    openNotenschluessel(cls, ctx.cat);
   } else if(choice === 'stats'){
     openKlausurStatistik(cls, sem, groupId, catId);
   } else if(choice === 'dup'){
@@ -3874,10 +4068,12 @@ function cycleObservation(cls, ctx, el){
   obsRenderTimer = setTimeout(renderKeepScroll, 800);
 }
 let lastEntryGroup = null;
+let lastEntryCtx = null;
 function openEntriesModal(cls, sem, groupId, catId, studentId){
   const ctx = findCategoryContext(sem, groupId, catId);
   if(!ctx) return;
   lastEntryGroup = ctx.group;
+  lastEntryCtx = {sem, groupId, catId};
   const student = cls.students.find(s=>s.id===studentId);
   if(isContainerCat(ctx.cat)){
     renderCategoryOverrideModal(cls, ctx.cat, student);
@@ -4604,6 +4800,20 @@ function gradeChipsHtml(cls, selected, hidden){
 function observationChipsHtml(selected){
   return `<div class="grade-picker">${OBSERVATION_SYMBOLS.map(sym => `<button type="button" class="grade-chip ${selected===sym?'selected':''}" data-obs-value="${sym}" style="font-size:1.2rem;">${sym}</button>`).join('')}</div>`;
 }
+function finishEntry(cls, cat, student){
+  const root = document.getElementById('modalRoot');
+  if(nextStudentEnabled() && lastEntryCtx){
+    const list = getSemesterStudents(cls, lastEntryCtx.sem);
+    const i = list.findIndex(s => s.id === student.id);
+    if(i >= 0 && i < list.length - 1){
+      render();
+      openEntriesModal(cls, lastEntryCtx.sem, lastEntryCtx.groupId, lastEntryCtx.catId, list[i+1].id);
+      return;
+    }
+    if(i === list.length - 1) showToast('Letzter Schüler erreicht');
+  }
+  root.innerHTML = ''; render();
+}
 function renderModal(cls, cat, student){
   const root = document.getElementById('modalRoot');
   const entry = cat.entries[student.id];
@@ -4641,10 +4851,15 @@ function renderModal(cls, cat, student){
         <div style="margin-top:14px;">
           <textarea id="entryNote" rows="2" placeholder="Notiz (optional)" style="width:100%;resize:vertical;">${escapeHtml(entry?.note || '')}</textarea>
         </div>
-        ${entry ? `<div class="row" style="margin-top:14px;"><button class="ghost small" id="clearEntryBtn">Eintrag löschen</button></div>` : ''}
+        <div class="row" style="margin-top:14px;align-items:center;justify-content:space-between;">
+          ${entry ? `<button class="ghost small" id="clearEntryBtn">Eintrag löschen</button>` : '<span></span>'}
+          <label style="display:flex;align-items:center;gap:8px;font-size:0.8rem;color:var(--ink-soft);cursor:pointer;">Danach nächster Schüler
+            <span class="mini-toggle"><input type="checkbox" id="nextStudentSw" ${nextStudentEnabled() ? 'checked' : ''}><span class="mini-slider"></span></span></label>
+        </div>
       </div>
     </div>
   `;
+  document.getElementById('nextStudentSw').onchange = (e) => setNextStudentEnabled(e.target.checked);
   document.getElementById('overlay').addEventListener('click', (e)=>{ if(e.target.id==='overlay'){ root.innerHTML=''; render(); } });
   document.getElementById('closeModal').onclick = () => { root.innerHTML=''; render(); };
   const currentNote = () => document.getElementById('entryNote').value;
@@ -4684,7 +4899,7 @@ function renderModal(cls, cat, student){
         const keepFp = !!(prevEntry && prevEntry.fp && !entryMark(prevEntry));
         cat.entries[student.id] = {grade: btn.dataset.chipValue, note: currentNote(), ...(keepFp ? {fp: true} : {})};
         saveState();
-        root.innerHTML = ''; render();
+        finishEntry(cls, cat, student);
       };
     });
   }
@@ -4697,7 +4912,7 @@ function renderModal(cls, cat, student){
         cat.entries[student.id] = {mark, note: currentNote()};
       }
       saveState();
-      root.innerHTML = ''; render();
+      finishEntry(cls, cat, student);
     };
   });
   root.querySelectorAll('[data-fp-btn]').forEach(btn => {
@@ -4932,6 +5147,7 @@ document.getElementById('helpBtn').onclick = async () => {
     'Unterrichtsbeobachtung – Tipp auf das Feld wechselt + → ○ → − → leer. Langer Druck öffnet Notiz und weitere Angaben.'
   );
 };
+document.getElementById('tallyToggleBtn').onclick = () => { setTallyVisible(!tallyVisible()); render(); };
 document.getElementById('borderlineToggleBtn').onclick = () => {
   borderlineEnabled = !borderlineEnabled;
   saveBorderlineToggle(borderlineEnabled);
@@ -5163,6 +5379,7 @@ document.getElementById('dataManagementBtn').onclick = async () => {
     {label: '🔒 PIN-Sperre', value: 'pinlock'},
     {label: `⏱ Sperr-Zeit (${getIdleBlurSeconds()}s)`, value: 'idletime'},
     {heading: 'System'},
+    {label: `🔠 Tabellengröße (${(TSCALES.find(t=>t.v===getTableScale())||TSCALES[1]).l})`, value: 'tscale'},
     {label: '🔄 Update prüfen', value: 'update'},
     {label: '🎲 Demomodus', value: 'demo'},
     {label: '⟲ Alles zurücksetzen', value: 'reset'},
@@ -5179,6 +5396,11 @@ document.getElementById('dataManagementBtn').onclick = async () => {
   else if(choice === 'lockhj'){ await toggleSemesterLock(cls, sem); }
   else if(choice === 'newyear'){ newSchoolYearDialog(); }
   else if(choice === 'archive'){ await openArchiveMenu(); }
+  else if(choice === 'tscale'){
+    const cur = getTableScale();
+    const pick = await showChoice('Tabellengröße', 'Schrift und Zeilenhöhe der Tabelle. Der Druck bleibt unverändert.', TSCALES.map(t => ({label: (t.v === cur ? '✓ ' : '') + t.l, value: t.v})));
+    if(pick !== null){ try{ localStorage.setItem(TSCALE_KEY, pick); }catch(e){} render(); }
+  }
   else if(choice === 'idletime'){ await setupIdleBlurTime(); }
   else if(choice === 'zeitraeume'){
     if(!cls){ await showAlert('Keine Lerngruppe', 'Bitte zuerst eine Lerngruppe auswählen.'); return; }
@@ -5302,6 +5524,7 @@ window.addEventListener('resize', syncStickyOffsets);
   await checkPinLockOnStart();
   setStatus('Wird geladen …');
   await loadState();
+  try{ if(navigator.storage && navigator.storage.persist){ navigator.storage.persisted().then(p => p || navigator.storage.persist()).catch(()=>{}); } }catch(e){}
   document.getElementById('schoolYearInput').value = state.schoolYear;
   render();
   syncStickyOffsets();
