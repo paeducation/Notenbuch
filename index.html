@@ -383,7 +383,7 @@ function colorForGroupName(name){
 }
 
 function uid(){ return Math.random().toString(36).slice(2,10); }
-const APP_VERSION_INFO = 'v22.21 · Entwickler: G. Schulte';
+const APP_VERSION_INFO = 'v22.22 · Entwickler: G. Schulte';
 function setStatus(msg, isError){
   const el = document.getElementById('status');
   const hasData = typeof state !== 'undefined' && state && state.classes && state.classes.length;
@@ -1765,6 +1765,7 @@ function applyTableScale(){ document.documentElement.style.setProperty('--tscale
 // ---------- Neuerungen nach einem Update ----------
 const WHATS_NEW_KEY = 'notenbuch-last-seen-version';
 const CHANGELOG = [
+  {v:'22.22', items:['Fehler behoben: „Zeiträume → Kopieren von Lerngruppe“ schloss das Fenster ohne Wirkung. Jetzt werden die Zeiträume der gewählten Lerngruppe übernommen und im Fenster angezeigt; mit „Speichern“ werden sie gesichert.']},
   {v:'22.21', items:['Das Symbol „zählt in die Gesamtwertung“ sitzt jetzt als kleiner Haken-Kreis oben rechts im Kopf der Kategorie (leerer gestrichelter Kreis = zählt nicht).']},
   {v:'22.20', items:['Neu: Symbol Σ im Kopf jeder mündlichen Kategorie (z. B. SoMi 1, SoMi 2). Antippen nimmt die Kategorie aus der Gesamtwertung heraus (Gesamt Mündlich und Endnote), erneutes Antippen bezieht sie wieder ein. So lässt sich z. B. eine Quartalsnote aus Schriftlich und SoMi 2 anzeigen. Die Endnote-Spalte zeigt dann „Auswahl ⚠“.']},
   {v:'22.19', items:['Werkzeugleiste neu geordnet: Ansicht (Notenschema, Strichlisten, Grenzfälle) | Bearbeiten (Position, Färben, Undo) | Datei (Verwaltung, Drucken). Das Speichern-Symbol ist entfallen (Backup: Verwaltung), „Rückgängig“ heißt jetzt „Undo“.', 'Das Fragezeichen („Begriffe erklärt“) steht jetzt in der Verwaltung unter „Über die App“.', 'Der Export (Excel, externe Tabelle) liegt wieder nur in der Verwaltung; „Drucken“ enthält Drucken und Formulare.']},
@@ -1976,7 +1977,8 @@ function findSomiCategoriesForClass(cls){
     q4: findCategoryByName(muendlich2, 'somi 2'),
   };
 }
-async function openQuartaleModal(cls){
+async function openQuartaleModal(cls, pending){
+  pending = pending || {};
   const root = document.getElementById('modalRoot');
   const cats = findSomiCategoriesForClass(cls);
   const otherClasses = state.classes.filter(c => c.id !== cls.id && !c.archived);
@@ -1998,9 +2000,9 @@ async function openQuartaleModal(cls){
             <div>
               <div class="form-title">${escapeHtml(r.label)}${!r.cat ? ' (nicht verfügbar)' : ''}</div>
               <div class="row" style="gap:8px;">
-                <input type="date" id="start-${r.key}" value="${r.cat?.dateStart || ''}" ${!r.cat?'disabled':''} style="flex:1;">
+                <input type="date" id="start-${r.key}" value="${(pending[r.key] && pending[r.key].start) || r.cat?.dateStart || ''}" ${!r.cat?'disabled':''} style="flex:1;">
                 <span>–</span>
-                <input type="date" id="end-${r.key}" value="${r.cat?.dateEnd || ''}" ${!r.cat?'disabled':''} style="flex:1;">
+                <input type="date" id="end-${r.key}" value="${(pending[r.key] && pending[r.key].end) || r.cat?.dateEnd || ''}" ${!r.cat?'disabled':''} style="flex:1;">
               </div>
             </div>
           `).join('')}
@@ -2017,17 +2019,23 @@ async function openQuartaleModal(cls){
   const copyBtn = document.getElementById('copyFromClassBtn');
   if(copyBtn){
     copyBtn.onclick = async () => {
-      const chosen = await showChoice('Kopieren von Lerngruppe', 'Quartale von welcher Lerngruppe übernehmen?', otherClasses.map(c => ({label: c.name, value: c})));
-      if(chosen === null) return;
-      const srcCats = findSomiCategoriesForClass(chosen);
+      // Der Auswahldialog nutzt dasselbe Fenster-Element: aktuelle Eingaben merken, danach das Fenster neu aufbauen
+      const draft = {};
       ['q1','q2','q3','q4'].forEach(k => {
-        const src = srcCats[k];
-        const startInput = document.getElementById('start-'+k);
-        const endInput = document.getElementById('end-'+k);
-        if(src && src.dateStart && src.dateEnd && startInput && !startInput.disabled){
-          startInput.value = src.dateStart; endInput.value = src.dateEnd;
-        }
+        const si = document.getElementById('start-'+k), ei = document.getElementById('end-'+k);
+        if(si && ei && !si.disabled) draft[k] = {start: si.value, end: ei.value};
       });
+      const chosen = await showChoice('Kopieren von Lerngruppe', 'Quartale von welcher Lerngruppe übernehmen?', otherClasses.map(c => ({label: c.name, value: c})));
+      if(chosen !== null){
+        const srcCats = findSomiCategoriesForClass(chosen);
+        let n = 0;
+        ['q1','q2','q3','q4'].forEach(k => {
+          const src = srcCats[k];
+          if(src && src.dateStart && src.dateEnd && draft[k]){ draft[k] = {start: src.dateStart, end: src.dateEnd}; n++; }
+        });
+        if(!n) showToast('In ' + chosen.name + ' sind keine Zeiträume eingetragen');
+      }
+      openQuartaleModal(cls, draft);
     };
   }
   document.getElementById('quartaleSave').onclick = () => {
