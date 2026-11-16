@@ -350,6 +350,33 @@
 const STORAGE_KEY = 'classes';
 let state = { classes: [], activeClassId: null, scaleOpen: false, searchTerm: '', compareView: false, positionMode: false, selectedStudentId: null, incognito: false, colorizeMode: false, colorizeSelection: [] };
 let pendingCsvStufe = 'SII';
+let pendingCsvTemplateId = '';
+// ---------- Vorlagen für neue Lerngruppen ----------
+const TEMPLATES_KEY = 'notenbuch-templates';
+function getTemplates(){ try{ const t = JSON.parse(localStorage.getItem(TEMPLATES_KEY) || '[]'); return Array.isArray(t) ? t : []; }catch(e){ return []; } }
+function setTemplates(list){ try{ localStorage.setItem(TEMPLATES_KEY, JSON.stringify(list)); }catch(e){} }
+function stripCatDates(c){ delete c.date; delete c.dateStart; delete c.dateEnd; delete c.excluded; delete c.tally; (c.children || []).forEach(stripCatDates); }
+function templateFromClass(cls, name){
+  const sems = cls.semesters.slice(0, 2).map(sem => {
+    const groups = cloneGroupsStructure(sem.groups);
+    groups.forEach(g => (g.children || []).forEach(stripCatDates));
+    return groups;
+  });
+  return {id: uid(), name, stufe: cls.stufe || 'SII', gradingSystem: cls.gradingSystem || 'noten',
+    gradeTableNoten: (cls.gradeTableNoten || []).map(r => ({...r})), gradeTablePunkte: (cls.gradeTablePunkte || []).map(r => ({...r})), sems};
+}
+function groupsForNewClass(stufe, templateId, idx){
+  const tpl = templateId ? getTemplates().find(t => t.id === templateId) : null;
+  if(tpl && tpl.sems && tpl.sems[idx]) return cloneGroupsStructure(tpl.sems[idx]);
+  return defaultGroups(stufe);
+}
+function applyTemplateMeta(cls, templateId){
+  const tpl = templateId ? getTemplates().find(t => t.id === templateId) : null;
+  if(!tpl) return;
+  cls.gradingSystem = tpl.gradingSystem || cls.gradingSystem;
+  if(tpl.gradeTableNoten && tpl.gradeTableNoten.length) cls.gradeTableNoten = tpl.gradeTableNoten.map(r => ({...r}));
+  if(tpl.gradeTablePunkte && tpl.gradeTablePunkte.length) cls.gradeTablePunkte = tpl.gradeTablePunkte.map(r => ({...r}));
+}
 let pendingCsvMeta = null;
 const SL_KUERZEL_KEY = 'notenbuch-sl-kuerzel';
 function getStoredKuerzel(){
@@ -383,7 +410,7 @@ function colorForGroupName(name){
 }
 
 function uid(){ return Math.random().toString(36).slice(2,10); }
-const APP_VERSION_INFO = 'v22.22 · Entwickler: G. Schulte';
+const APP_VERSION_INFO = 'v22.23 · Entwickler: G. Schulte';
 function setStatus(msg, isError){
   const el = document.getElementById('status');
   const hasData = typeof state !== 'undefined' && state && state.classes && state.classes.length;
@@ -1002,7 +1029,7 @@ function exportBackup(){
     const pw = await showPrompt('Backup erstellen', 'Passwort eingeben für verschlüsseltes Backup. Optional frei lassen (NICHT empfohlen!!!)', '', {inputType:'password', confirmLabel:'Backup erstellen'});
     if(pw === null) return;
     try{
-      const data = JSON.stringify({classes: state.classes, exportedAt: new Date().toISOString()}, null, 2);
+      const data = JSON.stringify({classes: state.classes, templates: getTemplates(), exportedAt: new Date().toISOString()}, null, 2);
       const now = new Date();
       const stamp = now.toISOString().slice(0,10) + '_' + String(now.getHours()).padStart(2,'0') + '-' + String(now.getMinutes()).padStart(2,'0');
       if(pw && pw.trim()){
@@ -1102,6 +1129,7 @@ function importBackup(file){
       state.classes = mode === 'structure' ? stripClassesToStructure(parsed.classes) : parsed.classes;
       state.classes.forEach(migrateClass);
       state.activeClassId = state.classes.length ? state.classes[0].id : null;
+      if(Array.isArray(parsed.templates) && parsed.templates.length) setTemplates(parsed.templates);
       saveState(); render();
       setStatus((mode==='structure' ? 'Struktur importiert' : 'Backup importiert') + ' · ' + new Date().toLocaleTimeString('de-DE'));
     }catch(e){ await showAlert('Import fehlgeschlagen', 'Diese Datei konnte nicht gelesen werden. Ist es eine Notenbuch-Backup-Datei?'); }
@@ -1154,12 +1182,13 @@ async function importCSV(file){
   if(!ok) return;
 
   if(isNewClass){
-    const sem1 = {id: uid(), name: '1. HJ', groups: defaultGroups(pendingCsvStufe), studentIds: [], endnoteColor: '#F2F2F2'};
-    const sem2 = {id: uid(), name: '2. HJ', groups: defaultGroups(pendingCsvStufe), studentIds: [], endnoteColor: '#F2F2F2'};
+    const sem1 = {id: uid(), name: '1. HJ', groups: groupsForNewClass(pendingCsvStufe, pendingCsvTemplateId, 0), studentIds: [], endnoteColor: '#F2F2F2'};
+    const sem2 = {id: uid(), name: '2. HJ', groups: groupsForNewClass(pendingCsvStufe, pendingCsvTemplateId, 1), studentIds: [], endnoteColor: '#F2F2F2'};
     targetCls = {id: uid(), name: klasseName, students: [], semesters: [sem1, sem2], activeSemesterId: sem1.id,
       gradingSystem: 'noten', gradeTableNoten: NOTEN_TABLE.map(r=>({...r})), gradeTablePunkte: PUNKTE_TABLE.map(r=>({...r}))};
     if(meta){ targetCls.slForm = meta.name ? {klasse: meta.klasse, fach: meta.fach, kuerzel: meta.kuerzel} : {klasse: klasseName, fach: '', kuerzel: meta.kuerzel}; }
     targetCls.stufe = pendingCsvStufe;
+    applyTemplateMeta(targetCls, pendingCsvTemplateId);
     state.classes.push(targetCls);
   }
 
@@ -1554,6 +1583,7 @@ function dateRangeDotHtml(cat){
 function renderAddLerngruppeModal(){
   const root = document.getElementById('modalRoot');
   let stufe = 'SII';
+  let templateId = '';
   root.innerHTML = `
     <div class="overlay" id="overlay">
       <div class="modal">
@@ -1571,6 +1601,8 @@ function renderAddLerngruppeModal(){
             <button class="ghost small" id="stufeSIBtn" style="flex:1;">Sek I</button>
             <button class="ghost small" id="stufeSIIBtn" style="flex:1;">Sek II</button>
           </div>
+          ${getTemplates().length ? `<label style="display:flex;flex-direction:column;gap:3px;font-size:0.78rem;color:var(--ink-soft);margin-top:10px;"><span>Vorlage (Struktur, Gewichtungen, Notenschema)</span>
+            <select id="newTemplate" style="width:100%;"><option value="">Keine – Standard-Struktur</option>${getTemplates().map(t => `<option value="${t.id}">${escapeHtml(t.name)}</option>`).join('')}</select></label>` : ''}
           <div class="hint" style="margin-top:6px;" id="stufeHint">Schriftlich wird vorbelegt mit: KL1, KL2</div>
           <div class="row" style="margin-top:10px;justify-content:flex-end;">
             <button id="createLerngruppeBtn">Anlegen</button>
@@ -1609,6 +1641,14 @@ function renderAddLerngruppeModal(){
       : 'Schriftlich wird vorbelegt mit: KL1, KL2';
   };
   syncStufeButtons();
+  const tplSel = document.getElementById('newTemplate');
+  if(tplSel){
+    tplSel.onchange = () => {
+      templateId = tplSel.value;
+      const tpl = getTemplates().find(t => t.id === templateId);
+      if(tpl){ stufe = tpl.stufe || stufe; syncStufeButtons(); document.getElementById('stufeHint').textContent = 'Mit Vorlage "' + tpl.name + '": Struktur und Notenschema werden übernommen (ohne Schüler, Noten und Zeiträume).'; }
+    };
+  }
   document.getElementById('stufeSIBtn').onclick = () => { stufe = 'SI'; syncStufeButtons(); };
   document.getElementById('stufeSIIBtn').onclick = () => { stufe = 'SII'; syncStufeButtons(); };
   document.getElementById('overlay').addEventListener('click', (e) => { if(e.target.id==='overlay') root.innerHTML=''; });
@@ -1617,12 +1657,13 @@ function renderAddLerngruppeModal(){
   const doCreate = () => {
     const name = composedName();
     if(!name){ klasseInput.focus(); return; }
-    const sem1 = {id: uid(), name: '1. HJ', groups: defaultGroups(stufe), studentIds: [], endnoteColor: '#F2F2F2'};
-    const sem2 = {id: uid(), name: '2. HJ', groups: defaultGroups(stufe), studentIds: [], endnoteColor: '#F2F2F2'};
+    const sem1 = {id: uid(), name: '1. HJ', groups: groupsForNewClass(stufe, templateId, 0), studentIds: [], endnoteColor: '#F2F2F2'};
+    const sem2 = {id: uid(), name: '2. HJ', groups: groupsForNewClass(stufe, templateId, 1), studentIds: [], endnoteColor: '#F2F2F2'};
     const cls = {id: uid(), name, students: [], semesters: [sem1, sem2], activeSemesterId: sem1.id,
       gradingSystem: 'noten', gradeTableNoten: NOTEN_TABLE.map(r=>({...r})), gradeTablePunkte: PUNKTE_TABLE.map(r=>({...r})),
       stufe, slForm: {klasse: klasseInput.value.trim(), fach: fachInput.value.trim(), kuerzel: kuerzelInput.value.trim()}};
     storeKuerzel(kuerzelInput.value.trim());
+    applyTemplateMeta(cls, templateId);
     state.classes.push(cls); state.activeClassId = cls.id;
     saveState();
     root.innerHTML = '';
@@ -1633,6 +1674,7 @@ function renderAddLerngruppeModal(){
   document.getElementById('csvFromAddModalBtn').onclick = () => {
     root.innerHTML = '';
     pendingCsvStufe = stufe;
+    pendingCsvTemplateId = templateId;
     const csvName = composedName();
     const csvKuerzel = kuerzelInput.value.trim();
     storeKuerzel(csvKuerzel);
@@ -1765,6 +1807,7 @@ function applyTableScale(){ document.documentElement.style.setProperty('--tscale
 // ---------- Neuerungen nach einem Update ----------
 const WHATS_NEW_KEY = 'notenbuch-last-seen-version';
 const CHANGELOG = [
+  {v:'22.23', items:['Neu: Vorlagen für neue Lerngruppen. Verwaltung → „Aktuelle Lerngruppe als Vorlage sichern“ speichert Kategorien, Gewichtungen und Notenschema (ohne Schüler, Noten und Zeiträume). Beim Anlegen einer Lerngruppe (auch per CSV) wählst du die Vorlage unter „Vorlage“. Vorlagen sind im Backup enthalten.']},
   {v:'22.22', items:['Fehler behoben: „Zeiträume → Kopieren von Lerngruppe“ schloss das Fenster ohne Wirkung. Jetzt werden die Zeiträume der gewählten Lerngruppe übernommen und im Fenster angezeigt; mit „Speichern“ werden sie gesichert.']},
   {v:'22.21', items:['Das Symbol „zählt in die Gesamtwertung“ sitzt jetzt als kleiner Haken-Kreis oben rechts im Kopf der Kategorie (leerer gestrichelter Kreis = zählt nicht).']},
   {v:'22.20', items:['Neu: Symbol Σ im Kopf jeder mündlichen Kategorie (z. B. SoMi 1, SoMi 2). Antippen nimmt die Kategorie aus der Gesamtwertung heraus (Gesamt Mündlich und Endnote), erneutes Antippen bezieht sie wieder ein. So lässt sich z. B. eine Quartalsnote aus Schriftlich und SoMi 2 anzeigen. Die Endnote-Spalte zeigt dann „Auswahl ⚠“.']},
@@ -5444,6 +5487,9 @@ document.getElementById('dataManagementBtn').onclick = async () => {
     ...(cls && cls.semesters.length >= 2 ? [{label: '⇄ Halbjahre tauschen', value: 'swaphj'}] : []),
     {label: '📅 Neues Schuljahr', value: 'newyear'},
     {label: `🗄 Archiv${archivedCount ? ' (' + archivedCount + ')' : ''}`, value: 'archive'},
+    {heading: 'Vorlagen für neue Lerngruppen'},
+    {label: '📑 Aktuelle Lerngruppe als Vorlage sichern', value: 'tplsave'},
+    {label: '🗑 Vorlage löschen', value: 'tpldel'},
     {heading: 'Sicherheit'},
     {label: '🔒 PIN-Sperre', value: 'pinlock'},
     {label: `⏱ Sperr-Zeit (${getIdleBlurSeconds()}s)`, value: 'idletime'},
@@ -5461,6 +5507,23 @@ document.getElementById('dataManagementBtn').onclick = async () => {
   if(choice === null) return;
   if(choice === 'update'){ await checkForAppUpdate(); }
   else if(choice === 'whatsnew'){ await showAlert('Neuerungen', whatsNewText(null)); }
+  else if(choice === 'tplsave'){
+    if(!cls){ await showAlert('Keine Lerngruppe', 'Bitte zuerst eine Lerngruppe auswählen, deren Struktur als Vorlage dienen soll.'); return; }
+    const name = await showPrompt('Vorlage sichern', 'Name der Vorlage (übernommen werden Kategorien, Gewichtungen, Notenschema und Stufe; keine Schüler, Noten oder Zeiträume):', (cls.slForm && cls.slForm.fach) ? cls.slForm.fach : cls.name, {confirmLabel: 'Sichern'});
+    if(name === null || !name.trim()) return;
+    const list = getTemplates().filter(t => t.name.trim().toLowerCase() !== name.trim().toLowerCase());
+    list.push(templateFromClass(cls, name.trim()));
+    setTemplates(list);
+    showToast('Vorlage "' + name.trim() + '" gesichert');
+  }
+  else if(choice === 'tpldel'){
+    const list = getTemplates();
+    if(!list.length){ await showAlert('Keine Vorlagen', 'Es sind noch keine Vorlagen gesichert.'); return; }
+    const id = await showChoice('Vorlage löschen', 'Welche Vorlage soll gelöscht werden? Bereits angelegte Lerngruppen bleiben unverändert.', list.map(t => ({label: t.name, value: t.id, danger: true})));
+    if(id === null) return;
+    setTemplates(list.filter(t => t.id !== id));
+    showToast('Vorlage gelöscht');
+  }
   else if(choice === 'help'){ await showHelpTerms(); }
   else if(choice === 'notennachweis'){
     if(!cls){ await showAlert('Keine Lerngruppe', 'Bitte zuerst eine Lerngruppe auswählen.'); return; }
