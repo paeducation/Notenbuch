@@ -106,6 +106,9 @@
     font-weight:600;font-size:0.82rem;cursor:pointer;}
   .sem-tab.active{background:var(--surface);color:var(--ink);box-shadow:var(--shadow);}
 
+  .colhead.has-count-toggle{position:relative;}
+  .count-toggle{position:absolute;top:2px;right:2px;width:18px;height:18px;padding:0;border-radius:50%;border:1.5px solid #2e7d4f;background:#2e7d4f;color:#fff;font-size:0.72rem;font-weight:800;line-height:1;display:inline-flex;align-items:center;justify-content:center;cursor:pointer;}
+  .count-toggle.off{background:transparent;border:1.5px dashed var(--ink-soft);color:var(--ink-soft);}
   .tb-sep{flex:none;width:1px;height:22px;background:var(--line);margin:0 2px;}
   .toolbar{display:flex;gap:6px;align-items:center;overflow-x:auto;padding:10px 16px;
     background:var(--surface);border-bottom:1px solid var(--line);position:sticky;top:192px;z-index:29;}
@@ -380,7 +383,7 @@ function colorForGroupName(name){
 }
 
 function uid(){ return Math.random().toString(36).slice(2,10); }
-const APP_VERSION_INFO = 'v22.19 · Entwickler: G. Schulte';
+const APP_VERSION_INFO = 'v22.21 · Entwickler: G. Schulte';
 function setStatus(msg, isError){
   const el = document.getElementById('status');
   const hasData = typeof state !== 'undefined' && state && state.classes && state.classes.length;
@@ -601,6 +604,7 @@ function categoryAvgAutoForStudent(cls, cat, studentId){
   if(cat.children && cat.children.length){
     let weighted = 0, weightSum = 0;
     cat.children.forEach(child => {
+      if(child.excluded) return;
       const a = categoryAvgForStudent(cls, child, studentId);
       if(a !== null){ weighted += a * (child.weight||0); weightSum += (child.weight||0); }
     });
@@ -1761,6 +1765,8 @@ function applyTableScale(){ document.documentElement.style.setProperty('--tscale
 // ---------- Neuerungen nach einem Update ----------
 const WHATS_NEW_KEY = 'notenbuch-last-seen-version';
 const CHANGELOG = [
+  {v:'22.21', items:['Das Symbol „zählt in die Gesamtwertung“ sitzt jetzt als kleiner Haken-Kreis oben rechts im Kopf der Kategorie (leerer gestrichelter Kreis = zählt nicht).']},
+  {v:'22.20', items:['Neu: Symbol Σ im Kopf jeder mündlichen Kategorie (z. B. SoMi 1, SoMi 2). Antippen nimmt die Kategorie aus der Gesamtwertung heraus (Gesamt Mündlich und Endnote), erneutes Antippen bezieht sie wieder ein. So lässt sich z. B. eine Quartalsnote aus Schriftlich und SoMi 2 anzeigen. Die Endnote-Spalte zeigt dann „Auswahl ⚠“.']},
   {v:'22.19', items:['Werkzeugleiste neu geordnet: Ansicht (Notenschema, Strichlisten, Grenzfälle) | Bearbeiten (Position, Färben, Undo) | Datei (Verwaltung, Drucken). Das Speichern-Symbol ist entfallen (Backup: Verwaltung), „Rückgängig“ heißt jetzt „Undo“.', 'Das Fragezeichen („Begriffe erklärt“) steht jetzt in der Verwaltung unter „Über die App“.', 'Der Export (Excel, externe Tabelle) liegt wieder nur in der Verwaltung; „Drucken“ enthält Drucken und Formulare.']},
   {v:'22.18', items:['Verwaltung: neu gegliedert in Sichern, Halbjahr und Schuljahr, Sicherheit, Anzeige, Über die App und Zurücksetzen („Alles zurücksetzen“ steht abgesetzt und in Rot).', 'Spalte bearbeiten: Name, Eingabeart und Maximalpunktzahl stehen jetzt oben, Gewichtung, Datum, Farbe und Darstellung darunter.']},
   {v:'22.17', items:['Menü „Drucken / Export“: Drucken, Beratungsblatt, SL-Formular und Excel-Export stehen jetzt gemeinsam in einem Menü (Excel-Export ist aus der Verwaltung hierher umgezogen).', 'Spaltenmenü: Löschen steht jetzt ganz unten, in Rot.']},
@@ -2769,7 +2775,7 @@ function showToast(msg){
   toastTimer = setTimeout(() => el.classList.remove('show'), 3200);
 }
 // ---------- Schreibschutz (Halbjahr abschließen) ----------
-const LOCK_BLOCK_SELECTOR = '[data-tally-cell],[data-open-entries],[data-open-group],[data-open-endnote],[data-reset-cat],[data-reset-group],[data-reset-endnote],[data-borderline-resolve],[data-endnote-borderline-resolve],[data-add-cat],[data-add-first-cat],[data-add-near-cat],[data-del-group],[data-del-student],[data-edit-cat],[data-edit-endnote-color],[data-move-cat],[data-move-group],[data-rename-group],[data-select-cat],[data-select-group],[data-select-student-col],[data-name-resize],[data-name-step],.obs-cell,#addStudentBtn,#newStudentName';
+const LOCK_BLOCK_SELECTOR = '[data-toggle-count],[data-tally-cell],[data-open-entries],[data-open-group],[data-open-endnote],[data-reset-cat],[data-reset-group],[data-reset-endnote],[data-borderline-resolve],[data-endnote-borderline-resolve],[data-add-cat],[data-add-first-cat],[data-add-near-cat],[data-del-group],[data-del-student],[data-edit-cat],[data-edit-endnote-color],[data-move-cat],[data-move-group],[data-rename-group],[data-select-cat],[data-select-group],[data-select-student-col],[data-name-resize],[data-name-step],.obs-cell,#addStudentBtn,#newStudentName';
 const LOCK_ALLOW_SELECTOR = '[data-toggle-cat-collapse],[data-toggle-group-collapse],[data-toggle-incognito],[data-show-ub-notes],[data-student-sheet],#searchStudent';
 function lockedNotice(sem){
   showToast(`🔒 ${sem.name} ist abgeschlossen (Schreibschutz). Zum Bearbeiten: Verwaltung → Halbjahr wieder öffnen.`);
@@ -3075,7 +3081,7 @@ function renderGrid(main, cls, sem){
   const studentCount = getSemesterStudents(cls, sem).length;
   const studentColSelected = state.colorizeMode && isColorizeSelected('studentcol', 'schueler');
   const studentColSelectStyle = studentColSelected ? 'box-shadow:inset 0 0 0 3px var(--accent);' : '';
-  let groupHeadRow = `<tr><th class="name-col" rowspan="${topRowspan}" style="${sem.studentColColor?`background:${sem.studentColColor};`:''}${studentColSelectStyle}"><div class="colhead-wrap" style="min-height:100px;"><input type="text" id="searchStudent" placeholder="Suchen…" value="${escapeHtml(state.searchTerm||'')}" style="position:absolute;top:4px;left:50%;transform:translateX(-50%);width:90%;max-width:120px;font-size:0.72rem;padding:3px 6px;z-index:2;"><div data-select-student-col style="min-height:100px;display:flex;flex-direction:column;justify-content:center;align-items:center;gap:2px;cursor:${state.colorizeMode?'pointer':'default'};">Schüler (${studentCount})${studentColSelected ? ' ✓' : ''}${state.selectedStudentId ? `<button class="colx dark ${state.incognito?'active-toggle':''}" data-toggle-incognito title="${state.incognito?'Inkognito ausschalten':'Inkognito einschalten (nur markierten Schüler zeigen)'}" style="display:inline-flex;align-items:center;justify-content:center;padding:0 2px;margin-top:6px;width:auto;height:auto;">${personIconSvg()}</button>` : ''}</div></div></th><th class="endnote-col" rowspan="${topRowspan}" data-edit-endnote-color style="cursor:pointer;${sem.endnoteColor?`background:${sem.endnoteColor};`:''}"><div class="endnote-head">Endnote<br><span class="weight">${sem.name}</span></div></th>`;
+  let groupHeadRow = `<tr><th class="name-col" rowspan="${topRowspan}" style="${sem.studentColColor?`background:${sem.studentColColor};`:''}${studentColSelectStyle}"><div class="colhead-wrap" style="min-height:100px;"><input type="text" id="searchStudent" placeholder="Suchen…" value="${escapeHtml(state.searchTerm||'')}" style="position:absolute;top:4px;left:50%;transform:translateX(-50%);width:90%;max-width:120px;font-size:0.72rem;padding:3px 6px;z-index:2;"><div data-select-student-col style="min-height:100px;display:flex;flex-direction:column;justify-content:center;align-items:center;gap:2px;cursor:${state.colorizeMode?'pointer':'default'};">Schüler (${studentCount})${studentColSelected ? ' ✓' : ''}${state.selectedStudentId ? `<button class="colx dark ${state.incognito?'active-toggle':''}" data-toggle-incognito title="${state.incognito?'Inkognito ausschalten':'Inkognito einschalten (nur markierten Schüler zeigen)'}" style="display:inline-flex;align-items:center;justify-content:center;padding:0 2px;margin-top:6px;width:auto;height:auto;">${personIconSvg()}</button>` : ''}</div></div></th><th class="endnote-col" rowspan="${topRowspan}" data-edit-endnote-color style="cursor:pointer;${sem.endnoteColor?`background:${sem.endnoteColor};`:''}"><div class="endnote-head">Endnote<br><span class="weight">${sem.name}</span>${sem.groups.some(gr => (gr.children || []).some(c => c.excluded)) ? '<span class="weight" title="Nicht alle Kategorien zählen in die Gesamtwertung (Σ in den Spaltenköpfen)">Auswahl ⚠</span>' : ''}</div></th>`;
   groups.forEach(g => {
     if(g.collapsed){
       groupHeadRow += `<th class="grp-head collapsed-col" rowspan="${topRowspan}" style="background:${(g.bgColor || colorForGroupName(g.name))};">
@@ -3123,10 +3129,13 @@ function renderGrid(main, cls, sem){
         </div>
       </th>`;
     }
+    const countBtn = (depth === 0 && (g.name || '').trim().toLowerCase() !== 'schriftlich')
+      ? `<button class="count-toggle${cat.excluded ? ' off' : ''}" data-toggle-count="${cat.id}" data-group="${g.id}" title="${cat.excluded ? 'Zählt nicht in die Gesamtwertung (antippen: wieder einbeziehen)' : 'Zählt in die Gesamtwertung (antippen: ausnehmen)'}">${cat.excluded ? '' : '✓'}</button>` : '';
     return `<th class="cat-head" style="${bgStyle}${selectStyle}" ${rowspan>1?`rowspan="${rowspan}"`:''} colspan="${colspan}">
-      <div class="colhead" data-select-cat="${cat.id}" data-group="${g.id}">
+      <div class="colhead${countBtn ? ' has-count-toggle' : ''}" data-select-cat="${cat.id}" data-group="${g.id}">
+        ${countBtn}
         ${nameRow}
-        <span class="weight">${cat.weight}%${cat.manualWeight ? lockIconSvg() : ''}${isContainerCat(cat) ? '' : ' · '+(cat.mode==='points'?'Punkte':'Note')}</span>
+        <span class="weight">${cat.excluded ? 'zählt nicht' : cat.weight + '%'}${cat.manualWeight && !cat.excluded ? lockIconSvg() : ''}${isContainerCat(cat) ? '' : ' · '+(cat.mode==='points'?'Punkte':'Note')}</span>
         ${(cat.date && !isContainerCat(cat)) ? `<span class="weight">${cat.mode === 'observation' ? formatDateShort(cat.date) : formatDate(cat.date)}</span>` : ''}
         <div class="row" style="gap:2px;">
           ${state.positionMode ? `<button class="colx dark" data-move-cat="${cat.id}" data-group="${g.id}" data-dir="-1">‹</button>` : ''}
@@ -3418,6 +3427,16 @@ function renderGrid(main, cls, sem){
       if(!g) return;
       g.collapsed = !g.collapsed;
       saveState(); render();
+    };
+  });
+  main.querySelectorAll('[data-toggle-count]').forEach(el=>{
+    el.onclick = (e) => {
+      e.stopPropagation();
+      const ctx = findCategoryContext(sem, el.dataset.group, el.dataset.toggleCount);
+      if(!ctx) return;
+      if(ctx.cat.excluded) delete ctx.cat.excluded; else ctx.cat.excluded = true;
+      saveState(); render();
+      showToast(ctx.cat.excluded ? ctx.cat.name + ' zählt nicht mehr in die Gesamtwertung' : ctx.cat.name + ' zählt wieder in die Gesamtwertung');
     };
   });
   main.querySelectorAll('[data-toggle-cat-collapse]').forEach(el=>{
