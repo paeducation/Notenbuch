@@ -157,6 +157,13 @@
     border-radius:50%;cursor:pointer;font-weight:700;line-height:1;}
   .colx.dark{background:transparent;color:var(--ink-soft);width:auto;height:auto;border-radius:4px;padding:0 4px;}
   .colx.dark:hover{color:var(--danger);}
+  .flag-btn{font-size:0.95rem !important;}
+  .flag-btn.orange{color:#e8a23a !important;}
+  .flag-btn.red{color:#c63d3d !important;}
+  .flag-row{display:flex;align-items:center;gap:8px;padding:7px 0;border-bottom:1px solid var(--line);}
+  .flag-row.done .ftxt{text-decoration:line-through;color:var(--ink-soft);}
+  .perm-tag{display:inline-block;font-size:0.62rem;font-weight:700;letter-spacing:.03em;line-height:1;padding:3px 5px;border-radius:5px;background:#2b6cb0;color:#fff;margin-left:4px;cursor:pointer;flex-shrink:0;}
+  .flag-chip{border:1px solid var(--line);background:transparent;color:var(--ink);font-family:inherit;border-radius:14px;padding:4px 10px;font-size:0.8rem;cursor:pointer;margin:3px 4px 0 0;}
   .cell-stack{display:flex;flex-direction:column;align-items:center;gap:1px;cursor:pointer;padding:calc(3px * var(--tscale,1)) 2px;border-radius:8px;position:relative;}
   .cell-stack:hover{background:var(--surface-soft);}
   .reset-arrow{position:absolute;top:-6px;right:-6px;width:19px;height:19px;border-radius:50%;
@@ -365,13 +372,21 @@ function templateFromClass(cls, name){
   return {id: uid(), name, stufe: cls.stufe || 'SII', gradingSystem: cls.gradingSystem || 'noten',
     gradeTableNoten: (cls.gradeTableNoten || []).map(r => ({...r})), gradeTablePunkte: (cls.gradeTablePunkte || []).map(r => ({...r})), sems};
 }
+function resolveTemplate(templateId){
+  if(!templateId) return null;
+  if(templateId.startsWith('cls:')){
+    const c = state.classes.find(x => x.id === templateId.slice(4));
+    return c ? templateFromClass(c, c.name) : null;
+  }
+  return getTemplates().find(t => t.id === templateId) || null;
+}
 function groupsForNewClass(stufe, templateId, idx){
-  const tpl = templateId ? getTemplates().find(t => t.id === templateId) : null;
+  const tpl = resolveTemplate(templateId);
   if(tpl && tpl.sems && tpl.sems[idx]) return cloneGroupsStructure(tpl.sems[idx]);
   return defaultGroups(stufe);
 }
 function applyTemplateMeta(cls, templateId){
-  const tpl = templateId ? getTemplates().find(t => t.id === templateId) : null;
+  const tpl = resolveTemplate(templateId);
   if(!tpl) return;
   cls.gradingSystem = tpl.gradingSystem || cls.gradingSystem;
   if(tpl.gradeTableNoten && tpl.gradeTableNoten.length) cls.gradeTableNoten = tpl.gradeTableNoten.map(r => ({...r}));
@@ -410,7 +425,7 @@ function colorForGroupName(name){
 }
 
 function uid(){ return Math.random().toString(36).slice(2,10); }
-const APP_VERSION_INFO = 'v22.23 · Entwickler: G. Schulte';
+const APP_VERSION_INFO = 'v22.36 · Entwickler: G. Schulte';
 function setStatus(msg, isError){
   const el = document.getElementById('status');
   const hasData = typeof state !== 'undefined' && state && state.classes && state.classes.length;
@@ -1539,7 +1554,7 @@ function pickColorDialog(title, currentColor){
     };
   });
 }
-function showChoice(title, message, options){ return showDialog({title, message, type:'choice', options}); }
+function showChoice(title, message, options, extra){ return showDialog({title, message, type:'choice', options, ...(extra||{})}); }
 
 function localTodayIso(){
   const d = new Date();
@@ -1601,8 +1616,11 @@ function renderAddLerngruppeModal(){
             <button class="ghost small" id="stufeSIBtn" style="flex:1;">Sek I</button>
             <button class="ghost small" id="stufeSIIBtn" style="flex:1;">Sek II</button>
           </div>
-          ${getTemplates().length ? `<label style="display:flex;flex-direction:column;gap:3px;font-size:0.78rem;color:var(--ink-soft);margin-top:10px;"><span>Vorlage (Struktur, Gewichtungen, Notenschema)</span>
-            <select id="newTemplate" style="width:100%;"><option value="">Keine – Standard-Struktur</option>${getTemplates().map(t => `<option value="${t.id}">${escapeHtml(t.name)}</option>`).join('')}</select></label>` : ''}
+          ${(getTemplates().length || state.classes.some(c => !c.archived)) ? `<label style="display:flex;flex-direction:column;gap:3px;font-size:0.78rem;color:var(--ink-soft);margin-top:10px;"><span>Struktur übernehmen von (Kategorien, Gewichtungen, Notenschema)</span>
+            <select id="newTemplate" style="width:100%;"><option value="">Keine – Standard-Struktur</option>
+            ${getTemplates().length ? `<optgroup label="Gesicherte Vorlagen">${getTemplates().map(t => `<option value="${t.id}">${escapeHtml(t.name)}</option>`).join('')}</optgroup>` : ''}
+            ${state.classes.some(c => !c.archived) ? `<optgroup label="Bestehende Lerngruppen">${state.classes.filter(c => !c.archived).map(c => `<option value="cls:${c.id}">${escapeHtml(c.name)}</option>`).join('')}</optgroup>` : ''}
+            </select></label>` : ''}
           <div class="hint" style="margin-top:6px;" id="stufeHint">Schriftlich wird vorbelegt mit: KL1, KL2</div>
           <div class="row" style="margin-top:10px;justify-content:flex-end;">
             <button id="createLerngruppeBtn">Anlegen</button>
@@ -1645,8 +1663,8 @@ function renderAddLerngruppeModal(){
   if(tplSel){
     tplSel.onchange = () => {
       templateId = tplSel.value;
-      const tpl = getTemplates().find(t => t.id === templateId);
-      if(tpl){ stufe = tpl.stufe || stufe; syncStufeButtons(); document.getElementById('stufeHint').textContent = 'Mit Vorlage "' + tpl.name + '": Struktur und Notenschema werden übernommen (ohne Schüler, Noten und Zeiträume).'; }
+      const tpl = resolveTemplate(templateId);
+      if(tpl){ stufe = tpl.stufe || stufe; syncStufeButtons(); document.getElementById('stufeHint').textContent = 'Von "' + tpl.name + '": Struktur und Notenschema werden übernommen (ohne Schüler, Noten, Strichlisten und Zeiträume).'; }
     };
   }
   document.getElementById('stufeSIBtn').onclick = () => { stufe = 'SI'; syncStufeButtons(); };
@@ -1807,6 +1825,19 @@ function applyTableScale(){ document.documentElement.style.setProperty('--tscale
 // ---------- Neuerungen nach einem Update ----------
 const WHATS_NEW_KEY = 'notenbuch-last-seen-version';
 const CHANGELOG = [
+  {v:'22.36', items:['Vermerke-Fenster neu geordnet: oben die Vermerke, darunter die dauerhaften Hinweise (NTA, LRS, IK). Der Begriff „Dauerhaft“ heißt jetzt „Hinweise“.']},
+  {v:'22.35', items:['Neu: Dauerhafte Einträge pro Schüler: NTA (Nachteilsausgleich), LRS (Lese-Rechtschreib-Schwäche) und IK (Internationale Vorbereitungsklasse). Schüler antippen, ⚑ öffnen, Abschnitt „Dauerhaft“. Die blaue Marke steht immer am Namen, im Inkognito-Modus ist sie ausgeblendet. Im Beratungsblatt erscheinen die Einträge mit Hinweistext, in „Markierte Schüler“ als eigene Liste.']},
+  {v:'22.34', items:['Vermerke: Die Schnellauswahl „Am Elternsprechtag ansprechen“ heißt jetzt „Elterngespräch notwendig“. Bereits angelegte Vermerke behalten ihren Text.']},
+  {v:'22.33', items:['Vermerke: Das doppelte Datumsfeld oben entfällt. Das optionale Fälligkeitsdatum steht nur noch direkt unter jedem Vermerk.']},
+  {v:'22.32', items:['Vermerke: Das Fälligkeitsdatum lässt sich jetzt auch nachträglich ändern oder eintragen. Jeder Vermerk im Fenster hat sein eigenes Datumsfeld.']},
+  {v:'22.31', items:['Vermerke mit Datum: Ist das Datum erreicht oder überschritten, wird das ⚑ rot und der Vermerk als „überfällig“ bzw. „heute fällig“ gekennzeichnet. Die Übersicht „Markierte Schüler“ sortiert nach Fälligkeit. Beim Öffnen der App erscheint einmal pro Tag das Fenster „Heute fällig“ mit „Erledigt“ je Vermerk.']},
+  {v:'22.30', items:['Vermerke: Das Datumsfeld steht jetzt oben („Fällig am“) und wird nach dem Anlegen eines Vermerks geleert. „Hinzufügen“ ist blass, solange kein Text eingegeben ist, und meldet „Bitte Kurztext eingeben“.']},
+  {v:'22.29', items:['Fehler behoben: Die Texte der Schnellauswahl im Vermerke-Fenster waren auf manchen Geräten (Android) nicht lesbar.']},
+  {v:'22.28', items:['Neu: Vermerke pro Schüler. Schüler antippen, dann ⚑ neben dem Namen: Schnellauswahl (z. B. „Feststellungsprüfung nötig“, „Am Elternsprechtag ansprechen“) oder eigener Kurztext, optional mit Datum und Dringlichkeit. Offene Vermerke zeigen ein orange (normal) oder rot (dringend) gefärbtes ⚑ am Namen, erscheinen im Beratungsblatt und gesammelt unter Verwaltung → Markierte Schüler (dort mit Haken erledigen).']},
+  {v:'22.27', items:['„Was hinzufügen?“: Überschriften „Eintragsart“ und „Struktur“ trennen die Spaltentypen von der Sammelkategorie.']},
+  {v:'22.26', items:['Spalten-Bearbeiten-Menü: Der doppelte „Fertig“-Eintrag in der Liste entfällt; der untere Knopf heißt jetzt „Fertig“ statt „Abbrechen“.']},
+  {v:'22.25', items:['Notenschlüssel (Klausur): Wenn du die Maximalpunktzahl im Fenster änderst, erscheint „Für diese Klausur übernehmen“. Damit wird der Wert in der Klausur gespeichert.']},
+  {v:'22.24', items:['Neue Lerngruppe: Im Feld „Struktur übernehmen von“ kannst du jetzt direkt eine bestehende Lerngruppe wählen, ohne vorher eine Vorlage zu sichern. Übernommen werden Kategorien, Gewichtungen und Notenschema, keine Schüler, Noten oder Zeiträume.']},
   {v:'22.23', items:['Neu: Vorlagen für neue Lerngruppen. Verwaltung → „Aktuelle Lerngruppe als Vorlage sichern“ speichert Kategorien, Gewichtungen und Notenschema (ohne Schüler, Noten und Zeiträume). Beim Anlegen einer Lerngruppe (auch per CSV) wählst du die Vorlage unter „Vorlage“. Vorlagen sind im Backup enthalten.']},
   {v:'22.22', items:['Fehler behoben: „Zeiträume → Kopieren von Lerngruppe“ schloss das Fenster ohne Wirkung. Jetzt werden die Zeiträume der gewählten Lerngruppe übernommen und im Fenster angezeigt; mit „Speichern“ werden sie gesichert.']},
   {v:'22.21', items:['Das Symbol „zählt in die Gesamtwertung“ sitzt jetzt als kleiner Haken-Kreis oben rechts im Kopf der Kategorie (leerer gestrichelter Kreis = zählt nicht).']},
@@ -2619,6 +2650,177 @@ function buildNotenschluesselPdf(cls, cat, maxPts){
   pdf.text('Stand: ' + new Date().toLocaleDateString('de-DE'), mx, 841.89 - 40, {size: 8, gray: 0.5});
   return pdf.build();
 }
+// ---------- Vermerke (Markierungen pro Schüler) ----------
+const FLAG_PRESETS = [
+  {text: 'Feststellungsprüfung nötig', level: 'red'},
+  {text: 'Elterngespräch notwendig', level: 'orange'},
+  {text: 'Nachschreiber', level: 'orange'},
+  {text: 'Förderbedarf klären', level: 'orange'},
+];
+const PERM_TAGS = [
+  {key: 'NTA', label: 'Nachteilsausgleich'},
+  {key: 'LRS', label: 'Lese-Rechtschreib-Schwäche'},
+  {key: 'IK', label: 'Internationale Vorbereitungsklasse (nimmt am Regelunterricht teil)'},
+];
+function studentPermTags(cls, sid){
+  const m = (cls.permTags && cls.permTags[sid]) || {};
+  return PERM_TAGS.filter(t => m[t.key]).map(t => ({...t, text: m[t.key].text || ''}));
+}
+function permTagsHtml(cls, sid){
+  if(state.incognito) return '';
+  const l = studentPermTags(cls, sid);
+  if(!l.length) return '';
+  return l.map(t => `<span class="perm-tag" data-student-flag="${sid}" title="${escapeHtml(t.label + (t.text ? ': ' + t.text : ''))}">${t.key}</span>`).join('');
+}
+function studentOpenFlags(cls, sid){ return ((cls.flags && cls.flags[sid]) || []).filter(f => !f.done); }
+function flagDue(f){ return !f.done && !!f.date && f.date <= localTodayIso(); }
+function flagDueLabel(f){ if(!f.date || f.done) return ''; const t = localTodayIso(); return f.date < t ? 'überfällig' : (f.date === t ? 'heute fällig' : ''); }
+function studentFlagLevel(cls, sid){
+  const l = studentOpenFlags(cls, sid);
+  return l.length ? (l.some(f => f.level === 'red' || flagDue(f)) ? 'red' : 'orange') : null;
+}
+function allOpenFlagRows(){
+  const rows = [];
+  state.classes.filter(c => !c.archived).forEach(c => {
+    (c.students || []).forEach(st => studentOpenFlags(c, st.id).forEach(f => rows.push({cls: c, st, f})));
+  });
+  return rows;
+}
+const DUE_SHOWN_KEY = 'notenbuch-due-shown';
+async function maybeShowDueFlags(){
+  const today = localTodayIso();
+  try{ if(localStorage.getItem(DUE_SHOWN_KEY) === today) return; }catch(e){}
+  if(!state.classes || !state.classes.length) return;
+  const root = document.getElementById('modalRoot');
+  if(!root || root.innerHTML.trim()) return;
+  if(!allOpenFlagRows().some(r => flagDue(r.f))) return;
+  try{ localStorage.setItem(DUE_SHOWN_KEY, today); }catch(e){}
+  const close = () => { root.innerHTML = ''; render(); };
+  const draw = () => {
+    const rows = allOpenFlagRows().filter(r => flagDue(r.f)).sort((a, b) => a.f.date.localeCompare(b.f.date) || a.st.name.localeCompare(b.st.name, 'de'));
+    if(!rows.length){ close(); return; }
+    root.innerHTML = `
+      <div class="overlay" id="overlay"><div class="modal">
+        <div class="modal-close"><button class="ghost small" id="fdClose">Später</button></div>
+        <h3>Heute fällig</h3>
+        <div class="sub">Vermerke, deren Datum erreicht oder überschritten ist</div>
+        <div style="margin-top:10px;">${rows.map((r, i) => `
+          <div class="flag-row">
+            <span class="flag-btn red" style="font-size:1rem;">⚑</span>
+            <span style="flex:1;"><b>${escapeHtml(r.st.name)}</b> <span class="hint">${escapeHtml(r.cls.name)}</span><br>${escapeHtml(r.f.text)} <span class="hint">(${escapeHtml(formatDate(r.f.date))}${flagDueLabel(r.f) === 'überfällig' ? ', überfällig' : ''})</span></span>
+            <button class="ghost small" data-fdd="${i}">Erledigt</button>
+          </div>`).join('')}</div>
+      </div></div>`;
+    document.getElementById('fdClose').onclick = close;
+    document.getElementById('overlay').addEventListener('click', (e) => { if(e.target.id === 'overlay') close(); });
+    root.querySelectorAll('[data-fdd]').forEach(b => b.onclick = () => { rows[+b.dataset.fdd].f.done = true; saveState(); draw(); });
+  };
+  draw();
+}
+function flagBtnHtml(cls, sid, selected){
+  const lv = studentFlagLevel(cls, sid);
+  if(!lv && !selected) return '';
+  const tip = lv ? studentOpenFlags(cls, sid).map(f => f.text).join(' · ') : 'Vermerk hinzufügen';
+  return `<button class="colx dark flag-btn ${lv || ''}" data-student-flag="${sid}" title="${escapeHtml(tip)}" style="flex-shrink:0;">⚑</button>`;
+}
+function openStudentFlagsDialog(cls, sid){
+  const root = document.getElementById('modalRoot');
+  const st = cls.students.find(x => x.id === sid);
+  if(!st) return;
+  let level = 'orange', text = '';
+  const list = () => (cls.flags && cls.flags[sid]) || [];
+  const add = (t, lv) => {
+    t = (t || '').trim(); if(!t) return;
+    if(!cls.flags) cls.flags = {};
+    if(!cls.flags[sid]) cls.flags[sid] = [];
+    cls.flags[sid].push({id: uid(), text: t, level: lv, date: '', done: false});
+    text = ''; saveState(); draw();
+  };
+  const close = () => { root.innerHTML = ''; render(); };
+  const draw = () => {
+    root.innerHTML = `
+      <div class="overlay" id="overlay"><div class="modal">
+        <div class="modal-close"><button class="ghost small" id="flClose">Fertig</button></div>
+        <h3>Vermerke und Hinweise</h3>
+        <div class="sub">${escapeHtml(st.name)} · ${escapeHtml(cls.name)}</div>
+        <div style="margin-top:10px;">${list().length ? list().map(f => `
+          <div class="flag-row${f.done ? ' done' : ''}">
+            <input type="checkbox" data-fdone="${f.id}" ${f.done ? 'checked' : ''} title="Erledigt">
+            <span class="flag-btn ${flagDue(f) ? 'red' : f.level}" style="font-size:1rem;">⚑</span>
+            <span class="ftxt" style="flex:1;">${escapeHtml(f.text)}${flagDueLabel(f) ? ' <b style="color:var(--danger);font-size:0.78rem;">' + flagDueLabel(f) + '</b>' : ''}<br><span class="hint">Fällig am (optional)</span> <input type="date" data-fdate="${f.id}" value="${escapeHtml(f.date || '')}" title="Fällig am" style="margin-top:4px;font-size:0.8rem;padding:3px 6px;"></span>
+            <button class="colx dark" data-fdel="${f.id}" title="Löschen">✕</button>
+          </div>`).join('') : '<div class="hint">Noch kein Vermerk.</div>'}</div>
+        <div style="margin-top:12px;font-size:0.8rem;color:var(--ink-soft);">Schnellauswahl</div>
+        <div>${FLAG_PRESETS.map((p, i) => `<button class="flag-chip" data-fpreset="${i}">${p.level === 'red' ? '🔴' : '🟠'} ${escapeHtml(p.text)}</button>`).join('')}</div>
+        <div class="row" style="margin-top:12px;gap:8px;">
+          <input type="text" id="flText" placeholder="Eigener Kurztext" style="flex:1;" value="${escapeHtml(text)}">
+          <select id="flLevel"><option value="orange"${level === 'orange' ? ' selected' : ''}>Normal</option><option value="red"${level === 'red' ? ' selected' : ''}>Dringend</option></select>
+        </div>
+        <div class="row" style="margin-top:8px;gap:8px;align-items:center;justify-content:flex-end;"><span class="hint" id="flMsg" style="margin-right:auto;color:var(--danger);"></span><button id="flAdd" style="opacity:${text.trim() ? 1 : 0.45};">Hinzufügen</button></div>
+        <div style="margin-top:18px;padding-top:12px;border-top:1px solid var(--line);font-size:0.8rem;color:var(--ink-soft);">Hinweise (dauerhaft am Namen sichtbar, im Inkognito-Modus ausgeblendet)</div>
+        ${PERM_TAGS.map(t => { const on = !!(cls.permTags && cls.permTags[sid] && cls.permTags[sid][t.key]); const tx = on ? (cls.permTags[sid][t.key].text || '') : ''; return `
+          <div class="flag-row" style="flex-wrap:wrap;">
+            <input type="checkbox" data-ptag="${t.key}" ${on ? 'checked' : ''}>
+            <span class="perm-tag" style="margin-left:0;">${t.key}</span>
+            <span style="flex:1;font-size:0.85rem;">${escapeHtml(t.label)}</span>
+            ${on ? `<input type="text" data-ptext="${t.key}" placeholder="Maßnahmen / Hinweis (optional)" value="${escapeHtml(tx)}" style="width:100%;margin-left:28px;">` : ''}
+          </div>`; }).join('')}
+      </div></div>`;
+    document.getElementById('flClose').onclick = close;
+    document.getElementById('overlay').addEventListener('click', (e) => { if(e.target.id === 'overlay') close(); });
+    const ti = document.getElementById('flText'), li = document.getElementById('flLevel');
+    ti.oninput = () => { text = ti.value; document.getElementById('flAdd').style.opacity = text.trim() ? 1 : 0.45; document.getElementById('flMsg').textContent = ''; };
+    li.onchange = () => { level = li.value; };
+    const addCustom = () => {
+      if(!ti.value.trim()){ document.getElementById('flMsg').textContent = 'Bitte Kurztext eingeben'; ti.focus(); return; }
+      add(ti.value, li.value);
+    };
+    ti.onkeydown = (e) => { if(e.key === 'Enter') addCustom(); };
+    document.getElementById('flAdd').onclick = addCustom;
+    root.querySelectorAll('[data-fpreset]').forEach(b => b.onclick = () => { const p = FLAG_PRESETS[+b.dataset.fpreset]; add(p.text, p.level); });
+    root.querySelectorAll('[data-fdone]').forEach(b => b.onchange = () => { const f = list().find(x => x.id === b.dataset.fdone); if(f){ f.done = b.checked; saveState(); draw(); } });
+    root.querySelectorAll('[data-ptag]').forEach(b => b.onchange = () => {
+      if(!cls.permTags) cls.permTags = {};
+      if(!cls.permTags[sid]) cls.permTags[sid] = {};
+      if(b.checked) cls.permTags[sid][b.dataset.ptag] = {text: ''}; else delete cls.permTags[sid][b.dataset.ptag];
+      saveState(); draw();
+    });
+    root.querySelectorAll('[data-ptext]').forEach(b => b.onchange = () => { const e = cls.permTags && cls.permTags[sid] && cls.permTags[sid][b.dataset.ptext]; if(e){ e.text = b.value.trim(); saveState(); } });
+    root.querySelectorAll('[data-fdate]').forEach(b => b.onchange = () => { const f = list().find(x => x.id === b.dataset.fdate); if(f){ f.date = b.value || ''; saveState(); draw(); } });
+    root.querySelectorAll('[data-fdel]').forEach(b => b.onclick = () => { cls.flags[sid] = list().filter(x => x.id !== b.dataset.fdel); saveState(); draw(); });
+  };
+  draw();
+}
+function openFlagsOverview(){
+  const root = document.getElementById('modalRoot');
+  const collect = () => {
+    const rows = allOpenFlagRows();
+    const k = (r) => [flagDue(r.f) ? 0 : 1, r.f.level === 'red' ? 0 : 1];
+    rows.sort((a, b) => k(a)[0] - k(b)[0] || k(a)[1] - k(b)[1] || (a.f.date || '9999').localeCompare(b.f.date || '9999') || a.cls.name.localeCompare(b.cls.name, 'de') || a.st.name.localeCompare(b.st.name, 'de'));
+    return rows;
+  };
+  const close = () => { root.innerHTML = ''; render(); };
+  const draw = () => {
+    const rows = collect();
+    root.innerHTML = `
+      <div class="overlay" id="overlay"><div class="modal">
+        <div class="modal-close"><button class="ghost small" id="foClose">Schließen</button></div>
+        <h3>Markierte Schüler</h3>
+        <div class="sub">Offene Vermerke aller Lerngruppen · Haken = erledigt</div>
+        <div style="margin-top:10px;">${rows.length ? rows.map((r, i) => `
+          <div class="flag-row">
+            <input type="checkbox" data-fo="${i}" title="Erledigt">
+            <span class="flag-btn ${flagDue(r.f) ? 'red' : r.f.level}" style="font-size:1rem;">⚑</span>
+            <span style="flex:1;"><b>${escapeHtml(r.st.name)}</b> <span class="hint">${escapeHtml(r.cls.name)}</span><br>${escapeHtml(r.f.text)}${r.f.date ? ' <span class="hint">(' + escapeHtml(formatDate(r.f.date)) + ')</span>' : ''}${flagDueLabel(r.f) ? ' <b style="color:var(--danger);font-size:0.78rem;">' + flagDueLabel(r.f) + '</b>' : ''}</span>
+          </div>`).join('') : '<div class="hint">Keine offenen Vermerke.</div>'}</div>
+        ${(() => { const perm = []; state.classes.filter(c => !c.archived).forEach(c => (c.students || []).forEach(st => { const l = studentPermTags(c, st.id); if(l.length) perm.push({c, st, l}); })); perm.sort((a, b) => a.c.name.localeCompare(b.c.name, 'de') || a.st.name.localeCompare(b.st.name, 'de')); return perm.length ? `<div style="margin-top:16px;padding-top:12px;border-top:1px solid var(--line);font-size:0.8rem;color:var(--ink-soft);">Hinweise (NTA, LRS, IK)</div>` + perm.map(x => `<div class="flag-row"><span style="flex:1;"><b>${escapeHtml(x.st.name)}</b> <span class="hint">${escapeHtml(x.c.name)}</span><br>${x.l.map(t => `<span class="perm-tag" style="margin-left:0;margin-right:4px;">${t.key}</span>${t.text ? escapeHtml(t.text) + ' ' : ''}`).join('')}</span></div>`).join('')   : ''; })()}
+      </div></div>`;
+    document.getElementById('foClose').onclick = close;
+    document.getElementById('overlay').addEventListener('click', (e) => { if(e.target.id === 'overlay') close(); });
+    root.querySelectorAll('[data-fo]').forEach(b => b.onchange = () => { rows[+b.dataset.fo].f.done = true; saveState(); draw(); });
+  };
+  draw();
+}
 function openNotenschluessel(cls, cat){
   const root = document.getElementById('modalRoot');
   let maxPts = Math.round(parseFloat(cat.maxPoints)) || 100;
@@ -2634,11 +2836,13 @@ function openNotenschluessel(cls, cat){
         <table class="scale" style="margin-top:12px;width:100%;"><thead><tr><th style="text-align:left;">${cls.gradingSystem === 'punkte' ? 'Notenpunkte' : 'Note'}</th><th>ab %</th><th style="text-align:right;">Punkte</th></tr></thead><tbody>
           ${rows.map(r => `<tr><td><b>${escapeHtml(r.note)}</b></td><td>${fmtPts(r.pct)} %</td><td style="text-align:right;">${r.empty ? '–' : (r.lo === r.hi ? fmtPts(r.lo) : fmtPts(r.lo) + ' – ' + fmtPts(r.hi))}</td></tr>`).join('')}
         </tbody></table>
-        <div class="row" style="margin-top:14px;justify-content:flex-end;"><button id="nsPdf">PDF / Drucken</button></div>
+        <div class="row" style="margin-top:14px;justify-content:flex-end;gap:8px;">${maxPts !== (Math.round(parseFloat(cat.maxPoints)) || 100) ? '<button id="nsApply">Für diese Klausur übernehmen</button>' : ''}<button id="nsPdf">PDF / Drucken</button></div>
       </div></div>`;
     document.getElementById('nsClose').onclick = () => { root.innerHTML = ''; };
     document.getElementById('overlay').addEventListener('click', (e) => { if(e.target.id === 'overlay') root.innerHTML = ''; });
     document.getElementById('nsMax').onchange = (e) => { const v = parseFloat(String(e.target.value).replace(',', '.')); if(v >= 1){ maxPts = Math.round(v); draw(); } };
+    const nsApply = document.getElementById('nsApply');
+    if(nsApply) nsApply.onclick = () => { cat.maxPoints = maxPts; saveState(); render(); draw(); };
     document.getElementById('nsPdf').onclick = () => {
       try{ sharePdf('Notenschluessel-' + sanitizeForFilename(cat.name) + '.pdf', buildNotenschluesselPdf(cls, cat, maxPts), 'Notenschlüssel'); }
       catch(err){ console.error(err); showAlert('Fehler', 'PDF konnte nicht erstellt werden: ' + err.message); }
@@ -2664,6 +2868,31 @@ function buildStudentSheetPdf(cls, semesters, student, opts){
   pdf.text(`Lerngruppe: ${cls.name} · Schuljahr: ${classYear(cls) || '–'} · Stand: ${today}${kuerzel}`, mx, 99, {size: 9.5, gray: 0.3});
   pdf.line(mx, 107, R, 107, 0.7, 0.6);
   y = 124;
+  const pdfFlags = studentOpenFlags(cls, sid);
+  if(pdfFlags.length){
+    pdf.text('Vermerke', mx + 2, y + 11, {size: 11.5, font: 'B'});
+    pdf.line(mx, y + 16, R, y + 16, 0.8, 0.5);
+    y += 24;
+    pdfFlags.forEach(f => {
+      ensure(16);
+      const t = '- ' + f.text + (f.date ? '  (' + formatDate(f.date) + ')' : '');
+      pdf.text(pdfFit(pdf, t, R - mx - 12, 10, 'R'), mx + 6, y + 10, {size: 10});
+      y += 15;
+    });
+    y += 12;
+  }
+  const pdfPerm = studentPermTags(cls, sid);
+  if(pdfPerm.length){
+    pdf.text('Hinweise', mx + 2, y + 11, {size: 11.5, font: 'B'});
+    pdf.line(mx, y + 16, R, y + 16, 0.8, 0.5);
+    y += 24;
+    pdfPerm.forEach(t => {
+      ensure(16);
+      pdf.text(pdfFit(pdf, '- ' + t.key + ' (' + t.label + ')' + (t.text ? ': ' + t.text : ''), R - mx - 12, 10, 'R'), mx + 6, y + 10, {size: 10});
+      y += 15;
+    });
+    y += 12;
+  }
   const notes = [];
   const catText = (cat, g) => {
     const mk = studentMark(cat, sid) || totalNbMark(cat, sid);
@@ -2827,7 +3056,7 @@ function showToast(msg){
 }
 // ---------- Schreibschutz (Halbjahr abschließen) ----------
 const LOCK_BLOCK_SELECTOR = '[data-toggle-count],[data-tally-cell],[data-open-entries],[data-open-group],[data-open-endnote],[data-reset-cat],[data-reset-group],[data-reset-endnote],[data-borderline-resolve],[data-endnote-borderline-resolve],[data-add-cat],[data-add-first-cat],[data-add-near-cat],[data-del-group],[data-del-student],[data-edit-cat],[data-edit-endnote-color],[data-move-cat],[data-move-group],[data-rename-group],[data-select-cat],[data-select-group],[data-select-student-col],[data-name-resize],[data-name-step],.obs-cell,#addStudentBtn,#newStudentName';
-const LOCK_ALLOW_SELECTOR = '[data-toggle-cat-collapse],[data-toggle-group-collapse],[data-toggle-incognito],[data-show-ub-notes],[data-student-sheet],#searchStudent';
+const LOCK_ALLOW_SELECTOR = '[data-toggle-cat-collapse],[data-toggle-group-collapse],[data-toggle-incognito],[data-show-ub-notes],[data-student-sheet],[data-student-flag],#searchStudent';
 function lockedNotice(sem){
   showToast(`🔒 ${sem.name} ist abgeschlossen (Schreibschutz). Zum Bearbeiten: Verwaltung → Halbjahr wieder öffnen.`);
 }
@@ -3314,7 +3543,7 @@ function renderGrid(main, cls, sem){
       const overridden = !endNb && sem.endnoteOverrides && sem.endnoteOverrides[s.id] !== undefined && sem.endnoteOverrides[s.id] !== '';
       const isSelected = state.selectedStudentId === s.id;
       const hasNotes = studentHasObservationNotes(sem, s.id);
-      let row = `<tr class="${isSelected?'student-selected':''}"><td class="name-col${sem.studentColColor?' has-custom-color':''}" data-select-student="${s.id}" style="cursor:pointer;text-align:left;${sem.studentColColor?`background:${sem.studentColColor};`:''}"><div class="name-cell-row" style="justify-content:flex-start;"><span style="display:flex;align-items:center;gap:4px;text-align:left;flex:1;">${escapeHtml(s.name)}${hasNotes ? `<button class="colx dark" data-show-ub-notes="${s.id}" title="Unterrichtsbeobachtungen mit Notizen ansehen" style="flex-shrink:0;">📝</button>` : ''}${isSelected ? `<button class="colx dark" data-student-sheet="${s.id}" title="Beratungsblatt (PDF)" style="flex-shrink:0;">📄</button>` : ''}</span><button class="colx dark" data-del-student="${s.id}" title="Aus ${escapeHtml(sem.name)} entfernen" style="flex-shrink:0;margin-left:6px;">✕</button></div></td>`;
+      let row = `<tr class="${isSelected?'student-selected':''}"><td class="name-col${sem.studentColColor?' has-custom-color':''}" data-select-student="${s.id}" style="cursor:pointer;text-align:left;${sem.studentColColor?`background:${sem.studentColColor};`:''}"><div class="name-cell-row" style="justify-content:flex-start;"><span style="display:flex;align-items:center;gap:4px;text-align:left;flex:1;">${escapeHtml(s.name)}${hasNotes ? `<button class="colx dark" data-show-ub-notes="${s.id}" title="Unterrichtsbeobachtungen mit Notizen ansehen" style="flex-shrink:0;">📝</button>` : ''}${permTagsHtml(cls, s.id)}${flagBtnHtml(cls, s.id, isSelected)}${isSelected ? `<button class="colx dark" data-student-sheet="${s.id}" title="Beratungsblatt (PDF)" style="flex-shrink:0;">📄</button>` : ''}</span><button class="colx dark" data-del-student="${s.id}" title="Aus ${escapeHtml(sem.name)} entfernen" style="flex-shrink:0;margin-left:6px;">✕</button></div></td>`;
       let endPillHtml = endNb ? markPillHtml('NB') : notePill(cls, end);
       let endBadge = '';
       if(borderlineEnabled && !endNb){
@@ -3380,7 +3609,7 @@ function renderGrid(main, cls, sem){
     let pressTimer = null, longPressed = false, startX = 0, startY = 0;
     const clear = () => { clearTimeout(pressTimer); };
     el.addEventListener('pointerdown', (e) => {
-      if(e.target.closest('[data-del-student], [data-show-ub-notes], [data-student-sheet]')) return;
+      if(e.target.closest('[data-del-student], [data-show-ub-notes], [data-student-sheet], [data-student-flag]')) return;
       longPressed = false;
       startX = e.clientX; startY = e.clientY;
       pressTimer = setTimeout(() => {
@@ -3394,7 +3623,7 @@ function renderGrid(main, cls, sem){
     el.addEventListener('pointerup', clear);
     el.addEventListener('pointercancel', clear);
     el.onclick = (e) => {
-      if(e.target.closest('[data-del-student], [data-show-ub-notes], [data-student-sheet]')) return;
+      if(e.target.closest('[data-del-student], [data-show-ub-notes], [data-student-sheet], [data-student-flag]')) return;
       if(longPressed){ longPressed = false; return; }
       const id = el.dataset.selectStudent;
       const wasSelected = state.selectedStudentId === id;
@@ -3404,6 +3633,9 @@ function renderGrid(main, cls, sem){
     };
   });
   installLockGuard(main, sem);
+  main.querySelectorAll('[data-student-flag]').forEach(btn => {
+    btn.onclick = (e) => { e.stopPropagation(); openStudentFlagsDialog(cls, btn.dataset.studentFlag); };
+  });
   main.querySelectorAll('[data-student-sheet]').forEach(btn => {
     btn.onclick = (e) => { e.stopPropagation(); openStudentSheetDialog(cls, sem, btn.dataset.studentSheet); };
   });
@@ -3763,10 +3995,12 @@ function renderGrid(main, cls, sem){
 
 async function promptNewFromTemplate(defaultWeight, extraOptions){
   const options = [
+    {heading: 'Eintragsart'},
     {label: '📝 Note direkt eintragen', value: 'grade'},
     {label: '🔢 Klausurpunkte', value: 'points'},
     {label: '✓ Beobachtung (mit Wertung)', value: 'obs_graded'},
     {label: '✓ Beobachtung (ohne Wertung)', value: 'obs_ungraded'},
+    {heading: 'Struktur'},
     {label: '📁 Sammelkategorie', value: 'container'},
     ...(extraOptions || []),
   ];
@@ -4069,9 +4303,8 @@ async function editCategory(cls, sem, groupId, catId){
       ...(isContainer ? [] : [{label: `📅 Datum hinzufügen${cat.date ? ` (${formatDate(cat.date)})` : ''}`, value: 'date'}]),
       {label: `Farbe ändern${cat.bgColor?' (eigene Farbe)':''}`, value: 'color'},
       ...(!isContainer && cat.mode!=='observation' ? [{label: `Darstellung ändern (Leistungsdaten)`, value: 'scale'}] : []),
-      {label: 'Fertig', value: 'done'},
     ];
-    const choice = await showChoice(isContainer ? 'Sammelkategorie bearbeiten' : 'Leistungsdaten bearbeiten', cat.name, options);
+    const choice = await showChoice(isContainer ? 'Sammelkategorie bearbeiten' : 'Leistungsdaten bearbeiten', cat.name, options, {cancelLabel: 'Fertig'});
     if(choice === null || choice === 'done') return;
 
     if(choice === 'date'){
@@ -5481,6 +5714,8 @@ document.getElementById('dataManagementBtn').onclick = async () => {
     {heading: 'Export'},
     {label: 'Export für Excel', value: 'excel'},
     {label: 'Export für externe Tabelle (Zusatztool)', value: 'notennachweis'},
+    {heading: 'Schüler'},
+    {label: `⚑ Markierte Schüler (${state.classes.filter(c => !c.archived).reduce((n, c) => n + (c.students || []).reduce((m, st) => m + studentOpenFlags(c, st.id).length, 0), 0)})`, value: 'flagsov'},
     {heading: 'Halbjahr und Schuljahr'},
     {label: '🗓 Zeiträume', value: 'zeitraeume'},
     ...(cls && sem ? [{label: sem.locked ? `🔓 Halbjahr wieder öffnen (${sem.name})` : `🔒 Halbjahr abschließen (${sem.name})`, value: 'lockhj'}] : []),
@@ -5525,6 +5760,7 @@ document.getElementById('dataManagementBtn').onclick = async () => {
     showToast('Vorlage gelöscht');
   }
   else if(choice === 'help'){ await showHelpTerms(); }
+  else if(choice === 'flagsov'){ openFlagsOverview(); }
   else if(choice === 'notennachweis'){
     if(!cls){ await showAlert('Keine Lerngruppe', 'Bitte zuerst eine Lerngruppe auswählen.'); return; }
     openNotennachweisModal(cls, sem);
@@ -5695,7 +5931,8 @@ window.addEventListener('resize', syncStickyOffsets);
   syncStickyOffsets();
   autoCheckForUpdateSilently();
   initIdleBlurWatcher();
-  showWhatsNewIfNeeded().catch(()=>{}).then(() => setTimeout(maybeShowBackupReminder, 800));
+  showWhatsNewIfNeeded().catch(()=>{}).then(() => setTimeout(async () => { try{ await maybeShowBackupReminder(); }catch(e){} try{ await maybeShowDueFlags(); }catch(e){} }, 800));
+  document.addEventListener('visibilitychange', () => { if(document.visibilityState === 'visible') setTimeout(() => { maybeShowDueFlags().catch(()=>{}); }, 500); });
 })();
 if('serviceWorker' in navigator){
   window.addEventListener('load', () => { navigator.serviceWorker.register('sw.js').catch(()=>{}); });
