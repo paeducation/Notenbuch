@@ -324,7 +324,6 @@
   <button class="ghost small" id="borderlineToggleBtn">🎯 Grenzfälle</button>
   <span class="tb-sep" aria-hidden="true"></span>
   <button class="ghost small" id="positionModeBtn">↔ Position</button>
-  <button class="ghost small" id="copyStructureBtn">⇄ Struktur aus 1. HJ übernehmen</button>
   <span style="display:inline-flex;align-items:center;gap:8px;font-family:inherit;font-size:0.78rem;font-weight:600;padding:6px 8px 6px 14px;border-radius:20px;border:1px solid var(--line);background:var(--surface);color:var(--ink);box-shadow:var(--shadow);white-space:nowrap;">
     <span id="colorizeSammelBtn" style="cursor:default;opacity:0.5;">🎨 Färben</span>
     <label class="mini-toggle" title="Ein-/Ausschalten (Aus = Farben fixieren)">
@@ -426,7 +425,7 @@ function colorForGroupName(name){
 }
 
 function uid(){ return Math.random().toString(36).slice(2,10); }
-const APP_VERSION_INFO = 'v22.37 · Entwickler: G. Schulte';
+const APP_VERSION_INFO = 'v22.39 · Entwickler: G. Schulte';
 function setStatus(msg, isError){
   const el = document.getElementById('status');
   const hasData = typeof state !== 'undefined' && state && state.classes && state.classes.length;
@@ -1239,7 +1238,6 @@ function saveBorderlineToggle(on){
   try{ localStorage.setItem(BORDERLINE_KEY, on ? '1' : '0'); }catch(e){}
 }
 let borderlineEnabled = loadBorderlineToggle();
-const NN_MAP_KEY = 'notenbuch-notennachweis-map';
 function eyeIconSvg(crossed){
   const strike = crossed ? '<line x1="2.5" y1="2.5" x2="13.5" y2="13.5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>' : '';
   return `<svg width="14" height="14" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" style="display:block;"><path d="M1 8C2.8 4.6 5.2 2.8 8 2.8C10.8 2.8 13.2 4.6 15 8C13.2 11.4 10.8 13.2 8 13.2C5.2 13.2 2.8 11.4 1 8Z" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/><circle cx="8" cy="8" r="2.3" fill="currentColor"/>${strike}</svg>`;
@@ -1826,6 +1824,8 @@ function applyTableScale(){ document.documentElement.style.setProperty('--tscale
 // ---------- Neuerungen nach einem Update ----------
 const WHATS_NEW_KEY = 'notenbuch-last-seen-version';
 const CHANGELOG = [
+  {v:'22.39', items:['Der „Export für externe Tabelle (Zusatztool)“ ist aus der Verwaltung entfernt.']},
+  {v:'22.38', items:['Menüs neu geordnet: In der Verwaltung steht „Markierte Schüler“ jetzt ganz oben. „Struktur aus 1. HJ übernehmen“ ist aus der Werkzeugleiste in Verwaltung → Halbjahr und Schuljahr umgezogen. Spalte bearbeiten: Name, Datum, Eingabeart, Maximalpunktzahl, Gewichtung, Darstellung, Farbe.']},
   {v:'22.37', items:['Vermerke: Das Datumsfeld „Fällig am“ ist auf dem iPhone/iPad jetzt normal groß und gut antippbar.']},
   {v:'22.36', items:['Vermerke-Fenster neu geordnet: oben die Vermerke, darunter die dauerhaften Hinweise (NTA, LRS, IK). Der Begriff „Dauerhaft“ heißt jetzt „Hinweise“.']},
   {v:'22.35', items:['Neu: Dauerhafte Einträge pro Schüler: NTA (Nachteilsausgleich), LRS (Lese-Rechtschreib-Schwäche) und IK (Internationale Vorbereitungsklasse). Schüler antippen, ⚑ öffnen, Abschnitt „Dauerhaft“. Die blaue Marke steht immer am Namen, im Inkognito-Modus ist sie ausgeblendet. Im Beratungsblatt erscheinen die Einträge mit Hinweistext, in „Markierte Schüler“ als eigene Liste.']},
@@ -1983,11 +1983,6 @@ function render(){
   document.getElementById('positionModeBtn').classList.toggle('active-toggle', state.positionMode);
   document.getElementById('borderlineToggleBtn').classList.toggle('active-toggle', borderlineEnabled);
   document.getElementById('tallyToggleBtn').classList.toggle('active-toggle', tallyVisible());
-  {
-    const copyBtn = document.getElementById('copyStructureBtn');
-    const showCopyBtn = cls && cls.semesters.length >= 2 && getActiveSemester(cls) !== cls.semesters[0];
-    copyBtn.style.display = showCopyBtn ? '' : 'none';
-  }
   if(!cls){ main.innerHTML = `<div class="empty">Lege oben eine Lerngruppe an, um loszulegen.</div>`; document.getElementById('scalePanel').innerHTML=''; return; }
   if(state.compareView && cls.semesters.length >= 2){
     renderCompareGrid(main, cls);
@@ -4297,14 +4292,14 @@ async function editCategory(cls, sem, groupId, catId){
     const scaleLabel = cat.displayScale === 'noten' ? 'Noten' : cat.displayScale === 'punkte' ? 'Punkte' : 'wie Lerngruppe';
     const options = [
       {label: 'Name ändern', value: 'name'},
+      ...(isContainer ? [] : [{label: `📅 Datum hinzufügen${cat.date ? ` (${formatDate(cat.date)})` : ''}`, value: 'date'}]),
       ...(isContainer ? [] : [
         {label: `Eingabeart ändern (Leistungsdaten)`, value: 'mode'},
         ...(cat.mode==='points' ? [{label: `Maximalpunktzahl (${cat.maxPoints ?? 100})`, value: 'maxpoints'}] : []),
       ]),
       {label: `Gewichtung ändern${cat.manualWeight?' 🔒':''}`, value: 'weight'},
-      ...(isContainer ? [] : [{label: `📅 Datum hinzufügen${cat.date ? ` (${formatDate(cat.date)})` : ''}`, value: 'date'}]),
-      {label: `Farbe ändern${cat.bgColor?' (eigene Farbe)':''}`, value: 'color'},
       ...(!isContainer && cat.mode!=='observation' ? [{label: `Darstellung ändern (Leistungsdaten)`, value: 'scale'}] : []),
+      {label: `Farbe ändern${cat.bgColor?' (eigene Farbe)':''}`, value: 'color'},
     ];
     const choice = await showChoice(isContainer ? 'Sammelkategorie bearbeiten' : 'Leistungsdaten bearbeiten', cat.name, options, {cancelLabel: 'Fertig'});
     if(choice === null || choice === 'done') return;
@@ -4539,17 +4534,6 @@ function renderGroupOverrideModal(cls, group, student){
     };
   }
 }
-// ---------- Notennachweis-Export ----------
-function collectSelectableCategories(sem){
-  const list = [];
-  function walk(cat, group, pathLabel){
-    const label = pathLabel ? `${pathLabel} → ${cat.name}` : `${group.name} → ${cat.name}`;
-    list.push({id: cat.id, label});
-    if(cat.children) cat.children.forEach(child => walk(child, group, label));
-  }
-  sem.groups.forEach(g => { g.children.forEach(cat => walk(cat, g, null)); });
-  return list;
-}
 function collectObservationEntriesForStudent(sem, studentId){
   const results = [];
   function walk(cat, pathLabel){
@@ -4599,15 +4583,6 @@ function openStudentObservationsModal(cls, sem, studentId){
   document.getElementById('overlay').addEventListener('click', (e)=>{ if(e.target.id==='overlay'){ root.innerHTML=''; render(); } });
   document.getElementById('closeModal').onclick = () => { root.innerHTML=''; render(); };
 }
-function findCatByIdInSemester(sem, catId){
-  let found = null;
-  function walk(cat){
-    if(cat.id === catId){ found = cat; return; }
-    if(cat.children) cat.children.forEach(walk);
-  }
-  sem.groups.forEach(g => g.children.forEach(walk));
-  return found;
-}
 function punkteValueToNoteText(punkteVal){
   // PUNKTE_TABLE und NOTEN_TABLE haben identische Prozent-Schwellen an gleicher Stelle,
   // daher lässt sich ein Punktwert über den Index auf eine Buchstabennote zurückrechnen.
@@ -4628,116 +4603,6 @@ function convertValueScale(value, fromScale, toScale){
   if(fromScale === 'noten' && toScale === 'punkte') return noteValueToPunkte(value);
   if(fromScale === 'punkte' && toScale === 'noten') return gradeStrToValue(punkteValueToNoteText(value));
   return value;
-}
-function gradeTextForCategory(cls, cat, studentId){
-  if(!cat) return '';
-  const val = categoryAvgForStudent(cls, cat, studentId);
-  if(val === null || val === undefined || isNaN(val)) return '';
-  return cls.gradingSystem === 'punkte' ? punkteValueToNoteText(val) : valueToGradeStr(val);
-}
-function loadNnMappings(){
-  try{ return JSON.parse(localStorage.getItem(NN_MAP_KEY)) || {}; }catch(e){ return {}; }
-}
-function saveNnMappings(map){
-  try{ localStorage.setItem(NN_MAP_KEY, JSON.stringify(map)); }catch(e){}
-}
-function openNotennachweisModal(cls, sem){
-  const root = document.getElementById('modalRoot');
-  const cats = collectSelectableCategories(sem);
-  const mapKey = cls.id + ':' + sem.id;
-  const allMaps = loadNnMappings();
-  const cfg = Object.assign({mode:'SII', klE1:'', klE2:'', siK1:'', siK2:'', siK3:'', smE1:'', smE2:''}, allMaps[mapKey] || {});
-  const catOptionsHtml = (selected) => `<option value="">– keine –</option>` + cats.map(c => `<option value="${c.id}" ${c.id===selected?'selected':''}>${escapeHtml(c.label)}</option>`).join('');
-  const fieldRow = (field, label) => `
-    <div class="row" style="justify-content:space-between;gap:8px;margin-top:6px;">
-      <span style="white-space:nowrap;">${label}</span>
-      <select data-nn-field="${field}" style="flex:1;">${catOptionsHtml(cfg[field])}</select>
-    </div>`;
-  root.innerHTML = `
-    <div class="overlay" id="overlay">
-      <div class="modal">
-        <div class="modal-close"><button class="ghost small" id="closeModal">Schließen</button></div>
-        <h3>Für Notennachweis exportieren</h3>
-        <div class="sub">${escapeHtml(cls.name)} · ${escapeHtml(sem.name)}</div>
-        <div class="hint" style="margin-top:8px;">Ordne zu, welche Notenbuch-Kategorie in welches Notennachweis-Feld übertragen werden soll. Die Zuordnung wird für diese Lerngruppe gemerkt.</div>
-        <div class="row" style="gap:10px;margin-top:12px;">
-          <label class="row" style="gap:4px;"><input type="radio" name="nnMode" value="SII" ${cfg.mode!=='SI'?'checked':''}> Oberstufe (Klausuren)</label>
-          <label class="row" style="gap:4px;"><input type="radio" name="nnMode" value="SI" ${cfg.mode==='SI'?'checked':''}> Sek I (Klassenarbeiten)</label>
-        </div>
-        <div id="nnFieldsSII" style="display:${cfg.mode!=='SI'?'block':'none'};">
-          ${fieldRow('klE1','Klausur 1 (klE1)')}
-          ${fieldRow('klE2','Klausur 2 (klE2)')}
-        </div>
-        <div id="nnFieldsSI" style="display:${cfg.mode==='SI'?'block':'none'};">
-          ${fieldRow('siK1','Klassenarbeit 1 (siK1)')}
-          ${fieldRow('siK2','Klassenarbeit 2 (siK2)')}
-          ${fieldRow('siK3','Klassenarbeit 3 (siK3)')}
-        </div>
-        ${fieldRow('smE1','SoMi 1 (smE1)')}
-        ${fieldRow('smE2','SoMi 2 (smE2)')}
-        <div class="row" style="margin-top:16px;">
-          <button id="nnExportBtn">⬇ Notennachweis-Datei erzeugen</button>
-        </div>
-      </div>
-    </div>
-  `;
-  const close = () => { root.innerHTML=''; render(); };
-  document.getElementById('overlay').addEventListener('click', (e)=>{ if(e.target.id==='overlay') close(); });
-  document.getElementById('closeModal').onclick = close;
-  const readCfgFromForm = () => {
-    const mode = root.querySelector('input[name="nnMode"]:checked').value;
-    const c = {mode};
-    ['klE1','klE2','siK1','siK2','siK3','smE1','smE2'].forEach(f => {
-      const el = root.querySelector(`[data-nn-field="${f}"]`);
-      c[f] = el ? el.value : '';
-    });
-    return c;
-  };
-  root.querySelectorAll('input[name="nnMode"]').forEach(r => {
-    r.onchange = () => {
-      document.getElementById('nnFieldsSII').style.display = r.value === 'SII' && r.checked ? 'block' : (root.querySelector('input[name="nnMode"]:checked').value==='SII'?'block':'none');
-      document.getElementById('nnFieldsSI').style.display = root.querySelector('input[name="nnMode"]:checked').value==='SI' ? 'block' : 'none';
-      document.getElementById('nnFieldsSII').style.display = root.querySelector('input[name="nnMode"]:checked').value==='SII' ? 'block' : 'none';
-    };
-  });
-  document.getElementById('nnExportBtn').onclick = async () => {
-    const cfgNow = readCfgFromForm();
-    allMaps[mapKey] = cfgNow;
-    saveNnMappings(allMaps);
-    await exportNotennachweisJson(cls, sem, cfgNow);
-  };
-}
-async function exportNotennachweisJson(cls, sem, cfg){
-  const students = getSemesterStudents(cls, sem);
-  if(students.length === 0){
-    await showAlert('Keine Schüler', 'In dieser Lerngruppe/diesem Halbjahr sind keine Schüler eingetragen.');
-    return;
-  }
-  const catFor = (field) => cfg[field] ? findCatByIdInSemester(sem, cfg[field]) : null;
-  const catKlE1 = catFor('klE1'), catKlE2 = catFor('klE2');
-  const catSiK1 = catFor('siK1'), catSiK2 = catFor('siK2'), catSiK3 = catFor('siK3');
-  const catSmE1 = catFor('smE1'), catSmE2 = catFor('smE2');
-  const rows = students.map((st, idx) => ({
-    nr: idx+1, name: st.name, kursart: '',
-    klE1: gradeTextForCategory(cls, catKlE1, st.id), klE2: gradeTextForCategory(cls, catKlE2, st.id), klFlag: '',
-    siK1: gradeTextForCategory(cls, catSiK1, st.id), siK2: gradeTextForCategory(cls, catSiK2, st.id), siK3: gradeTextForCategory(cls, catSiK3, st.id), siKlFlag: '',
-    smE1: gradeTextForCategory(cls, catSmE1, st.id), smE2: gradeTextForCategory(cls, catSmE2, st.id), smFlag: '',
-    ntFlag: '', fehlGes: '', fehlUe: ''
-  }));
-  const data = {
-    meta: {
-      stufe: '', kurs: cls.name, schuljahr: classYear(cls) || '', mode: cfg.mode,
-      siK1Enabled: !!cfg.siK1, siK2Enabled: !!cfg.siK2, siK3Enabled: !!cfg.siK3,
-    },
-    rows
-  };
-  const blob = new Blob([JSON.stringify(data, null, 2)], {type:'application/json'});
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url; a.download = sanitizeForFilename(cls.name) + '_notennachweis.json';
-  document.body.appendChild(a); a.click(); document.body.removeChild(a);
-  URL.revokeObjectURL(url);
-  setStatus('Notennachweis-Datei erzeugt · ' + new Date().toLocaleTimeString('de-DE'));
 }
 function sanitizeForFilename(s){
   return String(s||'notenbuch').trim().replace(/[\\/:*?"<>|]+/g,'').replace(/\s+/g,'-');
@@ -5361,7 +5226,7 @@ function cloneGroupsStructure(groups){
     return o;
   });
 }
-document.getElementById('copyStructureBtn').onclick = async () => {
+async function copyStructureFromFirstSemester(){
   const cls = getActiveClass(); if(!cls) return;
   const source = cls.semesters[0];
   const target = getActiveSemester(cls);
@@ -5371,7 +5236,7 @@ document.getElementById('copyStructureBtn').onclick = async () => {
   if(!ok) return;
   target.groups = cloneGroupsStructure(source.groups);
   saveState(); render();
-};
+}
 document.getElementById('toggleScaleBtn').onclick = () => { state.scaleOpen = !state.scaleOpen; render(); };
 const SUBTLE_PALETTE = ['#D9EAD3','#FCE5CD','#CFE8FB','#F4CCCC','#E6D6F5','#FFF2CC','#D0E8E4','#F9D9E7','#DDEBF7','#EAE3D2'];
 let colorizeAttempts = 0;
@@ -5663,7 +5528,7 @@ async function resetAllData(){
   try{ localStorage.removeItem(STORAGE_KEY); }catch(e){}
   try{ localStorage.removeItem(BORDERLINE_KEY); }catch(e){}
   try{ localStorage.removeItem(SECURITY_INFO_HIDE_KEY); }catch(e){}
-  try{ localStorage.removeItem(NN_MAP_KEY); }catch(e){}
+  try{ localStorage.removeItem('notenbuch-notennachweis-map'); }catch(e){}
   try{ localStorage.removeItem(PIN_HASH_KEY); }catch(e){}
   borderlineEnabled = false;
   state.classes = [];
@@ -5704,6 +5569,8 @@ document.getElementById('dataManagementBtn').onclick = async () => {
   const sem = cls ? getActiveSemester(cls) : null;
   const archivedCount = state.classes.filter(c => c.archived).length;
   const options = [
+    {heading: 'Schüler'},
+    {label: `⚑ Markierte Schüler (${state.classes.filter(c => !c.archived).reduce((n, c) => n + (c.students || []).reduce((m, st) => m + studentOpenFlags(c, st.id).length, 0), 0)})`, value: 'flagsov'},
     {heading: 'Sichern'},
     {label: `⬇ Backup (zuletzt ${backupAgeText()})`, value: 'backup', toggle: {
       caption: 'Erinnerung', title: 'Erinnerung nach 7 Tagen ohne Backup', checked: backupReminderEnabled(),
@@ -5715,11 +5582,9 @@ document.getElementById('dataManagementBtn').onclick = async () => {
     {label: '⬆ Wiederherstellen', value: 'restore'},
     {heading: 'Export'},
     {label: 'Export für Excel', value: 'excel'},
-    {label: 'Export für externe Tabelle (Zusatztool)', value: 'notennachweis'},
-    {heading: 'Schüler'},
-    {label: `⚑ Markierte Schüler (${state.classes.filter(c => !c.archived).reduce((n, c) => n + (c.students || []).reduce((m, st) => m + studentOpenFlags(c, st.id).length, 0), 0)})`, value: 'flagsov'},
     {heading: 'Halbjahr und Schuljahr'},
     {label: '🗓 Zeiträume', value: 'zeitraeume'},
+    ...(cls && cls.semesters.length >= 2 && sem && sem !== cls.semesters[0] ? [{label: `⇄ Struktur aus ${cls.semesters[0].name} übernehmen`, value: 'copystruct'}] : []),
     ...(cls && sem ? [{label: sem.locked ? `🔓 Halbjahr wieder öffnen (${sem.name})` : `🔒 Halbjahr abschließen (${sem.name})`, value: 'lockhj'}] : []),
     ...(cls && cls.semesters.length >= 2 ? [{label: '⇄ Halbjahre tauschen', value: 'swaphj'}] : []),
     {label: '📅 Neues Schuljahr', value: 'newyear'},
@@ -5763,10 +5628,7 @@ document.getElementById('dataManagementBtn').onclick = async () => {
   }
   else if(choice === 'help'){ await showHelpTerms(); }
   else if(choice === 'flagsov'){ openFlagsOverview(); }
-  else if(choice === 'notennachweis'){
-    if(!cls){ await showAlert('Keine Lerngruppe', 'Bitte zuerst eine Lerngruppe auswählen.'); return; }
-    openNotennachweisModal(cls, sem);
-  }
+  else if(choice === 'copystruct'){ await copyStructureFromFirstSemester(); }
   else if(choice === 'excel'){
     if(!cls){ await showAlert('Keine Lerngruppe', 'Bitte zuerst eine Lerngruppe auswählen.'); return; }
     await runExcelExportFlow(cls, sem);
