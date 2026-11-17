@@ -245,6 +245,24 @@
   .grade-chip.selected{background:var(--accent);color:#fff;border-color:var(--accent);}
   .dlg-choices{display:flex;flex-direction:column;gap:8px;margin-top:12px;}
   table.grid th.tally-head, table.grid td.tally-cell{padding-left:2px;padding-right:2px;width:42px;min-width:42px;max-width:42px;}
+  .tcnt{display:inline-flex;min-width:30px;height:30px;border-radius:15px;align-items:center;justify-content:center;font-weight:700;font-size:0.9rem;padding:0 4px;box-sizing:border-box;}
+  .tcnt.c0{border:1.5px dashed var(--line);color:var(--ink-soft);opacity:.7;font-size:1.05rem;font-weight:500;}
+  .tcnt.c1{background:#e8eef6;color:#33527a;} .tcnt.c3{background:#fde8c4;color:#8a5200;} .tcnt.c5{background:#f8cfca;color:#a1281c;}
+  .slim-hb{display:inline-flex;flex-direction:column;align-items:center;gap:1px;padding:5px 8px;border-radius:12px;line-height:1.15;}
+  .slim-hb b{font-size:0.95rem;} .slim-hb i{font-style:normal;font-size:0.56rem;font-weight:500;opacity:.85;white-space:nowrap;}
+  .slim-HA{background:#fde7e4;color:#a1281c;} .slim-HAu{background:#fdf0d4;color:#8a5a00;} .slim-M{background:#e3edfb;color:#1d4f9a;}
+  table.grid.tally-mode thead th{position:sticky;top:0;z-index:12;padding:8px 6px;border-bottom:2px solid var(--line);}
+  table.grid.tally-mode thead th.slim-off{color:#b4b4ba;font-weight:500;font-size:0.68rem;min-width:0;}
+  table.grid.tally-mode thead th.name-col [data-select-student-col]{min-height:0!important;}
+  table.grid.tally-mode thead th.name-col #searchStudent{position:static!important;transform:none!important;margin-bottom:3px;}
+  .slim-hb{box-sizing:border-box;width:100%;}
+  table.grid.tally-mode thead th.name-col{left:0;z-index:14;}
+  table.grid.tally-mode thead th.name-col .colhead-wrap{min-height:0!important;}
+  table.grid.tally-mode td.name-col{position:sticky;left:0;}
+  table.grid.tally-mode tbody tr:not(.add-student-row) td:not(.name-col):not(.tally-cell){opacity:.3;filter:grayscale(1);pointer-events:none;}
+  table.grid.tally-mode th.tally-head, table.grid.tally-mode td.tally-cell{width:78px;min-width:78px;max-width:78px;}
+  .tally-bar{background:#fff7e0;color:#7a5b00;font-size:0.76rem;padding:6px 12px;border-bottom:1px solid #f0e2b0;display:flex;gap:8px;align-items:center;flex-wrap:wrap;}
+  .tally-bar .chip{background:#1f6f4a;color:#fff;border-radius:10px;padding:2px 8px;font-size:0.7rem;font-weight:700;}
   td.tally-cell{cursor:pointer;-webkit-user-select:none;user-select:none;-webkit-touch-callout:none;}
   .dlg-choice-btn.danger-choice{color:var(--danger);}
   .dlg-scrollwrap{position:relative;}
@@ -425,7 +443,7 @@ function colorForGroupName(name){
 }
 
 function uid(){ return Math.random().toString(36).slice(2,10); }
-const APP_VERSION_INFO = 'v22.39 · Entwickler: G. Schulte';
+const APP_VERSION_INFO = 'v22.40 · Entwickler: G. Schulte';
 function setStatus(msg, isError){
   const el = document.getElementById('status');
   const hasData = typeof state !== 'undefined' && state && state.classes && state.classes.length;
@@ -1824,6 +1842,7 @@ function applyTableScale(){ document.documentElement.style.setProperty('--tscale
 // ---------- Neuerungen nach einem Update ----------
 const WHATS_NEW_KEY = 'notenbuch-last-seen-version';
 const CHANGELOG = [
+  {v:'22.40', items:['Strichlisten neu gestaltet: Die Zähler sind runde Marken (leer, bläulich, orange ab 3, rot ab 5). Bei eingeblendeten Strichlisten bleibt eine schmale Kopfzeile beim Scrollen stehen (HA, HAu und M farbig hervorgehoben), die Namensspalte bleibt links fixiert, und alle anderen Spalten sind ausgegraut und gesperrt.']},
   {v:'22.39', items:['Der „Export für externe Tabelle (Zusatztool)“ ist aus der Verwaltung entfernt.']},
   {v:'22.38', items:['Menüs neu geordnet: In der Verwaltung steht „Markierte Schüler“ jetzt ganz oben. „Struktur aus 1. HJ übernehmen“ ist aus der Werkzeugleiste in Verwaltung → Halbjahr und Schuljahr umgezogen. Spalte bearbeiten: Name, Datum, Eingabeart, Maximalpunktzahl, Gewichtung, Darstellung, Farbe.']},
   {v:'22.37', items:['Vermerke: Das Datumsfeld „Fällig am“ ist auf dem iPhone/iPad jetzt normal groß und gut antippbar.']},
@@ -1909,10 +1928,52 @@ function tallySet(host, key, sid, list){
   host.tally[key] = host.tally[key] || {};
   if(list.length) host.tally[key][sid] = list.slice().sort(); else delete host.tally[key][sid];
 }
+function tallyPill(n){
+  if(!n) return '<span class="tcnt c0">+</span>';
+  return `<span class="tcnt ${n < 3 ? 'c1' : (n < 5 ? 'c3' : 'c5')}">${n}</span>`;
+}
+const TALLY_SUB = {HA: 'Hausaufg. fehlt', HAu: 'unvollständig', M: 'Material fehlt'};
+// Strichlisten-Modus: schmale, fixierte Kopfzeile (nur Namen + HA/HAu/M hervorgehoben)
+function slimTallyHead(table, studentCount){
+  const thead = table.tHead; if(!thead) return;
+  const rows = Array.from(thead.rows); const grid = [];
+  rows.forEach((tr, r) => { let c = 0; Array.from(tr.cells).forEach(th => {
+    while(grid[r] && grid[r][c]) c++;
+    const rs = th.rowSpan || 1, cs = th.colSpan || 1;
+    for(let i = 0; i < rs; i++){ grid[r+i] = grid[r+i] || []; for(let j = 0; j < cs; j++) grid[r+i][c+j] = th; }
+    c += cs; }); });
+  const last = rows.length - 1; const n = Math.max(...grid.map(r => r.length));
+  const nameTh = rows[0].querySelector('th.name-col');
+  let html = '<tr>';
+  for(let c = 0; c < n; c++){
+    const th = grid[last] && grid[last][c];
+    if(!th){ html += '<th class="slim-off"></th>'; continue; }
+    if(th === nameTh){ html += nameTh.outerHTML.replace(/rowspan="\d+"/, ''); continue; }
+    if(th.classList.contains('tally-head')){
+      const key = (th.textContent || '').trim();
+      html += `<th class="tally-head"><span class="slim-hb slim-${key}"><b>${key}</b><i>${TALLY_SUB[key] || ''}</i></span></th>`; continue;
+    }
+    let lbl = '';
+    const ed = th.querySelector('[data-edit-cat]');
+    if(ed) lbl = ed.textContent.trim(); else if(!th.classList.contains('total-head')) lbl = (th.innerText || '').trim().split(/\n/)[0].trim();
+    if(lbl.length > 9) lbl = lbl.slice(0, 8) + '…';
+    html += `<th class="slim-off">${escapeHtml(lbl)}</th>`;
+  }
+  thead.innerHTML = html + '</tr>';
+  table.classList.add('tally-mode');
+}
+function applyTallyLayout(){
+  document.querySelectorAll('.grid-wrap').forEach(w => {
+    if(!w.querySelector('table.tally-mode')){ w.style.maxHeight = ''; return; }
+    const stuck = ['.titlebar', 'header.app', '.toolbar'].reduce((a, q) => { const e = document.querySelector(q); return a + (e ? e.offsetHeight : 0); }, 0);
+    w.style.maxHeight = Math.max(240, window.innerHeight - stuck - 12) + 'px';
+  });
+}
+window.addEventListener('resize', applyTallyLayout);
 function tallyCellHtml(host, key, sid){
   const l = tallyList(host, key, sid);
   const tip = l.length ? l.map(formatDate).join(', ') : 'Antippen: +1 (heute) · lang drücken: Einträge';
-  return `<td class="tally-cell" data-tally-cell="${key}" data-tally-host="${host.id}" data-student="${sid}" title="${escapeHtml(tip)}"><div class="cell-stack" style="min-height:24px;display:flex;align-items:center;justify-content:center;">${l.length ? `<span style="font-weight:700;">${l.length}</span>` : '<span style="opacity:0.25;">·</span>'}</div></td>`;
+  return `<td class="tally-cell" data-tally-cell="${key}" data-tally-host="${host.id}" data-student="${sid}" title="${escapeHtml(tip)}"><div class="cell-stack" style="min-height:30px;display:flex;align-items:center;justify-content:center;">${tallyPill(l.length)}</div></td>`;
 }
 function tallyHeadHtml(host, rowspan){
   const bg = host.bgColor ? `background:${lightenColor(host.bgColor, 0.55)};` : '';
@@ -3601,6 +3662,15 @@ function renderGrid(main, cls, sem){
 
   main.innerHTML = `<div class="grid-wrap"><table class="grid"><thead>${groupHeadRow}${catHeaderRows}</thead><tbody>${body}${addRow}</tbody></table>${state.positionMode ? `<div class="name-resize-handle" title="Namensspalte schmaler/breiter: Pfeile antippen oder Strich ziehen"><button type="button" class="nr-step" data-name-step="-1">‹</button><span class="nr-drag" data-name-resize><span class="nr-line"></span></span><button type="button" class="nr-step" data-name-step="1">›</button></div>` : ''}</div>`;
 
+  if(tallyHost){
+    const tb = main.querySelector('table.grid');
+    if(tb){
+      slimTallyHead(tb, studentCount);
+      const wrapEl = main.querySelector('.grid-wrap');
+      if(wrapEl) wrapEl.insertAdjacentHTML('beforebegin', '<div class="tally-bar"><span class="chip">Strichlisten aktiv</span> Antippen = +1 (heute) · lang drücken = Liste · nur Namen, HA, HAu und M sind bedienbar</div>');
+      applyTallyLayout();
+    }
+  }
   wireTallyCells(main, cls, sem);
   main.querySelectorAll('[data-select-student]').forEach(el=>{
     let pressTimer = null, longPressed = false, startX = 0, startY = 0;
@@ -5359,7 +5429,13 @@ async function showHelpTerms(){
     'Unterrichtsbeobachtung – Tipp auf das Feld wechselt + → ○ → − → leer. Langer Druck öffnet Notiz und weitere Angaben.'
   );
 }
-document.getElementById('tallyToggleBtn').onclick = () => { setTallyVisible(!tallyVisible()); render(); };
+document.getElementById('tallyToggleBtn').onclick = () => {
+  setTallyVisible(!tallyVisible()); render();
+  if(tallyVisible()){
+    const w = document.querySelector('.grid-wrap');
+    if(w){ const stuck = ['.titlebar', 'header.app', '.toolbar'].reduce((a, q) => { const e = document.querySelector(q); return a + (e ? e.offsetHeight : 0); }, 0); window.scrollTo(0, window.scrollY + w.getBoundingClientRect().top - stuck - 4); }
+  }
+};
 document.getElementById('borderlineToggleBtn').onclick = () => {
   borderlineEnabled = !borderlineEnabled;
   saveBorderlineToggle(borderlineEnabled);
