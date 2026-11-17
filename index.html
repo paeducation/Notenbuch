@@ -251,14 +251,14 @@
   .slim-hb{display:inline-flex;flex-direction:column;align-items:center;gap:2px;padding:6px 8px;border-radius:12px;line-height:1.15;}
   .slim-hb b{font-size:1.15rem;} .slim-hb i{font-style:normal;font-size:0.66rem;font-weight:500;opacity:.85;white-space:nowrap;}
   table.grid.tally-mode thead th{position:sticky;top:0;z-index:12;padding:8px 6px;border-bottom:2px solid var(--line);}
-  table.grid.tally-mode thead th.slim-off{color:#b4b4ba;font-weight:500;font-size:0.68rem;min-width:0;}
+  table.grid.tally-mode{min-width:0;width:auto;}
+  table.grid.tally-mode th.tally-add, table.grid.tally-mode td.tally-add-cell{width:64px;min-width:64px;max-width:64px;}
   table.grid.tally-mode thead th.name-col [data-select-student-col]{min-height:0!important;}
   table.grid.tally-mode thead th.name-col #searchStudent{position:static!important;transform:none!important;margin-bottom:3px;}
   .slim-hb{box-sizing:border-box;width:100%;}
   table.grid.tally-mode thead th.name-col{left:0;z-index:14;}
   table.grid.tally-mode thead th.name-col .colhead-wrap{min-height:0!important;}
   table.grid.tally-mode td.name-col{position:sticky;left:0;}
-  table.grid.tally-mode tbody tr:not(.add-student-row) td:not(.name-col):not(.tally-cell){opacity:.3;filter:grayscale(1);pointer-events:none;}
   table.grid.tally-mode th.tally-head, table.grid.tally-mode td.tally-cell{width:104px;min-width:104px;max-width:104px;}
   .tally-bar{background:#fff7e0;color:#7a5b00;font-size:0.76rem;padding:6px 12px;border-bottom:1px solid #f0e2b0;display:flex;gap:8px;align-items:center;flex-wrap:wrap;}
   .tally-bar .chip{background:#1f6f4a;color:#fff;border-radius:10px;padding:2px 8px;font-size:0.7rem;font-weight:700;}
@@ -444,7 +444,7 @@ function colorForGroupName(name){
 }
 
 function uid(){ return Math.random().toString(36).slice(2,10); }
-const APP_VERSION_INFO = 'v22.44 · Entwickler: G. Schulte';
+const APP_VERSION_INFO = 'v22.45 · Entwickler: G. Schulte';
 function setStatus(msg, isError){
   const el = document.getElementById('status');
   const hasData = typeof state !== 'undefined' && state && state.classes && state.classes.length;
@@ -1843,6 +1843,7 @@ function applyTableScale(){ document.documentElement.style.setProperty('--tscale
 // ---------- Neuerungen nach einem Update ----------
 const WHATS_NEW_KEY = 'notenbuch-last-seen-version';
 const CHANGELOG = [
+  {v:'22.45', items:['Strichlisten-Modus: Im Hintergrund sind keine anderen Spalten mehr sichtbar, nur Namen und Strichlisten. Eine neue Liste legst du mit dem Plus rechts neben der letzten Liste an.']},
   {v:'22.44', items:['Strichlisten frei anlegen: Bei eingeblendeten Strichlisten öffnet „Listen bearbeiten“ (oder ein Tipp auf einen Spaltenkopf) ein Fenster, in dem du pro Lerngruppe bis zu 6 Listen mit Kurzname, Beschreibung und Farbe anlegen, umbenennen, verschieben und löschen kannst. HA, HAu und M bleiben die Standardlisten. Die Listen werden in Vorlagen und im neuen Schuljahr übernommen.']},
   {v:'22.43', items:['Strichlisten: Spalten, Zähler und Kopfkarten sind größer, die Schrift passt besser.']},
   {v:'22.42', items:['Strichlisten: Die Einträgeliste (langer Druck) zeigt jetzt die Summe für das ganze Halbjahr neben dem Wert des Quartals. Im Beratungsblatt steht unter „Hausaufgaben und Material“ eine Zeile „Gesamt Halbjahr“.']},
@@ -1941,7 +1942,7 @@ function tallyEntryCount(cls, key){
   })));
   return n;
 }
-function openTallyManager(cls){
+function openTallyManager(cls, focusIdx){
   const root = document.getElementById('modalRoot');
   const cols = () => { if(!cls.tallyCols || !cls.tallyCols.length) cls.tallyCols = DEFAULT_TALLY_COLS.map(c => ({...c})); return cls.tallyCols; };
   const close = () => { root.innerHTML = ''; render(); };
@@ -1968,6 +1969,7 @@ function openTallyManager(cls){
           <button id="tmAdd" ${list.length >= TALLY_MAX_COLS ? 'disabled style="opacity:.45;"' : ''}>+ Neue Liste</button>
         </div>
       </div></div>`;
+    if(focusIdx !== undefined){ const fi = root.querySelector(`[data-tm-label="${focusIdx}"]`); if(fi){ fi.focus(); fi.select(); } focusIdx = undefined; }
     document.getElementById('tmClose').onclick = close;
     document.getElementById('overlay').addEventListener('click', (e) => { if(e.target.id === 'overlay') close(); });
     document.getElementById('tmAdd').onclick = () => { const l = cols(); if(l.length >= TALLY_MAX_COLS) return; l.push({key: 'T' + uid(), label: 'Neu', title: '', color: 'grau'}); saveState(); draw(); };
@@ -2027,23 +2029,22 @@ function slimTallyHead(table, cls){
       tallyHtml += `<th class="tally-head" data-tkey="${escapeHtml(col.key)}" style="cursor:pointer;"><span class="slim-hb" style="background:${cc.bg};color:${cc.fg};"><b>${escapeHtml(col.label)}</b><i>${escapeHtml(col.short || (col.title && col.title.length > 18 ? col.title.slice(0, 17) + '…' : (col.title || '')))}</i></span></th>`;
     }
   }
-  for(let c = 0; c < n; c++){
-    const th = grid[last] && grid[last][c];
-    if(!th){ html += '<th class="slim-off"></th>'; continue; }
-    if(th === nameTh){ html += nameTh.outerHTML.replace(/rowspan="\d+"/, '') + tallyHtml; continue; }
-    if(th.classList.contains('tally-head')) continue;
-    let lbl = '';
-    const ed = th.querySelector('[data-edit-cat]');
-    if(ed) lbl = ed.textContent.trim(); else if(!th.classList.contains('total-head')) lbl = (th.innerText || '').trim().split(/\n/)[0].trim();
-    if(lbl.length > 9) lbl = lbl.slice(0, 8) + '…';
-    html += `<th class="slim-off">${escapeHtml(lbl)}</th>`;
-  }
+  const canAdd = tallyColsOf(cls).length < TALLY_MAX_COLS;
+  const plusTh = canAdd ? `<th class="tally-add"><button class="ghost small" id="tallyAddBtn" title="Neue Strichliste" style="width:38px;height:38px;border-radius:50%;padding:0;font-size:1.3rem;font-weight:700;">+</button></th>` : '';
+  html += (nameTh ? nameTh.outerHTML.replace(/rowspan="\d+"/, '') : '<th class="name-col"></th>') + tallyHtml + plusTh;
   thead.innerHTML = html + '</tr>';
-  // Eintragsspalten direkt hinter den Namen ziehen
+  const tallyCount = (tallyHtml.match(/tally-head/g) || []).length;
+  // Nur Namen und Strichlisten behalten, Eintragsspalten direkt hinter den Namen
   Array.from(table.tBodies[0].rows).forEach(tr => {
+    if(tr.classList.contains('add-student-row')){
+      const tds = tr.querySelectorAll('td'); if(tds[1]) tds[1].colSpan = tallyCount + (canAdd ? 1 : 0);
+      return;
+    }
     const nameTd = tr.querySelector('td.name-col'); if(!nameTd) return;
     const cells = Array.from(tr.querySelectorAll('td.tally-cell'));
+    Array.from(tr.querySelectorAll('td')).forEach(td => { if(td !== nameTd && !cells.includes(td)) td.remove(); });
     let ref = nameTd; cells.forEach(td => { ref.after(td); ref = td; });
+    if(canAdd) ref.insertAdjacentHTML('afterend', '<td class="tally-add-cell"></td>');
   });
   table.classList.add('tally-mode');
 }
@@ -3760,9 +3761,16 @@ function renderGrid(main, cls, sem){
     if(tb){
       slimTallyHead(tb, cls);
       const wrapEl = main.querySelector('.grid-wrap');
-      if(wrapEl) wrapEl.insertAdjacentHTML('beforebegin', '<div class="tally-bar"><span class="chip">Strichlisten aktiv</span> Antippen = +1 (heute) · lang drücken = Einträge · nur Namen und Strichlisten sind bedienbar <button class="ghost small" id="tallyManageBtn" style="margin-left:auto;">⚙ Listen bearbeiten</button></div>');
+      if(wrapEl) wrapEl.insertAdjacentHTML('beforebegin', '<div class="tally-bar"><span class="chip">Strichlisten aktiv</span> Antippen = +1 (heute) · lang drücken = Einträge · im Strichlisten-Modus sind nur Namen und Strichlisten sichtbar <button class="ghost small" id="tallyManageBtn" style="margin-left:auto;">⚙ Listen bearbeiten</button></div>');
       const mb = document.getElementById('tallyManageBtn'); if(mb) mb.onclick = () => openTallyManager(cls);
       tb.querySelectorAll('th.tally-head').forEach(th => th.addEventListener('click', () => openTallyManager(cls)));
+      const ab = document.getElementById('tallyAddBtn');
+      if(ab) ab.onclick = () => {
+        if(!cls.tallyCols || !cls.tallyCols.length) cls.tallyCols = DEFAULT_TALLY_COLS.map(c => ({...c}));
+        if(cls.tallyCols.length >= TALLY_MAX_COLS) return;
+        cls.tallyCols.push({key: 'T' + uid(), label: 'Neu', title: '', color: 'grau'});
+        saveState(); render(); openTallyManager(cls, cls.tallyCols.length - 1);
+      };
       applyTallyLayout();
     }
   }
