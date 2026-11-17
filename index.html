@@ -245,12 +245,11 @@
   .grade-chip.selected{background:var(--accent);color:#fff;border-color:var(--accent);}
   .dlg-choices{display:flex;flex-direction:column;gap:8px;margin-top:12px;}
   table.grid th.tally-head, table.grid td.tally-cell{padding-left:2px;padding-right:2px;width:42px;min-width:42px;max-width:42px;}
-  .tcnt{display:inline-flex;min-width:30px;height:30px;border-radius:15px;align-items:center;justify-content:center;font-weight:700;font-size:0.9rem;padding:0 4px;box-sizing:border-box;}
-  .tcnt.c0{border:1.5px dashed var(--line);color:var(--ink-soft);opacity:.7;font-size:1.05rem;font-weight:500;}
+  .tcnt{display:inline-flex;min-width:38px;height:38px;border-radius:19px;align-items:center;justify-content:center;font-weight:700;font-size:1.1rem;padding:0 6px;box-sizing:border-box;}
+  .tcnt.c0{border:1.5px dashed var(--line);color:var(--ink-soft);opacity:.7;font-size:1.3rem;font-weight:500;}
   .tcnt.c1{background:#e8eef6;color:#33527a;} .tcnt.c3{background:#fde8c4;color:#8a5200;} .tcnt.c5{background:#f8cfca;color:#a1281c;}
-  .slim-hb{display:inline-flex;flex-direction:column;align-items:center;gap:1px;padding:5px 8px;border-radius:12px;line-height:1.15;}
-  .slim-hb b{font-size:0.95rem;} .slim-hb i{font-style:normal;font-size:0.56rem;font-weight:500;opacity:.85;white-space:nowrap;}
-  .slim-HA{background:#fde7e4;color:#a1281c;} .slim-HAu{background:#fdf0d4;color:#8a5a00;} .slim-M{background:#e3edfb;color:#1d4f9a;}
+  .slim-hb{display:inline-flex;flex-direction:column;align-items:center;gap:2px;padding:6px 8px;border-radius:12px;line-height:1.15;}
+  .slim-hb b{font-size:1.15rem;} .slim-hb i{font-style:normal;font-size:0.66rem;font-weight:500;opacity:.85;white-space:nowrap;}
   table.grid.tally-mode thead th{position:sticky;top:0;z-index:12;padding:8px 6px;border-bottom:2px solid var(--line);}
   table.grid.tally-mode thead th.slim-off{color:#b4b4ba;font-weight:500;font-size:0.68rem;min-width:0;}
   table.grid.tally-mode thead th.name-col [data-select-student-col]{min-height:0!important;}
@@ -260,7 +259,7 @@
   table.grid.tally-mode thead th.name-col .colhead-wrap{min-height:0!important;}
   table.grid.tally-mode td.name-col{position:sticky;left:0;}
   table.grid.tally-mode tbody tr:not(.add-student-row) td:not(.name-col):not(.tally-cell){opacity:.3;filter:grayscale(1);pointer-events:none;}
-  table.grid.tally-mode th.tally-head, table.grid.tally-mode td.tally-cell{width:78px;min-width:78px;max-width:78px;}
+  table.grid.tally-mode th.tally-head, table.grid.tally-mode td.tally-cell{width:104px;min-width:104px;max-width:104px;}
   .tally-bar{background:#fff7e0;color:#7a5b00;font-size:0.76rem;padding:6px 12px;border-bottom:1px solid #f0e2b0;display:flex;gap:8px;align-items:center;flex-wrap:wrap;}
   .tally-bar .chip{background:#1f6f4a;color:#fff;border-radius:10px;padding:2px 8px;font-size:0.7rem;font-weight:700;}
   td.tally-cell{cursor:pointer;-webkit-user-select:none;user-select:none;-webkit-touch-callout:none;}
@@ -388,7 +387,8 @@ function templateFromClass(cls, name){
     return groups;
   });
   return {id: uid(), name, stufe: cls.stufe || 'SII', gradingSystem: cls.gradingSystem || 'noten',
-    gradeTableNoten: (cls.gradeTableNoten || []).map(r => ({...r})), gradeTablePunkte: (cls.gradeTablePunkte || []).map(r => ({...r})), sems};
+    gradeTableNoten: (cls.gradeTableNoten || []).map(r => ({...r})), gradeTablePunkte: (cls.gradeTablePunkte || []).map(r => ({...r})),
+    tallyCols: cls.tallyCols ? cls.tallyCols.map(c => ({...c})) : undefined, sems};
 }
 function resolveTemplate(templateId){
   if(!templateId) return null;
@@ -409,6 +409,7 @@ function applyTemplateMeta(cls, templateId){
   cls.gradingSystem = tpl.gradingSystem || cls.gradingSystem;
   if(tpl.gradeTableNoten && tpl.gradeTableNoten.length) cls.gradeTableNoten = tpl.gradeTableNoten.map(r => ({...r}));
   if(tpl.gradeTablePunkte && tpl.gradeTablePunkte.length) cls.gradeTablePunkte = tpl.gradeTablePunkte.map(r => ({...r}));
+  if(tpl.tallyCols && tpl.tallyCols.length) cls.tallyCols = tpl.tallyCols.map(c => ({...c}));
 }
 let pendingCsvMeta = null;
 const SL_KUERZEL_KEY = 'notenbuch-sl-kuerzel';
@@ -443,7 +444,7 @@ function colorForGroupName(name){
 }
 
 function uid(){ return Math.random().toString(36).slice(2,10); }
-const APP_VERSION_INFO = 'v22.40 · Entwickler: G. Schulte';
+const APP_VERSION_INFO = 'v22.44 · Entwickler: G. Schulte';
 function setStatus(msg, isError){
   const el = document.getElementById('status');
   const hasData = typeof state !== 'undefined' && state && state.classes && state.classes.length;
@@ -1842,6 +1843,10 @@ function applyTableScale(){ document.documentElement.style.setProperty('--tscale
 // ---------- Neuerungen nach einem Update ----------
 const WHATS_NEW_KEY = 'notenbuch-last-seen-version';
 const CHANGELOG = [
+  {v:'22.44', items:['Strichlisten frei anlegen: Bei eingeblendeten Strichlisten öffnet „Listen bearbeiten“ (oder ein Tipp auf einen Spaltenkopf) ein Fenster, in dem du pro Lerngruppe bis zu 6 Listen mit Kurzname, Beschreibung und Farbe anlegen, umbenennen, verschieben und löschen kannst. HA, HAu und M bleiben die Standardlisten. Die Listen werden in Vorlagen und im neuen Schuljahr übernommen.']},
+  {v:'22.43', items:['Strichlisten: Spalten, Zähler und Kopfkarten sind größer, die Schrift passt besser.']},
+  {v:'22.42', items:['Strichlisten: Die Einträgeliste (langer Druck) zeigt jetzt die Summe für das ganze Halbjahr neben dem Wert des Quartals. Im Beratungsblatt steht unter „Hausaufgaben und Material“ eine Zeile „Gesamt Halbjahr“.']},
+  {v:'22.41', items:['Strichlisten: Bei eingeblendeten Strichlisten stehen HA, HAu und M jetzt direkt hinter dem Namen.']},
   {v:'22.40', items:['Strichlisten neu gestaltet: Die Zähler sind runde Marken (leer, bläulich, orange ab 3, rot ab 5). Bei eingeblendeten Strichlisten bleibt eine schmale Kopfzeile beim Scrollen stehen (HA, HAu und M farbig hervorgehoben), die Namensspalte bleibt links fixiert, und alle anderen Spalten sind ausgegraut und gesperrt.']},
   {v:'22.39', items:['Der „Export für externe Tabelle (Zusatztool)“ ist aus der Verwaltung entfernt.']},
   {v:'22.38', items:['Menüs neu geordnet: In der Verwaltung steht „Markierte Schüler“ jetzt ganz oben. „Struktur aus 1. HJ übernehmen“ ist aus der Werkzeugleiste in Verwaltung → Halbjahr und Schuljahr umgezogen. Spalte bearbeiten: Name, Datum, Eingabeart, Maximalpunktzahl, Gewichtung, Darstellung, Farbe.']},
@@ -1901,11 +1906,17 @@ async function showWhatsNewIfNeeded(){
   if(txt) await showAlert('Neu in diesem Update', txt);
 }
 const TALLY_KEY = 'notenbuch-tally-visible';
-const TALLY_COLS = [
-  {key:'HA', label:'HA', title:'Hausaufgaben nicht gemacht'},
-  {key:'HAu', label:'HAu', title:'Hausaufgaben unvollständig'},
-  {key:'M', label:'M', title:'Material vergessen'},
+const DEFAULT_TALLY_COLS = [
+  {key:'HA', label:'HA', title:'Hausaufgaben nicht gemacht', short:'Hausaufg. fehlt', color:'rot'},
+  {key:'HAu', label:'HAu', title:'Hausaufgaben unvollständig', short:'unvollständig', color:'orange'},
+  {key:'M', label:'M', title:'Material vergessen', short:'Material fehlt', color:'blau'},
 ];
+const TALLY_COLORS = {
+  rot:{bg:'#fde7e4', fg:'#a1281c', name:'Rot'}, orange:{bg:'#fdf0d4', fg:'#8a5a00', name:'Orange'}, blau:{bg:'#e3edfb', fg:'#1d4f9a', name:'Blau'},
+  gruen:{bg:'#dff1e4', fg:'#1f6f4a', name:'Grün'}, lila:{bg:'#eee3f7', fg:'#5b2f8a', name:'Lila'}, grau:{bg:'#e9e9ec', fg:'#4a4a50', name:'Grau'},
+};
+const TALLY_MAX_COLS = 6;
+function tallyColsOf(cls){ return (cls && cls.tallyCols && cls.tallyCols.length) ? cls.tallyCols : DEFAULT_TALLY_COLS; }
 function tallyVisible(){ try{ return localStorage.getItem(TALLY_KEY) === '1'; }catch(e){ return false; } }
 function setTallyVisible(on){ try{ localStorage.setItem(TALLY_KEY, on ? '1' : '0'); }catch(e){} }
 function isSomiCat(c){ return /^SoMi\s*\d+$/i.test((c.name || '').trim()); }
@@ -1923,6 +1934,68 @@ function tallyHostCat(sem){
 function tallyList(host, key, sid){
   return (host.tally && host.tally[key] && host.tally[key][sid]) || [];
 }
+function tallyEntryCount(cls, key){
+  let n = 0;
+  (cls.semesters || []).forEach(sem => (sem.groups || []).forEach(g => (g.children || []).forEach(c => {
+    if(c.tally && c.tally[key]) Object.values(c.tally[key]).forEach(l => { n += l.length; });
+  })));
+  return n;
+}
+function openTallyManager(cls){
+  const root = document.getElementById('modalRoot');
+  const cols = () => { if(!cls.tallyCols || !cls.tallyCols.length) cls.tallyCols = DEFAULT_TALLY_COLS.map(c => ({...c})); return cls.tallyCols; };
+  const close = () => { root.innerHTML = ''; render(); };
+  const draw = () => {
+    const list = tallyColsOf(cls);
+    root.innerHTML = `
+      <div class="overlay" id="overlay"><div class="modal">
+        <div class="modal-close"><button class="ghost small" id="tmClose">Fertig</button></div>
+        <h3>Strichlisten bearbeiten</h3>
+        <div class="sub">${escapeHtml(cls.name)} · bis zu ${TALLY_MAX_COLS} Listen</div>
+        <div style="margin-top:10px;">${list.map((c, i) => `
+          <div class="flag-row" style="flex-wrap:wrap;gap:6px;">
+            <input type="text" data-tm-label="${i}" value="${escapeHtml(c.label)}" maxlength="5" style="width:70px;font-weight:700;" title="Kurzname">
+            <input type="text" data-tm-title="${i}" value="${escapeHtml(c.title || '')}" placeholder="Beschreibung (z. B. Vokabeln fehlen)" style="flex:1 1 100%;order:5;">
+            <select data-tm-color="${i}">${Object.entries(TALLY_COLORS).map(([k, v]) => `<option value="${k}"${c.color === k ? ' selected' : ''}>${v.name}</option>`).join('')}</select>
+            <span style="display:inline-flex;gap:4px;margin-left:auto;">
+            <button class="ghost small" data-tm-up="${i}" ${i === 0 ? 'disabled' : ''}>↑</button>
+            <button class="ghost small" data-tm-down="${i}" ${i === list.length - 1 ? 'disabled' : ''}>↓</button>
+            <button class="ghost small" data-tm-del="${i}" style="color:var(--danger);">✕</button>
+            </span>
+          </div>`).join('')}</div>
+        <div class="row" style="margin-top:12px;justify-content:space-between;align-items:center;">
+          <span class="hint">${list.length >= TALLY_MAX_COLS ? 'Höchstzahl erreicht.' : ''}</span>
+          <button id="tmAdd" ${list.length >= TALLY_MAX_COLS ? 'disabled style="opacity:.45;"' : ''}>+ Neue Liste</button>
+        </div>
+      </div></div>`;
+    document.getElementById('tmClose').onclick = close;
+    document.getElementById('overlay').addEventListener('click', (e) => { if(e.target.id === 'overlay') close(); });
+    document.getElementById('tmAdd').onclick = () => { const l = cols(); if(l.length >= TALLY_MAX_COLS) return; l.push({key: 'T' + uid(), label: 'Neu', title: '', color: 'grau'}); saveState(); draw(); };
+    root.querySelectorAll('[data-tm-label]').forEach(b => b.onchange = () => { const v = b.value.trim(); if(v){ cols()[+b.dataset.tmLabel].label = v.slice(0, 5); saveState(); } draw(); });
+    root.querySelectorAll('[data-tm-title]').forEach(b => b.onchange = () => { const cc = cols()[+b.dataset.tmTitle]; cc.title = b.value.trim(); delete cc.short; saveState(); });
+    root.querySelectorAll('[data-tm-color]').forEach(b => b.onchange = () => { cols()[+b.dataset.tmColor].color = b.value; saveState(); });
+    root.querySelectorAll('[data-tm-up]').forEach(b => b.onclick = () => { const l = cols(), i = +b.dataset.tmUp; [l[i-1], l[i]] = [l[i], l[i-1]]; saveState(); draw(); });
+    root.querySelectorAll('[data-tm-down]').forEach(b => b.onclick = () => { const l = cols(), i = +b.dataset.tmDown; [l[i+1], l[i]] = [l[i], l[i+1]]; saveState(); draw(); });
+    root.querySelectorAll('[data-tm-del]').forEach(b => b.onclick = async () => {
+      const l = cols(), i = +b.dataset.tmDel, c = l[i];
+      if(l.length <= 1){ await showAlert('Nicht möglich', 'Mindestens eine Strichliste muss bleiben.'); draw(); return; }
+      const n = tallyEntryCount(cls, c.key);
+      const ok = await showConfirm('Liste löschen', `„${c.label}“ löschen?` + (n ? ` Dabei gehen ${n} Einträge in allen Halbjahren dieser Lerngruppe verloren.` : ''), {confirmLabel: 'Löschen', danger: true});
+      if(ok){
+        l.splice(i, 1);
+        (cls.semesters || []).forEach(sem => (sem.groups || []).forEach(g => (g.children || []).forEach(h => { if(h.tally) delete h.tally[c.key]; })));
+        saveState();
+      }
+      draw();
+    });
+  };
+  draw();
+}
+function tallyHalfYearTotal(sem, key, sid){
+  let n = 0;
+  (sem.groups || []).forEach(g => (g.children || []).forEach(c => { if(c.tally) n += tallyList(c, key, sid).length; }));
+  return n;
+}
 function tallySet(host, key, sid, list){
   host.tally = host.tally || {};
   host.tally[key] = host.tally[key] || {};
@@ -1932,9 +2005,8 @@ function tallyPill(n){
   if(!n) return '<span class="tcnt c0">+</span>';
   return `<span class="tcnt ${n < 3 ? 'c1' : (n < 5 ? 'c3' : 'c5')}">${n}</span>`;
 }
-const TALLY_SUB = {HA: 'Hausaufg. fehlt', HAu: 'unvollständig', M: 'Material fehlt'};
 // Strichlisten-Modus: schmale, fixierte Kopfzeile (nur Namen + HA/HAu/M hervorgehoben)
-function slimTallyHead(table, studentCount){
+function slimTallyHead(table, cls){
   const thead = table.tHead; if(!thead) return;
   const rows = Array.from(thead.rows); const grid = [];
   rows.forEach((tr, r) => { let c = 0; Array.from(tr.cells).forEach(th => {
@@ -1945,14 +2017,21 @@ function slimTallyHead(table, studentCount){
   const last = rows.length - 1; const n = Math.max(...grid.map(r => r.length));
   const nameTh = rows[0].querySelector('th.name-col');
   let html = '<tr>';
+  let tallyHtml = '';
+  for(let c = 0; c < n; c++){
+    const th = grid[last] && grid[last][c];
+    if(th && th.classList.contains('tally-head')){
+      const col = tallyColsOf(cls).find(x => x.key === th.dataset.tkey);
+      if(!col) continue;
+      const cc = TALLY_COLORS[col.color] || TALLY_COLORS.grau;
+      tallyHtml += `<th class="tally-head" data-tkey="${escapeHtml(col.key)}" style="cursor:pointer;"><span class="slim-hb" style="background:${cc.bg};color:${cc.fg};"><b>${escapeHtml(col.label)}</b><i>${escapeHtml(col.short || (col.title && col.title.length > 18 ? col.title.slice(0, 17) + '…' : (col.title || '')))}</i></span></th>`;
+    }
+  }
   for(let c = 0; c < n; c++){
     const th = grid[last] && grid[last][c];
     if(!th){ html += '<th class="slim-off"></th>'; continue; }
-    if(th === nameTh){ html += nameTh.outerHTML.replace(/rowspan="\d+"/, ''); continue; }
-    if(th.classList.contains('tally-head')){
-      const key = (th.textContent || '').trim();
-      html += `<th class="tally-head"><span class="slim-hb slim-${key}"><b>${key}</b><i>${TALLY_SUB[key] || ''}</i></span></th>`; continue;
-    }
+    if(th === nameTh){ html += nameTh.outerHTML.replace(/rowspan="\d+"/, '') + tallyHtml; continue; }
+    if(th.classList.contains('tally-head')) continue;
     let lbl = '';
     const ed = th.querySelector('[data-edit-cat]');
     if(ed) lbl = ed.textContent.trim(); else if(!th.classList.contains('total-head')) lbl = (th.innerText || '').trim().split(/\n/)[0].trim();
@@ -1960,6 +2039,12 @@ function slimTallyHead(table, studentCount){
     html += `<th class="slim-off">${escapeHtml(lbl)}</th>`;
   }
   thead.innerHTML = html + '</tr>';
+  // Eintragsspalten direkt hinter den Namen ziehen
+  Array.from(table.tBodies[0].rows).forEach(tr => {
+    const nameTd = tr.querySelector('td.name-col'); if(!nameTd) return;
+    const cells = Array.from(tr.querySelectorAll('td.tally-cell'));
+    let ref = nameTd; cells.forEach(td => { ref.after(td); ref = td; });
+  });
   table.classList.add('tally-mode');
 }
 function applyTallyLayout(){
@@ -1973,14 +2058,14 @@ window.addEventListener('resize', applyTallyLayout);
 function tallyCellHtml(host, key, sid){
   const l = tallyList(host, key, sid);
   const tip = l.length ? l.map(formatDate).join(', ') : 'Antippen: +1 (heute) · lang drücken: Einträge';
-  return `<td class="tally-cell" data-tally-cell="${key}" data-tally-host="${host.id}" data-student="${sid}" title="${escapeHtml(tip)}"><div class="cell-stack" style="min-height:30px;display:flex;align-items:center;justify-content:center;">${tallyPill(l.length)}</div></td>`;
+  return `<td class="tally-cell" data-tally-cell="${key}" data-tally-host="${host.id}" data-student="${sid}" title="${escapeHtml(tip)}"><div class="cell-stack" style="min-height:40px;display:flex;align-items:center;justify-content:center;">${tallyPill(l.length)}</div></td>`;
 }
-function tallyHeadHtml(host, rowspan){
+function tallyHeadHtml(host, rowspan, cls){
   const bg = host.bgColor ? `background:${lightenColor(host.bgColor, 0.55)};` : '';
-  return TALLY_COLS.map(c => `<th class="cat-head tally-head" ${rowspan>1?`rowspan="${rowspan}"`:''} style="${bg}" title="${c.title}"><div class="colhead"><span style="font-weight:700;">${c.label}</span></div></th>`).join('');
+  return tallyColsOf(cls).map(c => `<th class="cat-head tally-head" data-tkey="${escapeHtml(c.key)}" ${rowspan>1?`rowspan="${rowspan}"`:''} style="${bg}" title="${c.title}"><div class="colhead"><span style="font-weight:700;">${c.label}</span></div></th>`).join('');
 }
 async function openTallyList(cls, sem, host, key, sid){
-  const col = TALLY_COLS.find(c => c.key === key);
+  const col = tallyColsOf(cls).find(c => c.key === key) || {key, label: key, title: key};
   const st = cls.students.find(x => x.id === sid);
   const root = document.getElementById('modalRoot');
   const draw = () => {
@@ -1988,8 +2073,9 @@ async function openTallyList(cls, sem, host, key, sid){
     root.innerHTML = `
       <div class="overlay" id="overlay"><div class="modal">
         <div class="modal-close"><button class="ghost small" id="tlClose">Fertig</button></div>
-        <h3>${escapeHtml(col.title)}</h3>
+        <h3>${escapeHtml(col.title || col.label)}</h3>
         <div class="sub">${escapeHtml(st ? st.name : '')} · ${escapeHtml(host.name)}</div>
+        <div class="sub" style="margin-top:4px;">Gesamt ${escapeHtml(sem.name)}: <b>${tallyHalfYearTotal(sem, key, sid)}</b> · ${escapeHtml(host.name)}: <b>${l.length}</b></div>
         <div style="margin-top:12px;display:flex;flex-direction:column;gap:8px;">
           ${l.length ? l.map((d, i) => `<div class="row" style="align-items:center;gap:8px;"><input type="date" data-tl-date="${i}" value="${d}" style="flex:1;"><button class="ghost small" data-tl-del="${i}">✕</button></div>`).join('') : '<div style="color:var(--ink-soft);">Noch keine Einträge.</div>'}
         </div>
@@ -3020,24 +3106,30 @@ function buildStudentSheetPdf(cls, semesters, student, opts){
     });
     const tallyHosts = [];
     (sem.groups || []).forEach(g => (g.children || []).forEach(c => {
-      if(c.tally && TALLY_COLS.some(t => tallyList(c, t.key, sid).length)) tallyHosts.push(c);
+      if(c.tally && tallyColsOf(cls).some(t => tallyList(c, t.key, sid).length)) tallyHosts.push(c);
     }));
     if(tallyHosts.length){
       ensure(60);
-      pdf.text('Hausaufgaben und Material', mx + 2, y + 11, {size: 11.5, font: 'B'});
+      pdf.text('Strichlisten', mx + 2, y + 11, {size: 11.5, font: 'B'});
       pdf.line(mx, y + 16, R, y + 16, 0.8, 0.5);
       y += 22;
       tallyHosts.forEach(h => {
-        TALLY_COLS.forEach(t => {
+        tallyColsOf(cls).forEach(t => {
           const l = tallyList(h, t.key, sid);
           if(!l.length) return;
-          const head = `${h.name} · ${t.title} (${t.label}): ${l.length} – `;
+          const head = `${h.name} · ${t.title ? t.title + ' (' + t.label + ')' : t.label}: ${l.length} – `;
           const lines = pdfWrap(pdf, head + l.map(d => formatDate(d).slice(0, 6)).join(', '), R - mx - 8, 9.5, 'R');
           ensure(lines.length * 12 + 6);
           lines.forEach(ln => { pdf.text(ln, mx + 4, y + 9, {size: 9.5}); y += 12; });
           y += 3;
         });
       });
+      const totals = tallyColsOf(cls).map(t => ({t, n: tallyHalfYearTotal(sem, t.key, sid)})).filter(x => x.n);
+      if(totals.length){
+        ensure(16);
+        pdf.text(`Gesamt ${sem.name}: ` + totals.map(x => `${x.t.label} ${x.n}`).join(' · '), mx + 4, y + 9, {size: 9.5, font: 'B'});
+        y += 14;
+      }
       y += 6;
     }
     y += 6;
@@ -3191,6 +3283,7 @@ function cloneClassForNewYear(cls, withStudents){
     id: uid(), name: cls.name, students,
     gradingSystem: cls.gradingSystem, gradeTableNoten: cls.gradeTableNoten, gradeTablePunkte: cls.gradeTablePunkte,
     stufe: cls.stufe, slForm: cls.slForm ? {...cls.slForm} : undefined, nameColWidth: cls.nameColWidth,
+    tallyCols: cls.tallyCols ? cls.tallyCols.map(c => ({...c})) : undefined,
     semesters, activeSemesterId: semesters.length ? semesters[0].id : null
   };
 }
@@ -3430,7 +3523,7 @@ function renderGrid(main, cls, sem){
       </th>`;
       return;
     }
-    const span = g.children.length === 0 ? 2 : g.children.reduce((s,c)=>s+catWidth(c), 0) + 1 + (tallyHost && g.children.includes(tallyHost) ? TALLY_COLS.length : 0);
+    const span = g.children.length === 0 ? 2 : g.children.reduce((s,c)=>s+catWidth(c), 0) + 1 + (tallyHost && g.children.includes(tallyHost) ? tallyColsOf(cls).length : 0);
     const groupSelected = state.colorizeMode && isColorizeSelected('group', g.id);
     const groupSelectStyle = groupSelected ? 'box-shadow:inset 0 0 0 3px var(--accent);' : '';
     groupHeadRow += `<th class="grp-head" colspan="${span}" data-select-group="${g.id}" style="background:${(g.bgColor || colorForGroupName(g.name))};${groupSelectStyle}">
@@ -3523,14 +3616,14 @@ function renderGrid(main, cls, sem){
       g.children.forEach(cat => {
         const rowSet = buildCatRows(cat, g, 0, undefined);
         for(let r=0; r<maxDepth; r++){ catRowStrings[r] += rowSet[r] || ''; }
-        if(tallyHost && cat === tallyHost) catRowStrings[0] += tallyHeadHtml(cat, maxDepth);
+        if(tallyHost && cat === tallyHost) catRowStrings[0] += tallyHeadHtml(cat, maxDepth, cls);
       });
     }
   });
   const catHeaderRows = catRowStrings.map(r => `<tr>${r}</tr>`).join('');
 
   let body = '';
-  const colCount = 2 + groups.reduce((s,g)=>s+(g.collapsed ? 1 : (g.children.length === 0 ? 2 : g.children.reduce((s2,c)=>s2+catWidth(c),0)+1+(tallyHost && g.children.includes(tallyHost) ? TALLY_COLS.length : 0))),0);
+  const colCount = 2 + groups.reduce((s,g)=>s+(g.collapsed ? 1 : (g.children.length === 0 ? 2 : g.children.reduce((s2,c)=>s2+catWidth(c),0)+1+(tallyHost && g.children.includes(tallyHost) ? tallyColsOf(cls).length : 0))),0);
   const term = state.searchTerm.trim().toLowerCase();
   const semStudents = getSemesterStudents(cls, sem);
   let visibleStudents = term ? semStudents.filter(s=>s.name.toLowerCase().includes(term)) : semStudents;
@@ -3650,7 +3743,7 @@ function renderGrid(main, cls, sem){
         if(g.children.length === 0){
           row += `<td></td>`;
         } else {
-          g.children.forEach(cat => { row += catCell(cat, g, s, 0, undefined, rowLighten); if(tallyHost && cat === tallyHost) row += TALLY_COLS.map(c => tallyCellHtml(cat, c.key, s.id)).join(''); });
+          g.children.forEach(cat => { row += catCell(cat, g, s, 0, undefined, rowLighten); if(tallyHost && cat === tallyHost) row += tallyColsOf(cls).map(c => tallyCellHtml(cat, c.key, s.id)).join(''); });
         }
       });
       body += row + `</tr>`;
@@ -3665,9 +3758,11 @@ function renderGrid(main, cls, sem){
   if(tallyHost){
     const tb = main.querySelector('table.grid');
     if(tb){
-      slimTallyHead(tb, studentCount);
+      slimTallyHead(tb, cls);
       const wrapEl = main.querySelector('.grid-wrap');
-      if(wrapEl) wrapEl.insertAdjacentHTML('beforebegin', '<div class="tally-bar"><span class="chip">Strichlisten aktiv</span> Antippen = +1 (heute) · lang drücken = Liste · nur Namen, HA, HAu und M sind bedienbar</div>');
+      if(wrapEl) wrapEl.insertAdjacentHTML('beforebegin', '<div class="tally-bar"><span class="chip">Strichlisten aktiv</span> Antippen = +1 (heute) · lang drücken = Einträge · nur Namen und Strichlisten sind bedienbar <button class="ghost small" id="tallyManageBtn" style="margin-left:auto;">⚙ Listen bearbeiten</button></div>');
+      const mb = document.getElementById('tallyManageBtn'); if(mb) mb.onclick = () => openTallyManager(cls);
+      tb.querySelectorAll('th.tally-head').forEach(th => th.addEventListener('click', () => openTallyManager(cls)));
       applyTallyLayout();
     }
   }
