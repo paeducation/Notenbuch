@@ -444,7 +444,7 @@ function colorForGroupName(name){
 }
 
 function uid(){ return Math.random().toString(36).slice(2,10); }
-const APP_VERSION_INFO = 'v22.45 · Entwickler: G. Schulte';
+const APP_VERSION_INFO = 'v22.46 · Entwickler: G. Schulte';
 function setStatus(msg, isError){
   const el = document.getElementById('status');
   const hasData = typeof state !== 'undefined' && state && state.classes && state.classes.length;
@@ -1843,6 +1843,7 @@ function applyTableScale(){ document.documentElement.style.setProperty('--tscale
 // ---------- Neuerungen nach einem Update ----------
 const WHATS_NEW_KEY = 'notenbuch-last-seen-version';
 const CHANGELOG = [
+  {v:'22.46', items:['Strichlisten: Das Plus rechts neben der letzten Liste öffnet jetzt ein kleines Fenster nur für die neue Liste. „Listen bearbeiten“ (alle Listen ändern, verschieben, löschen) gibt es nur noch über den Knopf oben rechts.']},
   {v:'22.45', items:['Strichlisten-Modus: Im Hintergrund sind keine anderen Spalten mehr sichtbar, nur Namen und Strichlisten. Eine neue Liste legst du mit dem Plus rechts neben der letzten Liste an.']},
   {v:'22.44', items:['Strichlisten frei anlegen: Bei eingeblendeten Strichlisten öffnet „Listen bearbeiten“ (oder ein Tipp auf einen Spaltenkopf) ein Fenster, in dem du pro Lerngruppe bis zu 6 Listen mit Kurzname, Beschreibung und Farbe anlegen, umbenennen, verschieben und löschen kannst. HA, HAu und M bleiben die Standardlisten. Die Listen werden in Vorlagen und im neuen Schuljahr übernommen.']},
   {v:'22.43', items:['Strichlisten: Spalten, Zähler und Kopfkarten sind größer, die Schrift passt besser.']},
@@ -1941,6 +1942,36 @@ function tallyEntryCount(cls, key){
     if(c.tally && c.tally[key]) Object.values(c.tally[key]).forEach(l => { n += l.length; });
   })));
   return n;
+}
+function openTallyNewDialog(cls){
+  const root = document.getElementById('modalRoot');
+  root.innerHTML = `
+    <div class="overlay" id="overlay"><div class="modal">
+      <div class="modal-close"><button class="ghost small" id="tnCancel">Abbrechen</button></div>
+      <h3>Neue Strichliste</h3>
+      <div class="sub">${escapeHtml(cls.name)}</div>
+      <div class="row" style="margin-top:12px;gap:8px;">
+        <input type="text" id="tnLabel" maxlength="5" placeholder="Kurzname (z. B. VW)" style="width:150px;font-weight:700;">
+        <select id="tnColor">${Object.entries(TALLY_COLORS).map(([k, v]) => `<option value="${k}">${v.name}</option>`).join('')}</select>
+      </div>
+      <input type="text" id="tnTitle" placeholder="Beschreibung (z. B. Vokabeln nicht gelernt)" style="width:100%;margin-top:8px;">
+      <div class="hint" id="tnMsg" style="margin-top:6px;color:var(--danger);"></div>
+      <div class="row" style="margin-top:10px;justify-content:flex-end;"><button id="tnOk">Anlegen</button></div>
+    </div></div>`;
+  const close = () => { root.innerHTML = ''; };
+  document.getElementById('tnCancel').onclick = close;
+  document.getElementById('overlay').addEventListener('click', (e) => { if(e.target.id === 'overlay') close(); });
+  const lab = document.getElementById('tnLabel'); lab.focus();
+  const ok = () => {
+    const label = lab.value.trim();
+    if(!label){ document.getElementById('tnMsg').textContent = 'Bitte einen Kurznamen eingeben'; lab.focus(); return; }
+    if(!cls.tallyCols || !cls.tallyCols.length) cls.tallyCols = DEFAULT_TALLY_COLS.map(c => ({...c}));
+    if(cls.tallyCols.length >= TALLY_MAX_COLS){ close(); return; }
+    cls.tallyCols.push({key: 'T' + uid(), label: label.slice(0, 5), title: document.getElementById('tnTitle').value.trim(), color: document.getElementById('tnColor').value});
+    saveState(); close(); render();
+  };
+  document.getElementById('tnOk').onclick = ok;
+  root.querySelectorAll('input').forEach(i => i.onkeydown = (e) => { if(e.key === 'Enter') ok(); });
 }
 function openTallyManager(cls, focusIdx){
   const root = document.getElementById('modalRoot');
@@ -3763,14 +3794,8 @@ function renderGrid(main, cls, sem){
       const wrapEl = main.querySelector('.grid-wrap');
       if(wrapEl) wrapEl.insertAdjacentHTML('beforebegin', '<div class="tally-bar"><span class="chip">Strichlisten aktiv</span> Antippen = +1 (heute) · lang drücken = Einträge · im Strichlisten-Modus sind nur Namen und Strichlisten sichtbar <button class="ghost small" id="tallyManageBtn" style="margin-left:auto;">⚙ Listen bearbeiten</button></div>');
       const mb = document.getElementById('tallyManageBtn'); if(mb) mb.onclick = () => openTallyManager(cls);
-      tb.querySelectorAll('th.tally-head').forEach(th => th.addEventListener('click', () => openTallyManager(cls)));
       const ab = document.getElementById('tallyAddBtn');
-      if(ab) ab.onclick = () => {
-        if(!cls.tallyCols || !cls.tallyCols.length) cls.tallyCols = DEFAULT_TALLY_COLS.map(c => ({...c}));
-        if(cls.tallyCols.length >= TALLY_MAX_COLS) return;
-        cls.tallyCols.push({key: 'T' + uid(), label: 'Neu', title: '', color: 'grau'});
-        saveState(); render(); openTallyManager(cls, cls.tallyCols.length - 1);
-      };
+      if(ab) ab.onclick = () => openTallyNewDialog(cls);
       applyTallyLayout();
     }
   }
