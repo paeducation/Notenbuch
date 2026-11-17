@@ -163,6 +163,7 @@
   .flag-row{display:flex;align-items:center;gap:8px;padding:7px 0;border-bottom:1px solid var(--line);}
   .flag-row.done .ftxt{text-decoration:line-through;color:var(--ink-soft);}
   .perm-tag{display:inline-block;font-size:0.62rem;font-weight:700;letter-spacing:.03em;line-height:1;padding:3px 5px;border-radius:5px;background:#2b6cb0;color:#fff;margin-left:4px;cursor:pointer;flex-shrink:0;}
+  .flag-date{display:block;margin-top:4px;width:100%;max-width:220px;min-width:150px;min-height:38px;box-sizing:border-box;font-size:1rem;padding:6px 10px;-webkit-appearance:none;appearance:none;border:1px solid var(--line);border-radius:8px;background:var(--bg-soft,transparent);color:var(--ink);text-align:left;}
   .flag-chip{border:1px solid var(--line);background:transparent;color:var(--ink);font-family:inherit;border-radius:14px;padding:4px 10px;font-size:0.8rem;cursor:pointer;margin:3px 4px 0 0;}
   .cell-stack{display:flex;flex-direction:column;align-items:center;gap:1px;cursor:pointer;padding:calc(3px * var(--tscale,1)) 2px;border-radius:8px;position:relative;}
   .cell-stack:hover{background:var(--surface-soft);}
@@ -425,7 +426,7 @@ function colorForGroupName(name){
 }
 
 function uid(){ return Math.random().toString(36).slice(2,10); }
-const APP_VERSION_INFO = 'v22.36 · Entwickler: G. Schulte';
+const APP_VERSION_INFO = 'v22.37 · Entwickler: G. Schulte';
 function setStatus(msg, isError){
   const el = document.getElementById('status');
   const hasData = typeof state !== 'undefined' && state && state.classes && state.classes.length;
@@ -1825,6 +1826,7 @@ function applyTableScale(){ document.documentElement.style.setProperty('--tscale
 // ---------- Neuerungen nach einem Update ----------
 const WHATS_NEW_KEY = 'notenbuch-last-seen-version';
 const CHANGELOG = [
+  {v:'22.37', items:['Vermerke: Das Datumsfeld „Fällig am“ ist auf dem iPhone/iPad jetzt normal groß und gut antippbar.']},
   {v:'22.36', items:['Vermerke-Fenster neu geordnet: oben die Vermerke, darunter die dauerhaften Hinweise (NTA, LRS, IK). Der Begriff „Dauerhaft“ heißt jetzt „Hinweise“.']},
   {v:'22.35', items:['Neu: Dauerhafte Einträge pro Schüler: NTA (Nachteilsausgleich), LRS (Lese-Rechtschreib-Schwäche) und IK (Internationale Vorbereitungsklasse). Schüler antippen, ⚑ öffnen, Abschnitt „Dauerhaft“. Die blaue Marke steht immer am Namen, im Inkognito-Modus ist sie ausgeblendet. Im Beratungsblatt erscheinen die Einträge mit Hinweistext, in „Markierte Schüler“ als eigene Liste.']},
   {v:'22.34', items:['Vermerke: Die Schnellauswahl „Am Elternsprechtag ansprechen“ heißt jetzt „Elterngespräch notwendig“. Bereits angelegte Vermerke behalten ihren Text.']},
@@ -2747,7 +2749,7 @@ function openStudentFlagsDialog(cls, sid){
           <div class="flag-row${f.done ? ' done' : ''}">
             <input type="checkbox" data-fdone="${f.id}" ${f.done ? 'checked' : ''} title="Erledigt">
             <span class="flag-btn ${flagDue(f) ? 'red' : f.level}" style="font-size:1rem;">⚑</span>
-            <span class="ftxt" style="flex:1;">${escapeHtml(f.text)}${flagDueLabel(f) ? ' <b style="color:var(--danger);font-size:0.78rem;">' + flagDueLabel(f) + '</b>' : ''}<br><span class="hint">Fällig am (optional)</span> <input type="date" data-fdate="${f.id}" value="${escapeHtml(f.date || '')}" title="Fällig am" style="margin-top:4px;font-size:0.8rem;padding:3px 6px;"></span>
+            <span class="ftxt" style="flex:1;">${escapeHtml(f.text)}${flagDueLabel(f) ? ' <b style="color:var(--danger);font-size:0.78rem;">' + flagDueLabel(f) + '</b>' : ''}<br><span class="hint">Fällig am (optional)</span><input type="date" data-fdate="${f.id}" value="${escapeHtml(f.date || '')}" title="Fällig am" class="flag-date"></span>
             <button class="colx dark" data-fdel="${f.id}" title="Löschen">✕</button>
           </div>`).join('') : '<div class="hint">Noch kein Vermerk.</div>'}</div>
         <div style="margin-top:12px;font-size:0.8rem;color:var(--ink-soft);">Schnellauswahl</div>
