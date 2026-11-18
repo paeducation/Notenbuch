@@ -457,7 +457,7 @@ function colorForGroupName(name){
 }
 
 function uid(){ return Math.random().toString(36).slice(2,10); }
-const APP_VERSION_INFO = 'v22.48 · Entwickler: G. Schulte';
+const APP_VERSION_INFO = 'v22.50 · Entwickler: G. Schulte';
 function setStatus(msg, isError){
   const el = document.getElementById('status');
   const hasData = typeof state !== 'undefined' && state && state.classes && state.classes.length;
@@ -1658,6 +1658,12 @@ function renderAddLerngruppeModal(){
           </div>
         </div>
         <div class="divider" style="height:1px;background:var(--line);margin:16px 0;"></div>
+        <div class="form-title">Oder aus einem Sitzplan anlegen</div>
+        <div class="hint">Datei aus dem Sitzplanmodul (Für Notenbuch exportieren): legt die Lerngruppe mit allen Schülern aus dem Plan an und hinterlegt den Sitzplan. Stufe und Struktur stammen aus den Angaben oben.</div>
+        <div class="row" style="margin-top:8px;">
+          <button class="ghost small" id="seatFromAddModalBtn">Sitzplan-Datei wählen</button>
+        </div>
+        <div class="divider" style="height:1px;background:var(--line);margin:16px 0;"></div>
         <div class="form-title">Oder per CSV importieren</div>
         <div class="hint">Spalten Nachname, Vorname (erste Zeile wird als Überschrift ignoriert). Sind oben Angaben eingetragen, bestimmen sie den Namen der Lerngruppe, sonst der Dateiname ohne ".csv".</div>
         <div class="row" style="margin-top:8px;">
@@ -1703,9 +1709,7 @@ function renderAddLerngruppeModal(){
   document.getElementById('overlay').addEventListener('click', (e) => { if(e.target.id==='overlay') root.innerHTML=''; });
   document.getElementById('closeAddModal').onclick = () => { root.innerHTML=''; };
   setTimeout(() => { klasseInput.focus(); }, 30);
-  const doCreate = () => {
-    const name = composedName();
-    if(!name){ klasseInput.focus(); return; }
+  const buildClass = (name) => {
     const sem1 = {id: uid(), name: '1. HJ', groups: groupsForNewClass(stufe, templateId, 0), studentIds: [], endnoteColor: '#F2F2F2'};
     const sem2 = {id: uid(), name: '2. HJ', groups: groupsForNewClass(stufe, templateId, 1), studentIds: [], endnoteColor: '#F2F2F2'};
     const cls = {id: uid(), name, students: [], semesters: [sem1, sem2], activeSemesterId: sem1.id,
@@ -1713,12 +1717,34 @@ function renderAddLerngruppeModal(){
       stufe, slForm: {klasse: klasseInput.value.trim(), fach: fachInput.value.trim(), kuerzel: kuerzelInput.value.trim()}};
     storeKuerzel(kuerzelInput.value.trim());
     applyTemplateMeta(cls, templateId);
+    return cls;
+  };
+  const doCreate = () => {
+    const name = composedName();
+    if(!name){ klasseInput.focus(); return; }
+    const cls = buildClass(name);
     state.classes.push(cls); state.activeClassId = cls.id;
     saveState();
     root.innerHTML = '';
     render();
   };
   document.getElementById('createLerngruppeBtn').onclick = doCreate;
+  document.getElementById('seatFromAddModalBtn').onclick = () => {
+    const inp = document.createElement('input'); inp.type = 'file'; inp.accept = '.json,application/json';
+    inp.onchange = async () => {
+      const file = inp.files && inp.files[0]; if(!file) return;
+      let parsed;
+      try{ parsed = seatParseFile(await file.text()); }catch(e){ await showAlert('Import nicht möglich', e.message); renderAddLerngruppeModal(); return; }
+      const name = composedName() || [parsed.klasse, parsed.typ === 'Fachraum' ? parsed.fach : ''].filter(Boolean).join(' ') || 'Neue Lerngruppe';
+      const cls = buildClass(name);
+      if(!cls.slForm.klasse && !klasseInput.value.trim()) cls.slForm.klasse = parsed.klasse;
+      const ok = await importSeatPlanFile(cls, file, {mode: 'fill', skipClassCheck: true});
+      if(!ok){ renderAddLerngruppeModal(); return; }
+      state.classes.push(cls); state.activeClassId = cls.id;
+      saveState(); root.innerHTML = ''; render();
+    };
+    inp.click();
+  };
   [klasseInput, fachInput].forEach(inp => inp.addEventListener('keydown', (e) => { if(e.key==='Enter') doCreate(); }));
   document.getElementById('csvFromAddModalBtn').onclick = () => {
     root.innerHTML = '';
@@ -1856,6 +1882,8 @@ function applyTableScale(){ document.documentElement.style.setProperty('--tscale
 // ---------- Neuerungen nach einem Update ----------
 const WHATS_NEW_KEY = 'notenbuch-last-seen-version';
 const CHANGELOG = [
+  {v:'22.50', items:['Neue Lerngruppe: zusätzlich zum CSV-Import lässt sich die Lerngruppe aus einer Sitzplan-Datei anlegen (Schüler alphabetisch, Sitzplan wird mitgespeichert).']},
+  {v:'22.49', items:['Sitzplan-Import: wahlweise fehlende Schüler direkt aus dem Plan anlegen. Die Namenserkennung ist toleranter (Groß-/Kleinschreibung, Akzente, Bindestriche, ähnliche Vornamen bei eindeutigem Nachnamen).']},
   {v:'22.48', items:['Neu: Sitzplan. Im Sitzplanmodul „Für Notenbuch exportieren“ wählen und die Datei im Notenbuch über 🪑 Sitzplan → Importieren einlesen. Der Plan zeigt Plätze und Pult wie im Raum, dazu Vermerke, NTA/LRS/IK und Strichlisten-Zähler der Schüler. Nicht erkannte Namen lassen sich per Tipp zuordnen.']},
   {v:'22.47', items:['Strichlisten: Nach einem Eintrag springt die Liste nicht mehr nach oben, sondern bleibt beim Schüler stehen.']},
   {v:'22.46', items:['Strichlisten: Das Plus rechts neben der letzten Liste öffnet jetzt ein kleines Fenster nur für die neue Liste. „Listen bearbeiten“ (alle Listen ändern, verschieben, löschen) gibt es nur noch über den Knopf oben rechts.']},
@@ -2845,17 +2873,28 @@ function buildNotenschluesselPdf(cls, cat, maxPts){
 }
 // ---------- Sitzplan (Import aus dem Sitzplanmodul, Format sitzplan-notenbuch v1) ----------
 function seatNorm(t){ return String(t || '').toLowerCase().replace(/\s+/g, ' ').trim(); }
-function seatMatchStudent(cls, nachname, vorname, prevMap){
+function seatNorm2(t){ return String(t || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/ß/g, 'ss').replace(/[-–_.]/g, ' ').replace(/\s+/g, ' ').trim(); }
+function seatSplitName(full){
+  const n = String(full || '').trim();
+  if(n.includes(',')){ const i = n.indexOf(','); return {nach: n.slice(0, i).trim(), vor: n.slice(i + 1).trim()}; }
+  const parts = n.split(/\s+/); if(parts.length < 2) return {nach: n, vor: ''};
+  return {nach: parts[parts.length - 1], vor: parts.slice(0, -1).join(' ')};
+}
+// Reihenfolge: gemerkte Zuordnung, exakter Name, tolerante Schreibweise, eindeutiger Nachname mit gleichem Anfangsbuchstaben des Vornamens
+function seatMatchStudent(cls, nachname, vorname, prevMap, used){
+  const free = x => !used || !used.has(x);
   const key = seatNorm(nachname + ', ' + vorname);
-  if(prevMap && prevMap[key] && cls.students.some(x => x.id === prevMap[key])) return prevMap[key];
-  const alt = seatNorm(vorname + ' ' + nachname);
-  const hit = cls.students.find(st => {
-    const n = seatNorm(st.name);
-    if(n === key || n === alt) return true;
-    if(n.includes(',')){ const [a, b] = n.split(',').map(x => x.trim()); return (b + ' ' + a) === alt; }
-    return false;
-  });
-  return hit ? hit.id : null;
+  if(prevMap && prevMap[key] && free(prevMap[key]) && cls.students.some(x => x.id === prevMap[key])) return prevMap[key];
+  const cand = cls.students.filter(st => free(st.id)).map(st => ({st, ...seatSplitName(st.name)}));
+  const n1 = seatNorm(nachname), v1 = seatNorm(vorname);
+  let hit = cand.find(c => (seatNorm(c.nach) === n1 && seatNorm(c.vor) === v1) || seatNorm(c.st.name) === seatNorm(vorname + ' ' + nachname));
+  if(hit) return hit.st.id;
+  const n2 = seatNorm2(nachname), v2 = seatNorm2(vorname);
+  hit = cand.find(c => seatNorm2(c.nach) === n2 && seatNorm2(c.vor) === v2);
+  if(hit) return hit.st.id;
+  const sameNach = cand.filter(c => seatNorm2(c.nach) === n2 && n2);
+  if(sameNach.length === 1 && v2 && seatNorm2(sameNach[0].vor).charAt(0) === v2.charAt(0)) return sameNach[0].st.id;
+  return null;
 }
 function seatParseFile(text){
   let d; try{ d = JSON.parse(text); }catch(e){ throw new Error('Die Datei ist keine gültige JSON-Datei.'); }
@@ -2872,25 +2911,59 @@ function seatParseFile(text){
       : {type: 'student', x: num(t.x, 0), y: num(t.y, 0), rotation: num(t.rotation, 0), vorname: String(t.vorname || ''), nachname: String(t.nachname || '')})
   };
 }
-async function importSeatPlanFile(cls, file){
+async function importSeatPlanFile(cls, file, opts){
+  opts = opts || {};
   let parsed;
   try{ parsed = seatParseFile(await file.text()); }
   catch(e){ await showAlert('Import nicht möglich', e.message); return false; }
-  if(parsed.klasse && seatNorm(parsed.klasse) !== seatNorm(cls.name)){
+  if(!opts.skipClassCheck && parsed.klasse && seatNorm(parsed.klasse) !== seatNorm(cls.name)){
     const ok = await showConfirm('Andere Lerngruppe?', `Der Sitzplan gehört zu „${parsed.klasse}“, du importierst ihn in „${cls.name}“. Trotzdem importieren?`, {confirmLabel: 'Importieren'});
     if(!ok) return false;
   }
+  const mode = opts.mode || await showChoice('Wie importieren?', `Sitzplan „${parsed.raum}“ mit ${parsed.tiles.filter(t => t.type === 'student').length} Schülerplätzen.`, [
+    {label: 'Nur Plan anzeigen', value: 'plan'},
+    {label: 'Plan anzeigen und fehlende Schüler anlegen', value: 'fill'},
+  ]);
+  if(!mode) return false;
   if(!cls.seatPlans) cls.seatPlans = [];
   const sameIdx = cls.seatPlans.findIndex(p => p.raum === parsed.raum && p.typ === parsed.typ && (p.fach || '') === (parsed.fach || ''));
   const prevMap = {};
   if(sameIdx >= 0) cls.seatPlans[sameIdx].tiles.forEach(t => { if(t.type === 'student' && t.sid) prevMap[seatNorm(t.nachname + ', ' + t.vorname)] = t.sid; });
-  parsed.tiles.forEach(t => { if(t.type === 'student') t.sid = seatMatchStudent(cls, t.nachname, t.vorname, prevMap); });
+  const used = new Set();
+  const studs = parsed.tiles.filter(t => t.type === 'student');
+  studs.forEach(t => { t.sid = (t.vorname || t.nachname) ? seatMatchStudent(cls, t.nachname, t.vorname, prevMap, used) : null; if(t.sid) used.add(t.sid); });
+  let created = 0, dupes = 0;
+  if(mode === 'fill'){
+    const missing = studs.filter(t => !t.sid && (t.vorname || t.nachname));
+    const seen = new Set(), toAdd = [];
+    missing.forEach(t => { const k = seatNorm2(t.nachname + ',' + t.vorname); if(seen.has(k)){ dupes++; } else { seen.add(k); toAdd.push(t); } });
+    if(toAdd.length){
+      const ok = await showConfirm('Schüler anlegen?', `${toAdd.length} neue Schüler anlegen, ${used.size} sind schon vorhanden:\n${toAdd.slice(0, 8).map(t => t.nachname + ', ' + t.vorname).join('\n')}${toAdd.length > 8 ? '\n…' : ''}`, {confirmLabel: 'Anlegen'});
+      if(!ok) return false;
+      const wasEmpty = cls.students.length === 0;
+      toAdd.forEach(t => {
+        const name = t.vorname ? `${t.nachname}, ${t.vorname}` : t.nachname;
+        const st = {id: uid(), name};
+        cls.students.push(st);
+        cls.semesters.forEach(sm => { if(!sm.studentIds) sm.studentIds = []; sm.studentIds.push(st.id); });
+        t.sid = st.id; created++;
+      });
+      if(wasEmpty){
+        const byName = (a, b) => String(a.name).localeCompare(String(b.name), 'de');
+        cls.students.sort(byName);
+        cls.semesters.forEach(sm => { sm.studentIds = cls.students.map(x => x.id).filter(id => (sm.studentIds || []).includes(id)); });
+      }
+    }
+  }
   const plan = {id: sameIdx >= 0 ? cls.seatPlans[sameIdx].id : uid(), klasse: parsed.klasse, typ: parsed.typ, fach: parsed.fach, raum: parsed.raum, cols: parsed.cols, rows: parsed.rows, exportedAt: parsed.exportedAt, updatedAt: parsed.updatedAt, importedAt: new Date().toISOString(), tiles: parsed.tiles};
   if(sameIdx >= 0) cls.seatPlans[sameIdx] = plan; else cls.seatPlans.push(plan);
   cls.activeSeatPlanId = plan.id;
   saveState();
   const open = plan.tiles.filter(t => t.type === 'student' && !t.sid);
-  if(open.length) await showAlert('Sitzplan importiert', `${open.length} Platz/Plätze konnten keinem Schüler zugeordnet werden (${open.slice(0, 4).map(t => t.nachname + ', ' + t.vorname).join('; ')}${open.length > 4 ? ' …' : ''}). Tippe im Sitzplan auf einen gestrichelten Platz, um ihn zuzuordnen.`);
+  const msg = [];
+  if(created) msg.push(`${created} Schüler neu angelegt.`);
+  if(open.length) msg.push(`${open.length} Platz/Plätze nicht zugeordnet (${open.slice(0, 4).map(t => (t.nachname + ', ' + t.vorname).replace(/^, |, $/g, '')).join('; ')}${open.length > 4 ? ' …' : ''}). Tippe im Sitzplan auf einen gestrichelten Platz, um ihn zuzuordnen.${dupes ? ' Doppelte Namen im Plan wurden nur einmal angelegt.' : ''}`);
+  if(msg.length) await showAlert('Sitzplan importiert', msg.join('\n'));
   return true;
 }
 function pickSeatFile(cls, after){
