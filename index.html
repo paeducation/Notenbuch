@@ -164,6 +164,18 @@
   .flag-row.done .ftxt{text-decoration:line-through;color:var(--ink-soft);}
   .perm-tag{display:inline-block;font-size:0.62rem;font-weight:700;letter-spacing:.03em;line-height:1;padding:3px 5px;border-radius:5px;background:#2b6cb0;color:#fff;margin-left:4px;cursor:pointer;flex-shrink:0;}
   .flag-date{display:block;margin-top:4px;width:100%;max-width:220px;min-width:150px;min-height:38px;box-sizing:border-box;font-size:1rem;padding:6px 10px;-webkit-appearance:none;appearance:none;border:1px solid var(--line);border-radius:8px;background:var(--bg-soft,transparent);color:var(--ink);text-align:left;}
+  #seatOverlay{position:fixed;inset:0;z-index:40;background:var(--bg,#f4f3ef);display:flex;flex-direction:column;}
+  #seatOverlay .seat-top{display:flex;align-items:center;gap:8px;padding:8px 12px;border-bottom:1px solid var(--line);flex-wrap:wrap;}
+  #seatOverlay .seat-stage{flex:1;min-height:0;display:flex;align-items:center;justify-content:center;padding:10px;}
+  .seat-grid{position:relative;container-type:size;background:var(--surface,#fff);border:1px solid var(--line);border-radius:12px;box-shadow:0 2px 10px #0001;}
+  .seat-tile{position:absolute;box-sizing:border-box;padding:2px;}
+  .seat-tile > .seat-in{width:100%;height:100%;box-sizing:border-box;border:1px solid var(--line);border-radius:8px;background:var(--surface,#fff);box-shadow:0 1px 3px #0002;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;line-height:1.15;overflow:hidden;font-size:clamp(9px,1.5cqw,19px);padding:2px;position:relative;}
+  .seat-tile.pult > .seat-in{background:#e9e9ec;color:#555;font-weight:700;letter-spacing:.06em;}
+  .seat-tile.open > .seat-in{border-style:dashed;color:var(--ink-soft);background:transparent;cursor:pointer;}
+  .seat-tile .sn{font-weight:700;} .seat-tile .sv{opacity:.85;}
+  .seat-txt{display:flex;flex-direction:column;align-items:center;justify-content:center;max-width:100%;}
+  .seat-marks{display:flex;gap:2px;flex-wrap:wrap;justify-content:center;margin-top:1px;}
+  .seat-mark{font-size:0.62em;font-weight:700;border-radius:4px;padding:1px 3px;line-height:1.1;}
   .flag-chip{border:1px solid var(--line);background:transparent;color:var(--ink);font-family:inherit;border-radius:14px;padding:4px 10px;font-size:0.8rem;cursor:pointer;margin:3px 4px 0 0;}
   .cell-stack{display:flex;flex-direction:column;align-items:center;gap:1px;cursor:pointer;padding:calc(3px * var(--tscale,1)) 2px;border-radius:8px;position:relative;}
   .cell-stack:hover{background:var(--surface-soft);}
@@ -339,6 +351,7 @@
   <button class="ghost small" id="toggleScaleBtn">Notenschema</button>
   <button class="ghost small" id="tallyToggleBtn" title="Strichlisten HA, HAu, M ein-/ausblenden">📋 Strichlisten</button>
   <button class="ghost small" id="borderlineToggleBtn">🎯 Grenzfälle</button>
+  <button class="ghost small" id="seatPlanBtn" title="Sitzplan anzeigen oder importieren">🪑 Sitzplan</button>
   <span class="tb-sep" aria-hidden="true"></span>
   <button class="ghost small" id="positionModeBtn">↔ Position</button>
   <span style="display:inline-flex;align-items:center;gap:8px;font-family:inherit;font-size:0.78rem;font-weight:600;padding:6px 8px 6px 14px;border-radius:20px;border:1px solid var(--line);background:var(--surface);color:var(--ink);box-shadow:var(--shadow);white-space:nowrap;">
@@ -444,7 +457,7 @@ function colorForGroupName(name){
 }
 
 function uid(){ return Math.random().toString(36).slice(2,10); }
-const APP_VERSION_INFO = 'v22.47 · Entwickler: G. Schulte';
+const APP_VERSION_INFO = 'v22.48 · Entwickler: G. Schulte';
 function setStatus(msg, isError){
   const el = document.getElementById('status');
   const hasData = typeof state !== 'undefined' && state && state.classes && state.classes.length;
@@ -1843,6 +1856,7 @@ function applyTableScale(){ document.documentElement.style.setProperty('--tscale
 // ---------- Neuerungen nach einem Update ----------
 const WHATS_NEW_KEY = 'notenbuch-last-seen-version';
 const CHANGELOG = [
+  {v:'22.48', items:['Neu: Sitzplan. Im Sitzplanmodul „Für Notenbuch exportieren“ wählen und die Datei im Notenbuch über 🪑 Sitzplan → Importieren einlesen. Der Plan zeigt Plätze und Pult wie im Raum, dazu Vermerke, NTA/LRS/IK und Strichlisten-Zähler der Schüler. Nicht erkannte Namen lassen sich per Tipp zuordnen.']},
   {v:'22.47', items:['Strichlisten: Nach einem Eintrag springt die Liste nicht mehr nach oben, sondern bleibt beim Schüler stehen.']},
   {v:'22.46', items:['Strichlisten: Das Plus rechts neben der letzten Liste öffnet jetzt ein kleines Fenster nur für die neue Liste. „Listen bearbeiten“ (alle Listen ändern, verschieben, löschen) gibt es nur noch über den Knopf oben rechts.']},
   {v:'22.45', items:['Strichlisten-Modus: Im Hintergrund sind keine anderen Spalten mehr sichtbar, nur Namen und Strichlisten. Eine neue Liste legst du mit dem Plus rechts neben der letzten Liste an.']},
@@ -2828,6 +2842,135 @@ function buildNotenschluesselPdf(cls, cat, maxPts){
   });
   pdf.text('Stand: ' + new Date().toLocaleDateString('de-DE'), mx, 841.89 - 40, {size: 8, gray: 0.5});
   return pdf.build();
+}
+// ---------- Sitzplan (Import aus dem Sitzplanmodul, Format sitzplan-notenbuch v1) ----------
+function seatNorm(t){ return String(t || '').toLowerCase().replace(/\s+/g, ' ').trim(); }
+function seatMatchStudent(cls, nachname, vorname, prevMap){
+  const key = seatNorm(nachname + ', ' + vorname);
+  if(prevMap && prevMap[key] && cls.students.some(x => x.id === prevMap[key])) return prevMap[key];
+  const alt = seatNorm(vorname + ' ' + nachname);
+  const hit = cls.students.find(st => {
+    const n = seatNorm(st.name);
+    if(n === key || n === alt) return true;
+    if(n.includes(',')){ const [a, b] = n.split(',').map(x => x.trim()); return (b + ' ' + a) === alt; }
+    return false;
+  });
+  return hit ? hit.id : null;
+}
+function seatParseFile(text){
+  let d; try{ d = JSON.parse(text); }catch(e){ throw new Error('Die Datei ist keine gültige JSON-Datei.'); }
+  if(!d || d.format !== 'sitzplan-notenbuch') throw new Error('Das ist keine Sitzplan-Datei aus dem Sitzplanmodul (Format „sitzplan-notenbuch“ erwartet).');
+  if(d.version !== 1) throw new Error('Diese Sitzplan-Datei hat die Version ' + d.version + '. Unterstützt wird Version 1. Bitte Notenbuch aktualisieren.');
+  if(!Array.isArray(d.tiles)) throw new Error('Die Sitzplan-Datei enthält keine Kacheln.');
+  const num = (v, def) => (typeof v === 'number' && isFinite(v)) ? v : def;
+  return {
+    klasse: String(d.klasse || ''), typ: d.typ === 'Fachraum' ? 'Fachraum' : 'Klassenraum', fach: d.fach ? String(d.fach) : null,
+    raum: String(d.raum || ''), cols: Math.max(1, Math.round(num(d.cols, 10))), rows: Math.max(1, Math.round(num(d.rows, 6))),
+    exportedAt: d.exportedAt || '', updatedAt: d.updatedAt || '',
+    tiles: d.tiles.map(t => t.type === 'pult'
+      ? {type: 'pult', x: num(t.x, 0), y: num(t.y, 0), rotation: num(t.rotation, 0), label: String(t.label || 'PULT'), widthUnits: Math.max(1, num(t.widthUnits, 2))}
+      : {type: 'student', x: num(t.x, 0), y: num(t.y, 0), rotation: num(t.rotation, 0), vorname: String(t.vorname || ''), nachname: String(t.nachname || '')})
+  };
+}
+async function importSeatPlanFile(cls, file){
+  let parsed;
+  try{ parsed = seatParseFile(await file.text()); }
+  catch(e){ await showAlert('Import nicht möglich', e.message); return false; }
+  if(parsed.klasse && seatNorm(parsed.klasse) !== seatNorm(cls.name)){
+    const ok = await showConfirm('Andere Lerngruppe?', `Der Sitzplan gehört zu „${parsed.klasse}“, du importierst ihn in „${cls.name}“. Trotzdem importieren?`, {confirmLabel: 'Importieren'});
+    if(!ok) return false;
+  }
+  if(!cls.seatPlans) cls.seatPlans = [];
+  const sameIdx = cls.seatPlans.findIndex(p => p.raum === parsed.raum && p.typ === parsed.typ && (p.fach || '') === (parsed.fach || ''));
+  const prevMap = {};
+  if(sameIdx >= 0) cls.seatPlans[sameIdx].tiles.forEach(t => { if(t.type === 'student' && t.sid) prevMap[seatNorm(t.nachname + ', ' + t.vorname)] = t.sid; });
+  parsed.tiles.forEach(t => { if(t.type === 'student') t.sid = seatMatchStudent(cls, t.nachname, t.vorname, prevMap); });
+  const plan = {id: sameIdx >= 0 ? cls.seatPlans[sameIdx].id : uid(), klasse: parsed.klasse, typ: parsed.typ, fach: parsed.fach, raum: parsed.raum, cols: parsed.cols, rows: parsed.rows, exportedAt: parsed.exportedAt, updatedAt: parsed.updatedAt, importedAt: new Date().toISOString(), tiles: parsed.tiles};
+  if(sameIdx >= 0) cls.seatPlans[sameIdx] = plan; else cls.seatPlans.push(plan);
+  cls.activeSeatPlanId = plan.id;
+  saveState();
+  const open = plan.tiles.filter(t => t.type === 'student' && !t.sid);
+  if(open.length) await showAlert('Sitzplan importiert', `${open.length} Platz/Plätze konnten keinem Schüler zugeordnet werden (${open.slice(0, 4).map(t => t.nachname + ', ' + t.vorname).join('; ')}${open.length > 4 ? ' …' : ''}). Tippe im Sitzplan auf einen gestrichelten Platz, um ihn zuzuordnen.`);
+  return true;
+}
+function pickSeatFile(cls, after){
+  const inp = document.createElement('input'); inp.type = 'file'; inp.accept = '.json,application/json';
+  inp.onchange = async () => { if(inp.files && inp.files[0]){ const ok = await importSeatPlanFile(cls, inp.files[0]); if(ok) after(); else after(true); } };
+  inp.click();
+}
+function seatMarksHtml(cls, sem, sid){
+  let h = '';
+  const host = tallyHostCat(sem);
+  if(!state.incognito){
+    studentPermTags(cls, sid).forEach(t => { h += `<span class="seat-mark" style="background:#2b6cb0;color:#fff;">${t.key}</span>`; });
+  }
+  const lv = studentFlagLevel(cls, sid);
+  if(lv) h += `<span class="seat-mark" style="color:${lv === 'red' ? '#c63d3d' : '#e8a23a'};">⚑</span>`;
+  if(host){
+    tallyColsOf(cls).forEach(c => { const n = tallyList(host, c.key, sid).length; if(n){ const cc = TALLY_COLORS[c.color] || TALLY_COLORS.grau; h += `<span class="seat-mark" style="background:${cc.bg};color:${cc.fg};">${escapeHtml(c.label)} ${n}</span>`; } });
+  }
+  return h ? `<div class="seat-marks">${h}</div>` : '';
+}
+function openSeatPlan(){
+  const cls = getActiveClass(); if(!cls) return;
+  const sem = getActiveSemester(cls);
+  let ov = document.getElementById('seatOverlay'); if(ov) ov.remove();
+  ov = document.createElement('div'); ov.id = 'seatOverlay'; document.body.appendChild(ov);
+  const close = () => { ov.remove(); window.removeEventListener('resize', fit); render(); };
+  const plans = () => cls.seatPlans || [];
+  const current = () => plans().find(p => p.id === cls.activeSeatPlanId) || plans()[0] || null;
+  function fit(){
+    const stage = ov.querySelector('.seat-stage'), grid = ov.querySelector('.seat-grid'), p = current();
+    if(!stage || !grid || !p) return;
+    const aw = stage.clientWidth - 20, ah = stage.clientHeight - 20;
+    const ratio = p.cols / p.rows;
+    let w = aw, h = aw / ratio; if(h > ah){ h = ah; w = ah * ratio; }
+    grid.style.width = Math.floor(w) + 'px'; grid.style.height = Math.floor(h) + 'px';
+  }
+  function draw(){
+    const p = current();
+    ov.innerHTML = `
+      <div class="seat-top">
+        <b>🪑 Sitzplan</b>
+        ${plans().map(x => `<button class="ghost small${p && x.id === p.id ? ' active-toggle' : ''}" data-seat-plan="${x.id}">${x.typ === 'Fachraum' ? 'Fachraum' + (x.fach ? ' ' + escapeHtml(x.fach) : '') : 'Klassenraum'} · ${escapeHtml(x.raum)}</button>`).join('')}
+        <span style="margin-left:auto;display:flex;gap:6px;">
+          <button class="ghost small" id="seatImport">⬆ Importieren</button>
+          ${p ? '<button class="ghost small" id="seatDelete" style="color:var(--danger);">Plan löschen</button>' : ''}
+          <button class="ghost small" id="seatClose">Schließen</button>
+        </span>
+      </div>
+      <div class="seat-stage">${p ? `<div class="seat-grid" style="width:10px;height:10px;">${p.tiles.map((t, i) => {
+        const left = (t.x * 100).toFixed(3), top = (t.y * 100).toFixed(3);
+        const wpct = ((t.type === 'pult' ? t.widthUnits : 1) / p.cols * 100).toFixed(3), hpct = (100 / p.rows).toFixed(3);
+        const st = t.type === 'student' && t.sid ? cls.students.find(x => x.id === t.sid) : null;
+        const rot = `transform:rotate(${t.rotation || 0}deg);`;
+        const base = `left:${left}%;top:${top}%;width:${wpct}%;height:${hpct}%;${rot}`;
+        if(t.type === 'pult') return `<div class="seat-tile pult" style="${base}"><div class="seat-in"><div class="seat-txt" style="transform:rotate(${-(t.rotation || 0)}deg);">${escapeHtml(t.label)}</div></div></div>`;
+        const inner = (t.vorname || t.nachname) ? `<span class="sn">${escapeHtml(t.vorname)}</span><span class="sv">${escapeHtml(t.nachname)}</span>` : '';
+        return `<div class="seat-tile${st ? '' : ' open'}" data-seat-tile="${i}" style="${base}"><div class="seat-in"><div class="seat-txt" style="transform:rotate(${-(t.rotation || 0)}deg);">${inner}${st ? seatMarksHtml(cls, sem, st.id) : '<span class="seat-marks"><span class="seat-mark">nicht zugeordnet</span></span>'}</div></div></div>`;
+      }).join('')}</div>` : `<div style="text-align:center;max-width:420px;"><p>Für „${escapeHtml(cls.name)}“ ist noch kein Sitzplan importiert.</p><p class="hint">Im Sitzplanmodul den Plan anzeigen und „Für Notenbuch exportieren“ wählen. Die Datei hier importieren.</p><button id="seatImport2">⬆ Sitzplan-Datei importieren</button></div>`}</div>`;
+    ov.querySelectorAll('[data-seat-plan]').forEach(b => b.onclick = () => { cls.activeSeatPlanId = b.dataset.seatPlan; saveState(); draw(); fit(); });
+    const goImport = () => pickSeatFile(cls, () => { draw(); fit(); });
+    const i1 = ov.querySelector('#seatImport'), i2 = ov.querySelector('#seatImport2'); if(i1) i1.onclick = goImport; if(i2) i2.onclick = goImport;
+    ov.querySelector('#seatClose').onclick = close;
+    const del = ov.querySelector('#seatDelete');
+    if(del) del.onclick = async () => {
+      const ok = await showConfirm('Sitzplan löschen', `Sitzplan „${p.raum}“ aus dem Notenbuch entfernen? Einträge zu Schülern bleiben erhalten.`, {confirmLabel: 'Löschen', danger: true});
+      if(ok){ cls.seatPlans = plans().filter(x => x.id !== p.id); cls.activeSeatPlanId = cls.seatPlans[0] ? cls.seatPlans[0].id : null; saveState(); }
+      draw(); fit();
+    };
+    ov.querySelectorAll('[data-seat-tile]').forEach(el => el.onclick = async () => {
+      const t = p.tiles[+el.dataset.seatTile]; if(!t || t.sid) return;
+      const used = new Set(p.tiles.filter(x => x.sid).map(x => x.sid));
+      const free = cls.students.filter(x => !used.has(x.id));
+      const pick = await showChoice('Platz zuordnen', `${t.vorname} ${t.nachname}`.trim(), free.map(x => ({label: x.name, value: x.id})));
+      if(pick){ t.sid = pick; saveState(); }
+      draw(); fit();
+    });
+    fit();
+  }
+  window.addEventListener('resize', fit);
+  draw();
 }
 // ---------- Vermerke (Markierungen pro Schüler) ----------
 const FLAG_PRESETS = [
@@ -5560,6 +5703,7 @@ async function showHelpTerms(){
     'Unterrichtsbeobachtung – Tipp auf das Feld wechselt + → ○ → − → leer. Langer Druck öffnet Notiz und weitere Angaben.'
   );
 }
+document.getElementById('seatPlanBtn').onclick = () => openSeatPlan();
 document.getElementById('tallyToggleBtn').onclick = () => {
   setTallyVisible(!tallyVisible()); render();
   if(tallyVisible()){
