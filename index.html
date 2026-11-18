@@ -444,7 +444,7 @@ function colorForGroupName(name){
 }
 
 function uid(){ return Math.random().toString(36).slice(2,10); }
-const APP_VERSION_INFO = 'v22.46 · Entwickler: G. Schulte';
+const APP_VERSION_INFO = 'v22.47 · Entwickler: G. Schulte';
 function setStatus(msg, isError){
   const el = document.getElementById('status');
   const hasData = typeof state !== 'undefined' && state && state.classes && state.classes.length;
@@ -1843,6 +1843,7 @@ function applyTableScale(){ document.documentElement.style.setProperty('--tscale
 // ---------- Neuerungen nach einem Update ----------
 const WHATS_NEW_KEY = 'notenbuch-last-seen-version';
 const CHANGELOG = [
+  {v:'22.47', items:['Strichlisten: Nach einem Eintrag springt die Liste nicht mehr nach oben, sondern bleibt beim Schüler stehen.']},
   {v:'22.46', items:['Strichlisten: Das Plus rechts neben der letzten Liste öffnet jetzt ein kleines Fenster nur für die neue Liste. „Listen bearbeiten“ (alle Listen ändern, verschieben, löschen) gibt es nur noch über den Knopf oben rechts.']},
   {v:'22.45', items:['Strichlisten-Modus: Im Hintergrund sind keine anderen Spalten mehr sichtbar, nur Namen und Strichlisten. Eine neue Liste legst du mit dem Plus rechts neben der letzten Liste an.']},
   {v:'22.44', items:['Strichlisten frei anlegen: Bei eingeblendeten Strichlisten öffnet „Listen bearbeiten“ (oder ein Tipp auf einen Spaltenkopf) ein Fenster, in dem du pro Lerngruppe bis zu 6 Listen mit Kurzname, Beschreibung und Farbe anlegen, umbenennen, verschieben und löschen kannst. HA, HAu und M bleiben die Standardlisten. Die Listen werden in Vorlagen und im neuen Schuljahr übernommen.']},
@@ -2156,7 +2157,8 @@ function render(){
   const main = document.getElementById('main');
   main.__lockSem = null;
   const prevWraps = Array.from(main.querySelectorAll('.grid-wrap'));
-  const prevScrolls = prevWraps.map(w => w.scrollLeft);
+  const prevScrolls = prevWraps.map(w => [w.scrollLeft, w.scrollTop]);
+  const prevPageY = window.scrollY;
   document.getElementById('toggleScaleBtn').disabled = !cls;
   document.getElementById('positionModeBtn').disabled = !cls;
   document.getElementById('positionModeBtn').classList.toggle('active-toggle', state.positionMode);
@@ -2170,7 +2172,8 @@ function render(){
   }
   renderScalePanel(cls);
   const newWraps = Array.from(main.querySelectorAll('.grid-wrap'));
-  newWraps.forEach((w,i) => { if(prevScrolls[i] !== undefined) w.scrollLeft = prevScrolls[i]; });
+  newWraps.forEach((w,i) => { if(prevScrolls[i] !== undefined){ w.scrollLeft = prevScrolls[i][0]; w.scrollTop = prevScrolls[i][1]; } });
+  if(window.scrollY !== prevPageY) window.scrollTo(0, prevPageY);
 }
 
 function renderCompareGrid(main, cls){
