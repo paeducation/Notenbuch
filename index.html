@@ -465,7 +465,7 @@ function colorForGroupName(name){
 }
 
 function uid(){ return Math.random().toString(36).slice(2,10); }
-const APP_VERSION_INFO = 'v22.51 · Entwickler: G. Schulte';
+const APP_VERSION_INFO = 'v22.52 · Entwickler: G. Schulte';
 function setStatus(msg, isError){
   const el = document.getElementById('status');
   const hasData = typeof state !== 'undefined' && state && state.classes && state.classes.length;
@@ -1890,6 +1890,7 @@ function applyTableScale(){ document.documentElement.style.setProperty('--tscale
 // ---------- Neuerungen nach einem Update ----------
 const WHATS_NEW_KEY = 'notenbuch-last-seen-version';
 const CHANGELOG = [
+  {v:'22.52', items:['„Vorschlag automatisch übernehmen“ erscheint nur noch, wenn es einen berechneten Vorschlag gibt. Eine eingegebene Gesamtnote kann nicht mehr durch „keine Note“ ersetzt werden.']},
   {v:'22.51', items:['Noteneingabe: größere Fenster und Tasten (gut mit dem Finger zu treffen). In jedem Eingabefenster (Noten, Punkte, Beobachtungen, Sammelkategorien, Gesamtnoten) gibt es Vorheriger/Nächster und den Schalter „automatisch zum nächsten Schüler“.']},
   {v:'22.50', items:['Neue Lerngruppe: zusätzlich zum CSV-Import lässt sich die Lerngruppe aus einer Sitzplan-Datei anlegen (Schüler alphabetisch, Sitzplan wird mitgespeichert).']},
   {v:'22.49', items:['Sitzplan-Import: wahlweise fehlende Schüler direkt aus dem Plan anlegen. Die Namenserkennung ist toleranter (Groß-/Kleinschreibung, Akzente, Bindestriche, ähnliche Vornamen bei eindeutigem Nachnamen).']},
@@ -4865,7 +4866,7 @@ function renderCategoryOverrideModal(cls, cat, student){
         <div class="hint" style="margin-top:8px;">Automatisch berechneter Vorschlag${cat.children && cat.children.length ? '' : ' (noch keine Unterkategorien)'}: ${auto===null ? 'keine Daten' : displayValue(cls, auto)}</div>
         <div style="margin-top:14px;">${gradeChipsHtml(cls, String(currentSelected))}</div>
         ${markOverrideRowHtml(overrideRaw === 'NB', !!(cat.fpMarks && cat.fpMarks[student.id]), true, !(lastEntryGroup && (lastEntryGroup.name || '').trim().toLowerCase() === 'schriftlich'))}
-        ${isOverridden ? `<div class="row" style="margin-top:14px;"><button class="ghost small" id="resetCatOverrideBtn">Vorschlag automatisch übernehmen</button></div>` : ''}
+        ${(isOverridden && auto !== null) ? `<div class="row" style="margin-top:14px;"><button class="ghost small" id="resetCatOverrideBtn">Vorschlag automatisch übernehmen</button></div>` : ''}
         ${entryNavHtml()}
       </div>
     </div>
@@ -4927,7 +4928,7 @@ function renderGroupOverrideModal(cls, group, student){
         <div class="hint" style="margin-top:8px;">Automatisch berechneter Vorschlag: ${auto===null ? 'keine Daten' : displayValue(cls, auto)}</div>
         <div style="margin-top:14px;">${gradeChipsHtml(cls, String(currentSelected))}</div>
         ${markOverrideRowHtml(overrideRaw === 'NB', !!(group.fpMarks && group.fpMarks[student.id]), true, (group.name || '').trim().toLowerCase() !== 'schriftlich')}
-        ${isOverridden ? `<div class="row" style="margin-top:14px;"><button class="ghost small" id="resetGroupOverrideBtn">Vorschlag automatisch übernehmen</button></div>` : ''}
+        ${(isOverridden && auto !== null) ? `<div class="row" style="margin-top:14px;"><button class="ghost small" id="resetGroupOverrideBtn">Vorschlag automatisch übernehmen</button></div>` : ''}
         ${entryNavHtml()}
       </div>
     </div>
@@ -5346,7 +5347,7 @@ function renderEndnoteModal(cls, sem, student){
         <div class="hint" style="margin-top:8px;">Automatisch berechneter Vorschlag: ${auto===null ? 'keine Daten' : displayValue(cls, auto)}</div>
         <div style="margin-top:14px;">${gradeChipsHtml(cls, String(currentSelected))}</div>
         ${markOverrideRowHtml(overrideRaw === 'NB', false, false)}
-        ${isOverridden ? `<div class="row" style="margin-top:14px;"><button class="ghost small" id="resetEndnoteBtn">Vorschlag automatisch übernehmen</button></div>` : ''}
+        ${(isOverridden && auto !== null) ? `<div class="row" style="margin-top:14px;"><button class="ghost small" id="resetEndnoteBtn">Vorschlag automatisch übernehmen</button></div>` : ''}
       </div>
     </div>
   `;
