@@ -189,6 +189,7 @@
   #toast.show{opacity:1;}
   .fp-tag{font-size:0.7rem;font-weight:700;margin-left:4px;color:var(--ink-soft);white-space:nowrap;}
   .obs-cell{cursor:pointer;user-select:none;-webkit-user-select:none;-webkit-touch-callout:none;}
+  .note-f{background:transparent;color:var(--ink-soft);border:none;font-weight:700;}
   .note-x{background:var(--surface-soft);color:var(--ink-soft);border:1px dashed var(--ink-soft);font-weight:700;}
   .note-1,.note-2{background:var(--pass-soft);color:var(--pass);}
   .note-3,.note-4{background:var(--warn-soft);color:var(--warn);}
@@ -469,7 +470,7 @@ function colorForGroupName(name){
 }
 
 function uid(){ return Math.random().toString(36).slice(2,10); }
-const APP_VERSION_INFO = 'v22.57 · Entwickler: G. Schulte';
+const APP_VERSION_INFO = 'v22.60 · Entwickler: G. Schulte';
 function setStatus(msg, isError){
   const el = document.getElementById('status');
   const hasData = typeof state !== 'undefined' && state && state.classes && state.classes.length;
@@ -566,7 +567,7 @@ function notePill(cls, value, subLabel, scaleOverride){
   return html;
 }
 function noteMarkHtml(text){ return (text && String(text).trim()) ? `<span class="avg-sub" title="${escapeHtml(text)}">📝</span>` : ''; }
-function observationPill(entry){
+function observationPill(entry, hit){
   if(!entry || !entry.observation) return '<span class="note-dash">–</span>';
   const bucket = obsBucket(entry.observation);
   let html = `<span class="note-pill note-${bucket}" style="font-size:1.05rem;"${entry.observation === 'f' ? ' title="fehlt"' : ''}>${entry.observation}</span>`;
@@ -593,7 +594,7 @@ function gradeForPercent(table, pct){
 }
 function activeGradeTable(cls){ return cls.gradingSystem === 'punkte' ? cls.gradeTablePunkte : cls.gradeTableNoten; }
 const OBSERVATION_SYMBOLS = ['+','○','-','f'];
-function obsBucket(sym){ return sym === '+' ? 1 : sym === '-' ? 5 : sym === 'f' ? 'x' : 3; }
+function obsBucket(sym){ return sym === '+' ? 1 : sym === '-' ? 5 : sym === 'f' ? 'f' : 3; }
 // Markierungen ohne Wertung: NT = nicht teilgenommen, NB = nicht bewertbar (älteres Format {x:true} gilt als NT)
 function entryMark(entry){
   if(!entry) return null;
@@ -1896,6 +1897,9 @@ function applyTableScale(){ document.documentElement.style.setProperty('--tscale
 // ---------- Neuerungen nach einem Update ----------
 const WHATS_NEW_KEY = 'notenbuch-last-seen-version';
 const CHANGELOG = [
+  {v:'22.60', items:['Fehlzeiten: f bleibt immer neutral (keine rote Umrandung), die Warnung zeigt nur „FP?“ vor dem Namen. Die Fehlzeiten-Warnung hat einen Schiebeschalter.']},
+  {v:'22.59', items:['Fehlzeiten: f ohne Umrandung; erreicht ein Schüler die Schwelle, werden die zählenden f rot umrandet. Tipp auf FP? bietet „Zurücksetzen“ (die bisherigen f zählen dann nicht mehr mit, neue f zählen ab null).']},
+  {v:'22.58', items:['Fehlzeiten-Warnung: Die Schwelle lässt sich als „x-mal f in y Wochen“ einstellen (0 Wochen = im Quartal wie bisher).']},
   {v:'22.57', items:['Neu: Bei Beobachtungen gibt es zusätzlich zu + ○ − das Symbol f (fehlt an diesem Tag, ohne Wirkung auf die Note). Verwaltung → Fehlzeiten-Warnung: einschaltbar mit einstellbarer Schwelle. Erreicht ein Schüler so viele f in einem Quartal, steht rot „FP?“ hinter seinem Namen (im Inkognito-Modus ausgeblendet).']},
   {v:'22.56', items:['Eingegebene Noten lassen sich löschen: ein erneuter Tipp auf die markierte Note (oder das Symbol) nimmt sie zurück. Bei Gesamt-, Quartals- und Endnoten fällt die Zelle damit auf den berechneten Vorschlag zurück.']},
   {v:'22.55', items:['Notiz (optional) auch bei Gesamt- und Quartalsnoten (mündlich). Zellen mit Notiz zeigen ein 📝.']},
@@ -3082,7 +3086,8 @@ function studentPermTags(cls, sid){
   const m = (cls.permTags && cls.permTags[sid]) || {};
   return PERM_TAGS.filter(t => m[t.key]).map(t => ({...t, text: m[t.key].text || ''}));
 }
-function absenceCfg(cls){ const a = (cls && cls.absenceWarn) || {}; return {on: !!a.on, n: Math.max(1, parseInt(a.n, 10) || 3)}; }
+function absenceCfg(cls){ const a = (cls && cls.absenceWarn) || {}; return {on: !!a.on, n: Math.max(1, parseInt(a.n, 10) || 3), weeks: Math.max(0, parseInt(a.weeks, 10) || 0)}; }
+function absenceRuleText(c){ return c.weeks ? `${c.n}× f in ${c.weeks} ${c.weeks === 1 ? 'Woche' : 'Wochen'}` : `${c.n}× f im Quartal`; }
 // Zählt die Fehltage (Symbol f) je SoMi-Quartal; ohne SoMi-Quartale für das ganze Halbjahr
 function absenceQuarters(sem, sid){
   const map = new Map();
@@ -3090,10 +3095,10 @@ function absenceQuarters(sem, sid){
     const quarter = q || (isSomiCat(cat) ? cat : null);
     if(!isContainerCat(cat) && cat.mode === 'observation'){
       const e = cat.entries && cat.entries[sid];
-      if(e && e.observation === 'f'){
+      if(e && e.observation === 'f' && !e.absReset){
         const key = quarter ? quarter.id : 'sem';
-        if(!map.has(key)) map.set(key, {label: quarter ? quarter.name : sem.name, dates: []});
-        map.get(key).dates.push(cat.date || '');
+        if(!map.has(key)) map.set(key, {label: quarter ? quarter.name : sem.name, dates: [], ids: []});
+        map.get(key).dates.push(cat.date || ''); map.get(key).ids.push(cat.id);
       }
     }
     (cat.children || []).forEach(ch => walk(ch, quarter));
@@ -3101,10 +3106,35 @@ function absenceQuarters(sem, sid){
   (sem.groups || []).forEach(g => (g.children || []).forEach(c => walk(c, null)));
   return [...map.values()];
 }
+function absDay(iso){ const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(iso || ''); return m ? Date.UTC(+m[1], +m[2] - 1, +m[3]) / 86400000 : null; }
 function absenceHits(cls, sem, sid){
   const cfg = absenceCfg(cls);
   if(!cfg.on) return [];
-  return absenceQuarters(sem, sid).filter(q => q.dates.length >= cfg.n);
+  if(!cfg.weeks) return absenceQuarters(sem, sid).filter(q => q.dates.length >= cfg.n);
+  // gleitendes Zeitfenster: n Fehltage innerhalb von x Wochen (Einträge ohne Datum zählen nicht)
+  const days = [];
+  absenceQuarters(sem, sid).forEach(q => q.dates.forEach((d, i) => { const v = absDay(d); if(v !== null) days.push({v, d, id: q.ids[i]}); }));
+  days.sort((a, b) => a.v - b.v);
+  const span = cfg.weeks * 7;
+  for(let i = 0; i + cfg.n - 1 < days.length; i++){
+    if(days[i + cfg.n - 1].v - days[i].v < span){
+      const win = days.filter(x => x.v >= days[i].v && x.v < days[i].v + span);
+      return [{label: absenceRuleText(cfg), dates: win.map(x => x.d), ids: win.map(x => x.id)}];
+    }
+  }
+  return [];
+}
+function absenceHitIds(cls, sem, sid){
+  const set = new Set();
+  absenceHits(cls, sem, sid).forEach(h => (h.ids || []).forEach(id => set.add(id)));
+  return set;
+}
+function absenceResetStudent(sem, sid){
+  function walk(cat){
+    if(!isContainerCat(cat) && cat.mode === 'observation'){ const e = cat.entries && cat.entries[sid]; if(e && e.observation === 'f') e.absReset = true; }
+    (cat.children || []).forEach(walk);
+  }
+  (sem.groups || []).forEach(g => (g.children || []).forEach(walk));
 }
 function absenceBadgeHtml(cls, sem, sid){
   if(state.incognito) return '';
@@ -3115,24 +3145,33 @@ function absenceBadgeHtml(cls, sem, sid){
 }
 async function openAbsenceDialog(cls, sem, sid){
   const st = cls.students.find(x => x.id === sid); if(!st) return;
-  const qs = absenceQuarters(sem, sid), n = absenceCfg(cls).n;
-  const txt = qs.length ? qs.map(q => `${q.label}: ${q.dates.length}× fehlt${q.dates.length >= n ? ' (Schwelle erreicht)' : ''}\n${q.dates.filter(Boolean).sort().map(d => formatDate(d)).join(', ')}`).join('\n\n') : 'Keine Fehltage eingetragen.';
-  await showAlert(`FP? – ${st.name}`, txt);
+  const qs = absenceQuarters(sem, sid), cfgA = absenceCfg(cls), n = cfgA.n;
+  const hits = absenceHits(cls, sem, sid);
+  const hitTxt = cfgA.weeks && hits.length ? `Schwelle erreicht (${hits[0].label}): ${hits[0].dates.sort().map(d => formatDate(d)).join(', ')}\n\n` : '';
+  const txt = hitTxt + (qs.length ? qs.map(q => `${q.label}: ${q.dates.length}× fehlt${!cfgA.weeks && q.dates.length >= n ? ' (Schwelle erreicht)' : ''}\n${q.dates.filter(Boolean).sort().map(d => formatDate(d)).join(', ')}`).join('\n\n') : 'Keine Fehltage eingetragen.');
+  const pick = await showChoice(`FP? – ${st.name}`, txt, [{label: 'Zurücksetzen (bisherige f nicht mehr mitzählen)', value: 'reset', danger: true}], {cancelLabel: 'Schließen'});
+  if(pick === 'reset'){ absenceResetStudent(sem, sid); saveState(); render(); showToast('Fehlzeiten zurückgesetzt'); }
 }
 async function openAbsenceSettings(cls){
   while(true){
     const c = absenceCfg(cls);
-    const pick = await showChoice('Fehlzeiten-Warnung', `Bei Beobachtungen steht f für „fehlt an diesem Tag“. Erreicht ein Schüler ${c.n}× f im Quartal, steht rot „FP?“ hinter seinem Namen.\nGilt für die Lerngruppe ${cls.name}.`, [
-      {label: c.on ? '✓ Eingeschaltet – ausschalten' : 'Einschalten', value: 'toggle'},
-      {label: `Schwelle ändern (jetzt ${c.n}× f im Quartal)`, value: 'n'},
+    const pick = await showChoice('Fehlzeiten-Warnung', `Bei Beobachtungen steht f für „fehlt an diesem Tag“. Erreicht ein Schüler ${absenceRuleText(c)}, steht rot „FP?“ hinter seinem Namen.\nGilt für die Lerngruppe ${cls.name}.`, [
+      {label: 'Fehlzeiten-Warnung', value: 'noop', toggle: {caption: 'Ein', title: 'Warnung ein- oder ausschalten', checked: c.on,
+        onChange: (on) => { cls.absenceWarn = cls.absenceWarn || {on: false, n: 3, weeks: 0}; cls.absenceWarn.on = on; saveState(); }}},
+      {label: `Anzahl ändern (jetzt ${c.n}× f)`, value: 'n'},
+      {label: `Zeitraum ändern (jetzt ${c.weeks ? c.weeks + ' ' + (c.weeks === 1 ? 'Woche' : 'Wochen') : 'Quartal'})`, value: 'w'},
     ], {cancelLabel: 'Fertig'});
     if(!pick) return;
-    cls.absenceWarn = cls.absenceWarn || {on: false, n: 3};
-    if(pick === 'toggle'){ cls.absenceWarn.on = !c.on; saveState(); }
+    cls.absenceWarn = cls.absenceWarn || {on: false, n: 3, weeks: 0};
     if(pick === 'n'){
-      const v = await showPrompt('Schwelle', 'Ab wie vielen f im Quartal soll „FP?“ erscheinen?', String(c.n), {inputType: 'number', confirmLabel: 'Speichern'});
+      const v = await showPrompt('Anzahl', 'Ab wie vielen f soll „FP?“ erscheinen?', String(c.n), {inputType: 'number', confirmLabel: 'Speichern'});
       const num = parseInt(v, 10);
       if(v !== null && num >= 1 && num <= 30){ cls.absenceWarn.n = num; saveState(); }
+    }
+    if(pick === 'w'){
+      const v = await showPrompt('Zeitraum in Wochen', 'Innerhalb wie vieler Wochen? 0 = im Quartal (SoMi). Gezählt wird ab dem Datum der Beobachtungsspalten.', String(c.weeks), {inputType: 'number', confirmLabel: 'Speichern'});
+      const num = parseInt(v, 10);
+      if(v !== null && num >= 0 && num <= 52){ cls.absenceWarn.weeks = num; saveState(); }
     }
   }
 }
@@ -4890,6 +4929,7 @@ function cycleObservation(cls, ctx, el){
   if(next){
     e.observation = next;
     if(next === 'f') delete e.hiddenGrade;
+    delete e.absReset;
     cat.entries[sid] = e;
   } else {
     delete e.observation;
@@ -5632,6 +5672,7 @@ function renderModal(cls, cat, student){
         }
         cat.entries[student.id] = {...(cat.entries[student.id]||{}), observation: btn.dataset.obsValue, note: currentNote()};
         if(btn.dataset.obsValue === 'f') delete cat.entries[student.id].hiddenGrade;
+        delete cat.entries[student.id].absReset;
         saveState();
         if(nextStudentEnabled() && (cat.ungraded || btn.dataset.obsValue === 'f' || cat.entries[student.id].hiddenGrade)){ finishEntry(cls, cat, student); return; }
         renderModal(cls, cat, student);
@@ -6130,7 +6171,9 @@ document.getElementById('dataManagementBtn').onclick = async () => {
   const options = [
     {heading: 'Schüler'},
     {label: `⚑ Markierte Schüler (${state.classes.filter(c => !c.archived).reduce((n, c) => n + (c.students || []).reduce((m, st) => m + studentOpenFlags(c, st.id).length, 0), 0)})`, value: 'flagsov'},
-    ...(cls ? [{label: `🚩 Fehlzeiten-Warnung (${absenceCfg(cls).on ? absenceCfg(cls).n + '× f' : 'aus'})`, value: 'absence'}] : []),
+    ...(cls ? [{label: `🚩 Fehlzeiten-Warnung (${absenceRuleText(absenceCfg(cls))})`, value: 'absence', toggle: {
+      caption: 'Ein', title: 'Warnung ein- oder ausschalten', checked: absenceCfg(cls).on,
+      onChange: (on) => { cls.absenceWarn = cls.absenceWarn || {on: false, n: 3, weeks: 0}; cls.absenceWarn.on = on; saveState(); showToast('Fehlzeiten-Warnung ' + (on ? 'eingeschaltet' : 'ausgeschaltet')); }}}] : []),
     {heading: 'Sichern'},
     {label: `⬇ Backup (zuletzt ${backupAgeText()})`, value: 'backup', toggle: {
       caption: 'Erinnerung', title: 'Erinnerung nach 7 Tagen ohne Backup', checked: backupReminderEnabled(),
