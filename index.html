@@ -255,6 +255,7 @@
   .grade-chip{padding:10px 8px;min-width:60px;min-height:52px;border-radius:12px;border:1px solid var(--line);background:var(--surface-soft);
     font-family:ui-monospace,'SF Mono',Menlo,monospace;font-size:1.15rem;font-weight:700;color:var(--ink);cursor:pointer;touch-action:manipulation;}
   .modal .sub .stud-name{font-size:1.2rem;font-weight:700;color:var(--ink);}
+  .absence-badge{display:inline-block;background:#d93a3a;color:#fff;font-size:0.68rem;font-weight:800;border-radius:6px;padding:1px 5px;flex-shrink:0;cursor:pointer;}
   .grade-picker.six{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));}
   .grade-picker.six .grade-chip{min-width:0;}
   .modal .entry-big{min-height:50px;min-width:70px;font-size:1.05rem;font-weight:700;}
@@ -468,7 +469,7 @@ function colorForGroupName(name){
 }
 
 function uid(){ return Math.random().toString(36).slice(2,10); }
-const APP_VERSION_INFO = 'v22.56 · Entwickler: G. Schulte';
+const APP_VERSION_INFO = 'v22.57 · Entwickler: G. Schulte';
 function setStatus(msg, isError){
   const el = document.getElementById('status');
   const hasData = typeof state !== 'undefined' && state && state.classes && state.classes.length;
@@ -567,8 +568,8 @@ function notePill(cls, value, subLabel, scaleOverride){
 function noteMarkHtml(text){ return (text && String(text).trim()) ? `<span class="avg-sub" title="${escapeHtml(text)}">📝</span>` : ''; }
 function observationPill(entry){
   if(!entry || !entry.observation) return '<span class="note-dash">–</span>';
-  const bucket = entry.observation === '+' ? 1 : entry.observation === '-' ? 5 : 3;
-  let html = `<span class="note-pill note-${bucket}" style="font-size:1.05rem;">${entry.observation}</span>`;
+  const bucket = obsBucket(entry.observation);
+  let html = `<span class="note-pill note-${bucket}" style="font-size:1.05rem;"${entry.observation === 'f' ? ' title="fehlt"' : ''}>${entry.observation}</span>`;
   if(entry.note) html += `<span class="avg-sub" title="${escapeHtml(entry.note)}">📝</span>`;
   return html;
 }
@@ -578,7 +579,7 @@ function majoritySymbolForCategory(cat, studentId){
   cat.children.forEach(child => {
     if(child.mode === 'observation'){
       const entry = child.entries[studentId];
-      if(entry && entry.observation) counts[entry.observation] = (counts[entry.observation]||0) + 1;
+      if(entry && entry.observation && entry.observation !== 'f') counts[entry.observation] = (counts[entry.observation]||0) + 1;
     }
   });
   let best = null, bestCount = 0;
@@ -591,7 +592,8 @@ function gradeForPercent(table, pct){
   return sorted.length ? sorted[sorted.length-1].note : null;
 }
 function activeGradeTable(cls){ return cls.gradingSystem === 'punkte' ? cls.gradeTablePunkte : cls.gradeTableNoten; }
-const OBSERVATION_SYMBOLS = ['+','○','-'];
+const OBSERVATION_SYMBOLS = ['+','○','-','f'];
+function obsBucket(sym){ return sym === '+' ? 1 : sym === '-' ? 5 : sym === 'f' ? 'x' : 3; }
 // Markierungen ohne Wertung: NT = nicht teilgenommen, NB = nicht bewertbar (älteres Format {x:true} gilt als NT)
 function entryMark(entry){
   if(!entry) return null;
@@ -1894,6 +1896,7 @@ function applyTableScale(){ document.documentElement.style.setProperty('--tscale
 // ---------- Neuerungen nach einem Update ----------
 const WHATS_NEW_KEY = 'notenbuch-last-seen-version';
 const CHANGELOG = [
+  {v:'22.57', items:['Neu: Bei Beobachtungen gibt es zusätzlich zu + ○ − das Symbol f (fehlt an diesem Tag, ohne Wirkung auf die Note). Verwaltung → Fehlzeiten-Warnung: einschaltbar mit einstellbarer Schwelle. Erreicht ein Schüler so viele f in einem Quartal, steht rot „FP?“ hinter seinem Namen (im Inkognito-Modus ausgeblendet).']},
   {v:'22.56', items:['Eingegebene Noten lassen sich löschen: ein erneuter Tipp auf die markierte Note (oder das Symbol) nimmt sie zurück. Bei Gesamt-, Quartals- und Endnoten fällt die Zelle damit auf den berechneten Vorschlag zurück.']},
   {v:'22.55', items:['Notiz (optional) auch bei Gesamt- und Quartalsnoten (mündlich). Zellen mit Notiz zeigen ein 📝.']},
   {v:'22.54', items:['Eingabefenster: Der Name des Schülers steht größer und fett.']},
@@ -3079,6 +3082,60 @@ function studentPermTags(cls, sid){
   const m = (cls.permTags && cls.permTags[sid]) || {};
   return PERM_TAGS.filter(t => m[t.key]).map(t => ({...t, text: m[t.key].text || ''}));
 }
+function absenceCfg(cls){ const a = (cls && cls.absenceWarn) || {}; return {on: !!a.on, n: Math.max(1, parseInt(a.n, 10) || 3)}; }
+// Zählt die Fehltage (Symbol f) je SoMi-Quartal; ohne SoMi-Quartale für das ganze Halbjahr
+function absenceQuarters(sem, sid){
+  const map = new Map();
+  function walk(cat, q){
+    const quarter = q || (isSomiCat(cat) ? cat : null);
+    if(!isContainerCat(cat) && cat.mode === 'observation'){
+      const e = cat.entries && cat.entries[sid];
+      if(e && e.observation === 'f'){
+        const key = quarter ? quarter.id : 'sem';
+        if(!map.has(key)) map.set(key, {label: quarter ? quarter.name : sem.name, dates: []});
+        map.get(key).dates.push(cat.date || '');
+      }
+    }
+    (cat.children || []).forEach(ch => walk(ch, quarter));
+  }
+  (sem.groups || []).forEach(g => (g.children || []).forEach(c => walk(c, null)));
+  return [...map.values()];
+}
+function absenceHits(cls, sem, sid){
+  const cfg = absenceCfg(cls);
+  if(!cfg.on) return [];
+  return absenceQuarters(sem, sid).filter(q => q.dates.length >= cfg.n);
+}
+function absenceBadgeHtml(cls, sem, sid){
+  if(state.incognito) return '';
+  const hits = absenceHits(cls, sem, sid);
+  if(!hits.length) return '';
+  const tip = hits.map(h => `${h.label}: ${h.dates.length}× fehlt`).join('; ') + ' – Feststellungsprüfung prüfen';
+  return `<span class="absence-badge" data-absence="${sid}" title="${escapeHtml(tip)}">FP?</span>`;
+}
+async function openAbsenceDialog(cls, sem, sid){
+  const st = cls.students.find(x => x.id === sid); if(!st) return;
+  const qs = absenceQuarters(sem, sid), n = absenceCfg(cls).n;
+  const txt = qs.length ? qs.map(q => `${q.label}: ${q.dates.length}× fehlt${q.dates.length >= n ? ' (Schwelle erreicht)' : ''}\n${q.dates.filter(Boolean).sort().map(d => formatDate(d)).join(', ')}`).join('\n\n') : 'Keine Fehltage eingetragen.';
+  await showAlert(`FP? – ${st.name}`, txt);
+}
+async function openAbsenceSettings(cls){
+  while(true){
+    const c = absenceCfg(cls);
+    const pick = await showChoice('Fehlzeiten-Warnung', `Bei Beobachtungen steht f für „fehlt an diesem Tag“. Erreicht ein Schüler ${c.n}× f im Quartal, steht rot „FP?“ hinter seinem Namen.\nGilt für die Lerngruppe ${cls.name}.`, [
+      {label: c.on ? '✓ Eingeschaltet – ausschalten' : 'Einschalten', value: 'toggle'},
+      {label: `Schwelle ändern (jetzt ${c.n}× f im Quartal)`, value: 'n'},
+    ], {cancelLabel: 'Fertig'});
+    if(!pick) return;
+    cls.absenceWarn = cls.absenceWarn || {on: false, n: 3};
+    if(pick === 'toggle'){ cls.absenceWarn.on = !c.on; saveState(); }
+    if(pick === 'n'){
+      const v = await showPrompt('Schwelle', 'Ab wie vielen f im Quartal soll „FP?“ erscheinen?', String(c.n), {inputType: 'number', confirmLabel: 'Speichern'});
+      const num = parseInt(v, 10);
+      if(v !== null && num >= 1 && num <= 30){ cls.absenceWarn.n = num; saveState(); }
+    }
+  }
+}
 function permTagsHtml(cls, sid){
   if(state.incognito) return '';
   const l = studentPermTags(cls, sid);
@@ -3475,7 +3532,7 @@ function showToast(msg){
 }
 // ---------- Schreibschutz (Halbjahr abschließen) ----------
 const LOCK_BLOCK_SELECTOR = '[data-toggle-count],[data-tally-cell],[data-open-entries],[data-open-group],[data-open-endnote],[data-reset-cat],[data-reset-group],[data-reset-endnote],[data-borderline-resolve],[data-endnote-borderline-resolve],[data-add-cat],[data-add-first-cat],[data-add-near-cat],[data-del-group],[data-del-student],[data-edit-cat],[data-edit-endnote-color],[data-move-cat],[data-move-group],[data-rename-group],[data-select-cat],[data-select-group],[data-select-student-col],[data-name-resize],[data-name-step],.obs-cell,#addStudentBtn,#newStudentName';
-const LOCK_ALLOW_SELECTOR = '[data-toggle-cat-collapse],[data-toggle-group-collapse],[data-toggle-incognito],[data-show-ub-notes],[data-student-sheet],[data-student-flag],#searchStudent';
+const LOCK_ALLOW_SELECTOR = '[data-toggle-cat-collapse],[data-toggle-group-collapse],[data-toggle-incognito],[data-show-ub-notes],[data-student-sheet],[data-student-flag],[data-absence],#searchStudent';
 function lockedNotice(sem){
   showToast(`🔒 ${sem.name} ist abgeschlossen (Schreibschutz). Zum Bearbeiten: Verwaltung → Halbjahr wieder öffnen.`);
 }
@@ -3963,7 +4020,7 @@ function renderGrid(main, cls, sem){
       const overridden = !endNb && sem.endnoteOverrides && sem.endnoteOverrides[s.id] !== undefined && sem.endnoteOverrides[s.id] !== '';
       const isSelected = state.selectedStudentId === s.id;
       const hasNotes = studentHasObservationNotes(sem, s.id);
-      let row = `<tr class="${isSelected?'student-selected':''}"><td class="name-col${sem.studentColColor?' has-custom-color':''}" data-select-student="${s.id}" style="cursor:pointer;text-align:left;${sem.studentColColor?`background:${sem.studentColColor};`:''}"><div class="name-cell-row" style="justify-content:flex-start;"><span style="display:flex;align-items:center;gap:4px;text-align:left;flex:1;">${escapeHtml(s.name)}${hasNotes ? `<button class="colx dark" data-show-ub-notes="${s.id}" title="Unterrichtsbeobachtungen mit Notizen ansehen" style="flex-shrink:0;">📝</button>` : ''}${permTagsHtml(cls, s.id)}${flagBtnHtml(cls, s.id, isSelected)}${isSelected ? `<button class="colx dark" data-student-sheet="${s.id}" title="Beratungsblatt (PDF)" style="flex-shrink:0;">📄</button>` : ''}</span><button class="colx dark" data-del-student="${s.id}" title="Aus ${escapeHtml(sem.name)} entfernen" style="flex-shrink:0;margin-left:6px;">✕</button></div></td>`;
+      let row = `<tr class="${isSelected?'student-selected':''}"><td class="name-col${sem.studentColColor?' has-custom-color':''}" data-select-student="${s.id}" style="cursor:pointer;text-align:left;${sem.studentColColor?`background:${sem.studentColColor};`:''}"><div class="name-cell-row" style="justify-content:flex-start;"><span style="display:flex;align-items:center;gap:4px;text-align:left;flex:1;">${escapeHtml(s.name)}${hasNotes ? `<button class="colx dark" data-show-ub-notes="${s.id}" title="Unterrichtsbeobachtungen mit Notizen ansehen" style="flex-shrink:0;">📝</button>` : ''}${permTagsHtml(cls, s.id)}${absenceBadgeHtml(cls, sem, s.id)}${flagBtnHtml(cls, s.id, isSelected)}${isSelected ? `<button class="colx dark" data-student-sheet="${s.id}" title="Beratungsblatt (PDF)" style="flex-shrink:0;">📄</button>` : ''}</span><button class="colx dark" data-del-student="${s.id}" title="Aus ${escapeHtml(sem.name)} entfernen" style="flex-shrink:0;margin-left:6px;">✕</button></div></td>`;
       let endPillHtml = endNb ? markPillHtml('NB') : notePill(cls, end);
       let endBadge = '';
       if(borderlineEnabled && !endNb){
@@ -4041,7 +4098,7 @@ function renderGrid(main, cls, sem){
     let pressTimer = null, longPressed = false, startX = 0, startY = 0;
     const clear = () => { clearTimeout(pressTimer); };
     el.addEventListener('pointerdown', (e) => {
-      if(e.target.closest('[data-del-student], [data-show-ub-notes], [data-student-sheet], [data-student-flag]')) return;
+      if(e.target.closest('[data-del-student], [data-show-ub-notes], [data-student-sheet], [data-student-flag], [data-absence]')) return;
       longPressed = false;
       startX = e.clientX; startY = e.clientY;
       pressTimer = setTimeout(() => {
@@ -4055,7 +4112,7 @@ function renderGrid(main, cls, sem){
     el.addEventListener('pointerup', clear);
     el.addEventListener('pointercancel', clear);
     el.onclick = (e) => {
-      if(e.target.closest('[data-del-student], [data-show-ub-notes], [data-student-sheet], [data-student-flag]')) return;
+      if(e.target.closest('[data-del-student], [data-show-ub-notes], [data-student-sheet], [data-student-flag], [data-absence]')) return;
       if(longPressed){ longPressed = false; return; }
       const id = el.dataset.selectStudent;
       const wasSelected = state.selectedStudentId === id;
@@ -4065,6 +4122,9 @@ function renderGrid(main, cls, sem){
     };
   });
   installLockGuard(main, sem);
+  main.querySelectorAll('[data-absence]').forEach(el => {
+    el.onclick = (e) => { e.stopPropagation(); openAbsenceDialog(cls, sem, el.dataset.absence); };
+  });
   main.querySelectorAll('[data-student-flag]').forEach(btn => {
     btn.onclick = (e) => { e.stopPropagation(); openStudentFlagsDialog(cls, btn.dataset.studentFlag); };
   });
@@ -4829,6 +4889,7 @@ function cycleObservation(cls, ctx, el){
   const next = SEQ[(SEQ.indexOf(e.observation || '') + 1) % SEQ.length];
   if(next){
     e.observation = next;
+    if(next === 'f') delete e.hiddenGrade;
     cat.entries[sid] = e;
   } else {
     delete e.observation;
@@ -5013,7 +5074,7 @@ function openStudentObservationsModal(cls, sem, studentId){
           ${entries.length === 0
             ? `<div class="hint">Keine Beobachtungseinträge (− ○ +) vorhanden.</div>`
             : entries.map(e => {
-                const bucket = e.symbol === '+' ? 1 : e.symbol === '-' ? 5 : 3;
+                const bucket = obsBucket(e.symbol);
                 return `<div class="row" style="align-items:flex-start;gap:8px;">
                   <span class="note-pill note-${bucket}" style="font-size:1.05rem;flex-shrink:0;">${e.symbol}</span>
                   <div style="flex:1;">
@@ -5523,7 +5584,7 @@ function renderModal(cls, cat, student){
                </div>`
             : cat.mode==='observation'
               ? `<div class="hint" style="margin-bottom:6px;">Sichtbares Symbol</div>${observationChipsHtml(entry?.observation)}
-                 ${cat.ungraded ? '' : `<div class="hint" style="margin:14px 0 6px;">Zugrunde liegende Note (nicht sichtbar, zählt aber in die Berechnung)</div>
+                 ${(cat.ungraded || entry?.observation === 'f') ? (entry?.observation === 'f' ? '<div class="hint" style="margin-top:10px;">f = fehlt an diesem Tag. Der Eintrag fließt nicht in die Note ein.</div>' : '') : `<div class="hint" style="margin:14px 0 6px;">Zugrunde liegende Note (nicht sichtbar, zählt aber in die Berechnung)</div>
                  ${gradeChipsHtml(cls, entry?.hiddenGrade, true)}`}`
               : gradeChipsHtml(cls, entry?.grade)}
         </div>
@@ -5570,8 +5631,9 @@ function renderModal(cls, cat, student){
           saveState(); renderModal(cls, cat, student); return;
         }
         cat.entries[student.id] = {...(cat.entries[student.id]||{}), observation: btn.dataset.obsValue, note: currentNote()};
+        if(btn.dataset.obsValue === 'f') delete cat.entries[student.id].hiddenGrade;
         saveState();
-        if(nextStudentEnabled() && (cat.ungraded || cat.entries[student.id].hiddenGrade)){ finishEntry(cls, cat, student); return; }
+        if(nextStudentEnabled() && (cat.ungraded || btn.dataset.obsValue === 'f' || cat.entries[student.id].hiddenGrade)){ finishEntry(cls, cat, student); return; }
         renderModal(cls, cat, student);
       };
     });
@@ -6068,6 +6130,7 @@ document.getElementById('dataManagementBtn').onclick = async () => {
   const options = [
     {heading: 'Schüler'},
     {label: `⚑ Markierte Schüler (${state.classes.filter(c => !c.archived).reduce((n, c) => n + (c.students || []).reduce((m, st) => m + studentOpenFlags(c, st.id).length, 0), 0)})`, value: 'flagsov'},
+    ...(cls ? [{label: `🚩 Fehlzeiten-Warnung (${absenceCfg(cls).on ? absenceCfg(cls).n + '× f' : 'aus'})`, value: 'absence'}] : []),
     {heading: 'Sichern'},
     {label: `⬇ Backup (zuletzt ${backupAgeText()})`, value: 'backup', toggle: {
       caption: 'Erinnerung', title: 'Erinnerung nach 7 Tagen ohne Backup', checked: backupReminderEnabled(),
@@ -6125,6 +6188,7 @@ document.getElementById('dataManagementBtn').onclick = async () => {
   }
   else if(choice === 'help'){ await showHelpTerms(); }
   else if(choice === 'flagsov'){ openFlagsOverview(); }
+  else if(choice === 'absence'){ await openAbsenceSettings(cls); render(); }
   else if(choice === 'copystruct'){ await copyStructureFromFirstSemester(); }
   else if(choice === 'excel'){
     if(!cls){ await showAlert('Keine Lerngruppe', 'Bitte zuerst eine Lerngruppe auswählen.'); return; }
