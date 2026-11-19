@@ -254,6 +254,9 @@
   .grade-picker{display:flex;flex-wrap:wrap;gap:9px;flex:1;}
   .grade-chip{padding:10px 8px;min-width:60px;min-height:52px;border-radius:12px;border:1px solid var(--line);background:var(--surface-soft);
     font-family:ui-monospace,'SF Mono',Menlo,monospace;font-size:1.15rem;font-weight:700;color:var(--ink);cursor:pointer;touch-action:manipulation;}
+  .modal .sub .stud-name{font-size:1.2rem;font-weight:700;color:var(--ink);}
+  .grade-picker.six{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));}
+  .grade-picker.six .grade-chip{min-width:0;}
   .modal .entry-big{min-height:50px;min-width:70px;font-size:1.05rem;font-weight:700;}
   .modal-close button{min-height:44px;padding:8px 20px;font-size:1rem;}
   .modal input.mono{height:50px;font-size:1.2rem;}
@@ -465,7 +468,7 @@ function colorForGroupName(name){
 }
 
 function uid(){ return Math.random().toString(36).slice(2,10); }
-const APP_VERSION_INFO = 'v22.52 · Entwickler: G. Schulte';
+const APP_VERSION_INFO = 'v22.56 · Entwickler: G. Schulte';
 function setStatus(msg, isError){
   const el = document.getElementById('status');
   const hasData = typeof state !== 'undefined' && state && state.classes && state.classes.length;
@@ -561,6 +564,7 @@ function notePill(cls, value, subLabel, scaleOverride){
   if(sub) html += `<span class="avg-sub">${escapeHtml(sub)}</span>`;
   return html;
 }
+function noteMarkHtml(text){ return (text && String(text).trim()) ? `<span class="avg-sub" title="${escapeHtml(text)}">📝</span>` : ''; }
 function observationPill(entry){
   if(!entry || !entry.observation) return '<span class="note-dash">–</span>';
   const bucket = entry.observation === '+' ? 1 : entry.observation === '-' ? 5 : 3;
@@ -1890,6 +1894,10 @@ function applyTableScale(){ document.documentElement.style.setProperty('--tscale
 // ---------- Neuerungen nach einem Update ----------
 const WHATS_NEW_KEY = 'notenbuch-last-seen-version';
 const CHANGELOG = [
+  {v:'22.56', items:['Eingegebene Noten lassen sich löschen: ein erneuter Tipp auf die markierte Note (oder das Symbol) nimmt sie zurück. Bei Gesamt-, Quartals- und Endnoten fällt die Zelle damit auf den berechneten Vorschlag zurück.']},
+  {v:'22.55', items:['Notiz (optional) auch bei Gesamt- und Quartalsnoten (mündlich). Zellen mit Notiz zeigen ein 📝.']},
+  {v:'22.54', items:['Eingabefenster: Der Name des Schülers steht größer und fett.']},
+  {v:'22.53', items:['Noteneingabe: Die Noten stehen in drei Zeilen (1 und 2, 3 und 4, 5 und 6), die Abstufungen +, ohne, - jeweils zusammen.']},
   {v:'22.52', items:['„Vorschlag automatisch übernehmen“ erscheint nur noch, wenn es einen berechneten Vorschlag gibt. Eine eingegebene Gesamtnote kann nicht mehr durch „keine Note“ ersetzt werden.']},
   {v:'22.51', items:['Noteneingabe: größere Fenster und Tasten (gut mit dem Finger zu treffen). In jedem Eingabefenster (Noten, Punkte, Beobachtungen, Sammelkategorien, Gesamtnoten) gibt es Vorheriger/Nächster und den Schalter „automatisch zum nächsten Schüler“.']},
   {v:'22.50', items:['Neue Lerngruppe: zusätzlich zum CSV-Import lässt sich die Lerngruppe aus einer Sitzplan-Datei anlegen (Schüler alphabetisch, Sitzplan wird mitgespeichert).']},
@@ -3428,7 +3436,7 @@ function openStudentSheetDialog(cls, sem, studentId){
       <div class="modal">
         <div class="modal-close"><button class="ghost small" id="sheetCancel">Abbrechen</button></div>
         <h3>Beratungsblatt</h3>
-        <div class="sub">${escapeHtml(student.name)}</div>
+        <div class="sub"><span class="stud-name">${escapeHtml(student.name)}</span></div>
         <div style="margin-top:14px;display:flex;flex-direction:column;gap:12px;">
           ${inSems.length > 1 ? chk('sheetBoth', 'Beide Halbjahre', false) : ''}
           ${chk('sheetWeights', 'Gewichtung anzeigen', true)}
@@ -3927,7 +3935,7 @@ function renderGrid(main, cls, sem){
         if(totalNbMark(cat, s.id)) pillHtml = markPillHtml('NB'); else pillHtml = applyFp(pillHtml, cat, s.id, a);
         const gesamtColor = ownColor ? lightenColor(ownColor, rowLighten !== undefined ? rowLighten : GRADIENT_STEP) : undefined;
         const gesamtBgAttr = gesamtColor ? ` style="background:${gesamtColor};"` : '';
-        let html = `<td class="total-col"${gesamtBgAttr}><div class="cell-stack" data-open-entries data-cat="${cat.id}" data-group="${g.id}" data-student="${s.id}">${pillHtml}${overrideMark(cat, g, s)}</div></td>`;
+        let html = `<td class="total-col"${gesamtBgAttr}><div class="cell-stack" data-open-entries data-cat="${cat.id}" data-group="${g.id}" data-student="${s.id}">${pillHtml}${overrideMark(cat, g, s)}${noteMarkHtml(cat.overrideNotes && cat.overrideNotes[s.id])}</div></td>`;
         cat.children.forEach(child => { html += catCell(child, g, s, depth+1, undefined, rowLighten); });
         return html;
       }
@@ -3947,7 +3955,7 @@ function renderGrid(main, cls, sem){
       if(cellMark){
         return `<td${colorCls}${bgAttr}><div class="cell-stack" data-open-entries data-cat="${cat.id}" data-group="${g.id}" data-student="${s.id}">${markPillHtml(cellMark)}</div></td>`;
       }
-      return `<td${colorCls}${bgAttr}><div class="cell-stack" data-open-entries data-cat="${cat.id}" data-group="${g.id}" data-student="${s.id}">${applyFp(notePill(cls, a, subLabel, cat.displayScale), cat, s.id, a)}${overrideMark(cat, g, s)}</div></td>`;
+      return `<td${colorCls}${bgAttr}><div class="cell-stack" data-open-entries data-cat="${cat.id}" data-group="${g.id}" data-student="${s.id}">${applyFp(notePill(cls, a, subLabel, cat.displayScale), cat, s.id, a)}${overrideMark(cat, g, s)}${noteMarkHtml((cat.entries[s.id] && cat.entries[s.id].note) || (cat.overrideNotes && cat.overrideNotes[s.id]))}</div></td>`;
     }
     visibleStudents.forEach((s, rowIdx) => {
       const end = semesterEndnoteForStudent(cls, sem, s.id);
@@ -4000,7 +4008,7 @@ function renderGrid(main, cls, sem){
         const rowProgress = visibleStudents.length > 1 ? rowIdx / (visibleStudents.length - 1) : 0;
         const rowLighten = GRADIENT_STEP + rowProgress * ADDITIONAL_ROW_FADE;
         const groupGesamtColorBody = lightenColor(groupColorBody, rowLighten);
-        row += `<td class="total-col" style="background:${groupGesamtColorBody};"><div class="cell-stack" data-open-group="${g.id}" data-student="${s.id}">${gPillHtml}${badge}${(borderlineEnabled && gOverridden) ? `<button class="reset-arrow" data-reset-group="${g.id}" data-student="${s.id}" title="Automatische Berechnung wiederherstellen"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style="display:block;"><rect x="4" y="2" width="16" height="20" rx="2" stroke="currentColor" stroke-width="2.2"/><rect x="7" y="5" width="10" height="4" rx="0.8" fill="currentColor"/><circle cx="7.6" cy="13.2" r="1.15" fill="currentColor"/><circle cx="12" cy="13.2" r="1.15" fill="currentColor"/><circle cx="16.4" cy="13.2" r="1.15" fill="currentColor"/><circle cx="7.6" cy="17.4" r="1.15" fill="currentColor"/><circle cx="12" cy="17.4" r="1.15" fill="currentColor"/><circle cx="16.4" cy="17.4" r="1.15" fill="currentColor"/></svg></button>` : ''}</div></td>`;
+        row += `<td class="total-col" style="background:${groupGesamtColorBody};"><div class="cell-stack" data-open-group="${g.id}" data-student="${s.id}">${gPillHtml}${badge}${noteMarkHtml(g.overrideNotes && g.overrideNotes[s.id])}${(borderlineEnabled && gOverridden) ? `<button class="reset-arrow" data-reset-group="${g.id}" data-student="${s.id}" title="Automatische Berechnung wiederherstellen"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style="display:block;"><rect x="4" y="2" width="16" height="20" rx="2" stroke="currentColor" stroke-width="2.2"/><rect x="7" y="5" width="10" height="4" rx="0.8" fill="currentColor"/><circle cx="7.6" cy="13.2" r="1.15" fill="currentColor"/><circle cx="12" cy="13.2" r="1.15" fill="currentColor"/><circle cx="16.4" cy="13.2" r="1.15" fill="currentColor"/><circle cx="7.6" cy="17.4" r="1.15" fill="currentColor"/><circle cx="12" cy="17.4" r="1.15" fill="currentColor"/><circle cx="16.4" cy="17.4" r="1.15" fill="currentColor"/></svg></button>` : ''}</div></td>`;
         if(g.children.length === 0){
           row += `<td></td>`;
         } else {
@@ -4862,11 +4870,12 @@ function renderCategoryOverrideModal(cls, cat, student){
       <div class="modal">
         <div class="modal-close"><button class="ghost small" id="closeModal">Fertig</button></div>
         <h3>${escapeHtml(cat.name)}</h3>
-        <div class="sub">${escapeHtml(student.name)} · Sammelkategorie</div>
+        <div class="sub"><span class="stud-name">${escapeHtml(student.name)}</span> · Sammelkategorie</div>
         <div class="hint" style="margin-top:8px;">Automatisch berechneter Vorschlag${cat.children && cat.children.length ? '' : ' (noch keine Unterkategorien)'}: ${auto===null ? 'keine Daten' : displayValue(cls, auto)}</div>
         <div style="margin-top:14px;">${gradeChipsHtml(cls, String(currentSelected))}</div>
         ${markOverrideRowHtml(overrideRaw === 'NB', !!(cat.fpMarks && cat.fpMarks[student.id]), true, !(lastEntryGroup && (lastEntryGroup.name || '').trim().toLowerCase() === 'schriftlich'))}
         ${(isOverridden && auto !== null) ? `<div class="row" style="margin-top:14px;"><button class="ghost small" id="resetCatOverrideBtn">Vorschlag automatisch übernehmen</button></div>` : ''}
+        <div style="margin-top:14px;"><textarea id="overrideNote" rows="2" placeholder="Notiz (optional)" style="width:100%;resize:vertical;">${escapeHtml((cat.overrideNotes && cat.overrideNotes[student.id]) || '')}</textarea></div>
         ${entryNavHtml()}
       </div>
     </div>
@@ -4876,6 +4885,7 @@ function renderCategoryOverrideModal(cls, cat, student){
   root.querySelectorAll('[data-chip-value]').forEach(btn=>{
     btn.onclick = () => {
       cat.overrides = cat.overrides || {};
+      if(String(cat.overrides[student.id]) === btn.dataset.chipValue){ delete cat.overrides[student.id]; saveState(); renderCategoryOverrideModal(cls, cat, student); return; }
       cat.overrides[student.id] = btn.dataset.chipValue;
       saveState();
       finishEntry(cls, cat, student);
@@ -4895,6 +4905,7 @@ function renderCategoryOverrideModal(cls, cat, student){
       saveState(); renderCategoryOverrideModal(cls, cat, student);
     };
   }
+  bindOverrideNote(cat, student);
   bindEntryNav(cls, student, entryCtx());
   const resetBtn = document.getElementById('resetCatOverrideBtn');
   if(resetBtn){
@@ -4924,11 +4935,12 @@ function renderGroupOverrideModal(cls, group, student){
       <div class="modal">
         <div class="modal-close"><button class="ghost small" id="closeModal">Fertig</button></div>
         <h3>Gesamt ${escapeHtml(group.name)}</h3>
-        <div class="sub">${escapeHtml(student.name)}</div>
+        <div class="sub"><span class="stud-name">${escapeHtml(student.name)}</span></div>
         <div class="hint" style="margin-top:8px;">Automatisch berechneter Vorschlag: ${auto===null ? 'keine Daten' : displayValue(cls, auto)}</div>
         <div style="margin-top:14px;">${gradeChipsHtml(cls, String(currentSelected))}</div>
         ${markOverrideRowHtml(overrideRaw === 'NB', !!(group.fpMarks && group.fpMarks[student.id]), true, (group.name || '').trim().toLowerCase() !== 'schriftlich')}
         ${(isOverridden && auto !== null) ? `<div class="row" style="margin-top:14px;"><button class="ghost small" id="resetGroupOverrideBtn">Vorschlag automatisch übernehmen</button></div>` : ''}
+        <div style="margin-top:14px;"><textarea id="overrideNote" rows="2" placeholder="Notiz (optional)" style="width:100%;resize:vertical;">${escapeHtml((group.overrideNotes && group.overrideNotes[student.id]) || '')}</textarea></div>
         ${entryNavHtml()}
       </div>
     </div>
@@ -4938,6 +4950,7 @@ function renderGroupOverrideModal(cls, group, student){
   root.querySelectorAll('[data-chip-value]').forEach(btn=>{
     btn.onclick = () => {
       group.overrides = group.overrides || {};
+      if(String(group.overrides[student.id]) === btn.dataset.chipValue){ delete group.overrides[student.id]; saveState(); renderGroupOverrideModal(cls, group, student); return; }
       group.overrides[student.id] = btn.dataset.chipValue;
       saveState();
       finishEntry(cls, null, student, grpCtx);
@@ -4957,6 +4970,7 @@ function renderGroupOverrideModal(cls, group, student){
       saveState(); renderGroupOverrideModal(cls, group, student);
     };
   }
+  bindOverrideNote(group, student);
   bindEntryNav(cls, student, grpCtx);
   const resetBtn = document.getElementById('resetGroupOverrideBtn');
   if(resetBtn){
@@ -5343,7 +5357,7 @@ function renderEndnoteModal(cls, sem, student){
       <div class="modal">
         <div class="modal-close"><button class="ghost small" id="closeModal">Fertig</button></div>
         <h3>Endnote</h3>
-        <div class="sub">${escapeHtml(student.name)} · ${escapeHtml(sem.name)}</div>
+        <div class="sub"><span class="stud-name">${escapeHtml(student.name)}</span> · ${escapeHtml(sem.name)}</div>
         <div class="hint" style="margin-top:8px;">Automatisch berechneter Vorschlag: ${auto===null ? 'keine Daten' : displayValue(cls, auto)}</div>
         <div style="margin-top:14px;">${gradeChipsHtml(cls, String(currentSelected))}</div>
         ${markOverrideRowHtml(overrideRaw === 'NB', false, false)}
@@ -5356,6 +5370,7 @@ function renderEndnoteModal(cls, sem, student){
   root.querySelectorAll('[data-chip-value]').forEach(btn=>{
     btn.onclick = () => {
       sem.endnoteOverrides = sem.endnoteOverrides || {};
+      if(String(sem.endnoteOverrides[student.id]) === btn.dataset.chipValue){ delete sem.endnoteOverrides[student.id]; saveState(); renderEndnoteModal(cls, sem, student); return; }
       sem.endnoteOverrides[student.id] = btn.dataset.chipValue;
       saveState();
       root.innerHTML = ''; render();
@@ -5441,7 +5456,7 @@ function gradeValuesList(cls){
 function gradeChipsHtml(cls, selected, hidden){
   const vals = gradeValuesList(cls);
   const attr = hidden ? 'data-hidden-grade-value' : 'data-chip-value';
-  return `<div class="grade-picker">${vals.map(v => `<button type="button" class="grade-chip ${String(selected)===v?'selected':''}" ${attr}="${v}">${v}</button>`).join('')}</div>`;
+  return `<div class="grade-picker${cls.gradingSystem === 'punkte' ? '' : ' six'}">${vals.map(v => `<button type="button" class="grade-chip ${String(selected)===v?'selected':''}" ${attr}="${v}">${v}</button>`).join('')}</div>`;
 }
 function observationChipsHtml(selected){
   return `<div class="grade-picker">${OBSERVATION_SYMBOLS.map(sym => `<button type="button" class="grade-chip ${selected===sym?'selected':''}" data-obs-value="${sym}" style="font-size:1.2rem;">${sym}</button>`).join('')}</div>`;
@@ -5460,6 +5475,15 @@ function finishEntry(cls, cat, student, ctx){
   ctx = ctx || entryCtx();
   if(nextStudentEnabled() && ctx && stepStudent(cls, student, 1, ctx)) return;
   document.getElementById('modalRoot').innerHTML = ''; render();
+}
+function bindOverrideNote(obj, student){
+  const ta = document.getElementById('overrideNote'); if(!ta) return;
+  ta.addEventListener('input', () => {
+    const v = ta.value.trim();
+    obj.overrideNotes = obj.overrideNotes || {};
+    if(v) obj.overrideNotes[student.id] = v; else delete obj.overrideNotes[student.id];
+    saveState();
+  });
 }
 function entryNavHtml(){
   return `<label class="next-sw">Nach der Eingabe automatisch zum nächsten Schüler
@@ -5489,7 +5513,7 @@ function renderModal(cls, cat, student){
       <div class="modal">
         <div class="modal-close"><button class="ghost small" id="closeModal">Fertig</button></div>
         <h3>${escapeHtml(cat.name)}</h3>
-        <div class="sub">${escapeHtml(student.name)} · ${modeLabel}${cat.date ? ' · '+formatDate(cat.date) : ''}</div>
+        <div class="sub"><span class="stud-name">${escapeHtml(student.name)}</span> · ${modeLabel}${cat.date ? ' · '+formatDate(cat.date) : ''}</div>
         <div style="margin-top:14px;">
           ${cat.mode==='points'
             ? `<div class="row">
@@ -5539,6 +5563,12 @@ function renderModal(cls, cat, student){
   if(cat.mode === 'observation'){
     root.querySelectorAll('[data-obs-value]').forEach(btn=>{
       btn.onclick = () => {
+        const prevO = cat.entries[student.id];
+        if(prevO && prevO.observation === btn.dataset.obsValue){
+          const rest = {...prevO}; delete rest.observation; rest.note = currentNote();
+          if(rest.hiddenGrade || rest.note) cat.entries[student.id] = rest; else delete cat.entries[student.id];
+          saveState(); renderModal(cls, cat, student); return;
+        }
         cat.entries[student.id] = {...(cat.entries[student.id]||{}), observation: btn.dataset.obsValue, note: currentNote()};
         saveState();
         if(nextStudentEnabled() && (cat.ungraded || cat.entries[student.id].hiddenGrade)){ finishEntry(cls, cat, student); return; }
@@ -5547,6 +5577,12 @@ function renderModal(cls, cat, student){
     });
     root.querySelectorAll('[data-hidden-grade-value]').forEach(btn=>{
       btn.onclick = () => {
+        const prevH = cat.entries[student.id];
+        if(prevH && prevH.hiddenGrade === btn.dataset.hiddenGradeValue){
+          const rest = {...prevH}; delete rest.hiddenGrade; rest.note = currentNote();
+          if(rest.observation || rest.note) cat.entries[student.id] = rest; else delete cat.entries[student.id];
+          saveState(); renderModal(cls, cat, student); return;
+        }
         cat.entries[student.id] = {...(cat.entries[student.id]||{}), hiddenGrade: btn.dataset.hiddenGradeValue, note: currentNote()};
         saveState();
         if(nextStudentEnabled() && cat.entries[student.id].observation){ finishEntry(cls, cat, student); return; }
@@ -5558,6 +5594,12 @@ function renderModal(cls, cat, student){
       btn.onclick = () => {
         const prevEntry = cat.entries[student.id];
         const keepFp = !!(prevEntry && prevEntry.fp && !entryMark(prevEntry));
+        if(prevEntry && !entryMark(prevEntry) && String(prevEntry.grade) === btn.dataset.chipValue){
+          // erneuter Tipp auf die gewählte Note nimmt sie zurück
+          const rest = {...prevEntry}; delete rest.grade; rest.note = currentNote();
+          if(rest.fp || rest.note) cat.entries[student.id] = rest; else delete cat.entries[student.id];
+          saveState(); renderModal(cls, cat, student); return;
+        }
         cat.entries[student.id] = {grade: btn.dataset.chipValue, note: currentNote(), ...(keepFp ? {fp: true} : {})};
         saveState();
         finishEntry(cls, cat, student);
