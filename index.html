@@ -174,6 +174,12 @@
   .seat-tile.open > .seat-in{border-style:dashed;color:var(--ink-soft);background:transparent;cursor:pointer;}
   .seat-tile .sn{font-weight:700;} .seat-tile .sv{opacity:.85;}
   .seat-txt{display:flex;flex-direction:column;align-items:center;justify-content:center;max-width:100%;}
+  #seatOverlay .seat-modebar{display:flex;align-items:center;gap:8px;padding:8px 12px;border-bottom:1px solid var(--line);flex-wrap:wrap;}
+  #seatOverlay .seat-modebar select{min-height:44px;font-size:1rem;max-width:min(60vw,420px);}
+  #seatOverlay .seat-modebar button{min-height:44px;font-size:0.95rem;}
+  #seatOverlay .seat-hint{width:100%;font-size:0.8rem;color:var(--ink-soft);}
+  .seat-tile.tappable > .seat-in{cursor:pointer;} .seat-tile.tappable > .seat-in:active{transform:scale(0.96);background:var(--surface-soft);}
+  .seat-val{margin-top:2px;line-height:1;}
   .seat-marks{display:flex;gap:2px;flex-wrap:wrap;justify-content:center;margin-top:1px;}
   .seat-mark{font-size:0.62em;font-weight:700;border-radius:4px;padding:1px 3px;line-height:1.1;}
   .flag-chip{border:1px solid var(--line);background:transparent;color:var(--ink);font-family:inherit;border-radius:14px;padding:4px 10px;font-size:0.8rem;cursor:pointer;margin:3px 4px 0 0;}
@@ -470,7 +476,7 @@ function colorForGroupName(name){
 }
 
 function uid(){ return Math.random().toString(36).slice(2,10); }
-const APP_VERSION_INFO = 'v22.60 · Entwickler: G. Schulte';
+const APP_VERSION_INFO = 'v22.61 · Entwickler: G. Schulte';
 function setStatus(msg, isError){
   const el = document.getElementById('status');
   const hasData = typeof state !== 'undefined' && state && state.classes && state.classes.length;
@@ -1897,6 +1903,7 @@ function applyTableScale(){ document.documentElement.style.setProperty('--tscale
 // ---------- Neuerungen nach einem Update ----------
 const WHATS_NEW_KEY = 'notenbuch-last-seen-version';
 const CHANGELOG = [
+  {v:'22.61', items:['Sitzplan: Eintragen per Tipp auf den Platz. Modi Beobachtung (Symbol + ○ − f wechselt, langer Druck für Details/Notiz, „Neue UB heute“), Strichliste (Strich eintragen, langer Druck für die Einträge) und Vermerk.']},
   {v:'22.60', items:['Fehlzeiten: f bleibt immer neutral (keine rote Umrandung), die Warnung zeigt nur „FP?“ vor dem Namen. Die Fehlzeiten-Warnung hat einen Schiebeschalter.']},
   {v:'22.59', items:['Fehlzeiten: f ohne Umrandung; erreicht ein Schüler die Schwelle, werden die zählenden f rot umrandet. Tipp auf FP? bietet „Zurücksetzen“ (die bisherigen f zählen dann nicht mehr mit, neue f zählen ab null).']},
   {v:'22.58', items:['Fehlzeiten-Warnung: Die Schwelle lässt sich als „x-mal f in y Wochen“ einstellen (0 Wochen = im Quartal wie bisher).']},
@@ -2996,6 +3003,36 @@ function pickSeatFile(cls, after){
   inp.onchange = async () => { if(inp.files && inp.files[0]){ const ok = await importSeatPlanFile(cls, inp.files[0]); if(ok) after(); else after(true); } };
   inp.click();
 }
+const seatUi = {mode: 'view', catId: null, key: null};
+function seatObsCats(sem){
+  const out = [];
+  (sem.groups || []).forEach(g => {
+    const walk = (cat, path, parent) => {
+      if(!isContainerCat(cat) && cat.mode === 'observation') out.push({cat, g, parent, label: path + (cat.date ? ' · ' + formatDate(cat.date) : '')});
+      (cat.children || []).forEach(ch => walk(ch, path + ' → ' + ch.name, cat));
+    };
+    (g.children || []).forEach(c => walk(c, g.name + ' → ' + c.name, g));
+  });
+  return out;
+}
+function seatPickObs(list){
+  let hit = list.find(x => x.cat.id === seatUi.catId);
+  if(!hit){
+    const today = localTodayIso();
+    hit = list.find(x => x.cat.date === today) || list.filter(x => x.cat.date && x.cat.date <= today).sort((a, b) => a.cat.date < b.cat.date ? 1 : -1)[0] || list[0] || null;
+    seatUi.catId = hit ? hit.cat.id : null;
+  }
+  return hit;
+}
+function seatCycleObs(cat, sid){
+  const e = {...(cat.entries[sid] || {})};
+  if(entryMark(e)){ delete e.mark; delete e.x; }
+  const SEQ = ['', ...OBSERVATION_SYMBOLS];
+  const next = SEQ[(SEQ.indexOf(e.observation || '') + 1) % SEQ.length];
+  if(next){ e.observation = next; if(next === 'f') delete e.hiddenGrade; delete e.absReset; cat.entries[sid] = e; }
+  else { delete e.observation; if(Object.keys(e).some(k => e[k])) cat.entries[sid] = e; else delete cat.entries[sid]; }
+  saveState();
+}
 function seatMarksHtml(cls, sem, sid){
   let h = '';
   const host = tallyHostCat(sem);
@@ -3014,7 +3051,10 @@ function openSeatPlan(){
   const sem = getActiveSemester(cls);
   let ov = document.getElementById('seatOverlay'); if(ov) ov.remove();
   ov = document.createElement('div'); ov.id = 'seatOverlay'; document.body.appendChild(ov);
-  const close = () => { ov.remove(); window.removeEventListener('resize', fit); render(); };
+  const mroot = document.getElementById('modalRoot');
+  const mo = new MutationObserver(() => { if(!mroot.innerHTML.trim() && document.getElementById('seatOverlay')){ draw(); fit(); } });
+  mo.observe(mroot, {childList: true});
+  const close = () => { mo.disconnect(); ov.remove(); window.removeEventListener('resize', fit); render(); };
   const plans = () => cls.seatPlans || [];
   const current = () => plans().find(p => p.id === cls.activeSeatPlanId) || plans()[0] || null;
   function fit(){
@@ -3024,6 +3064,38 @@ function openSeatPlan(){
     const ratio = p.cols / p.rows;
     let w = aw, h = aw / ratio; if(h > ah){ h = ah; w = ah * ratio; }
     grid.style.width = Math.floor(w) + 'px'; grid.style.height = Math.floor(h) + 'px';
+  }
+  const obsList = () => seatObsCats(sem);
+  const tallyCol = () => { const cols = tallyColsOf(cls); return cols.find(c => c.key === seatUi.key) || cols[0]; };
+  function seatValHtml(sid){
+    if(seatUi.mode === 'obs'){
+      const sel = seatPickObs(obsList());
+      if(!sel) return '';
+      const e = sel.cat.entries[sid];
+      return `<div class="seat-val">${e && e.observation ? observationPill(e) : '<span class="note-dash">–</span>'}</div>`;
+    }
+    if(seatUi.mode === 'tally'){
+      const host = tallyHostCat(sem), col = tallyCol();
+      return host && col ? `<div class="seat-val">${tallyPill(tallyList(host, col.key, sid).length)}</div>` : '';
+    }
+    return '';
+  }
+  function seatModeBarHtml(){
+    const m = seatUi.mode;
+    const chip = (k, label) => `<button class="ghost small${m === k ? ' active-toggle' : ''}" data-seat-mode="${k}">${label}</button>`;
+    let extra = '', hint = '';
+    if(m === 'obs'){
+      const list = obsList(), sel = seatPickObs(list);
+      extra = list.length ? `<select id="seatObsSel">${list.map(x => `<option value="${x.cat.id}"${sel && x.cat.id === sel.cat.id ? ' selected' : ''}>${escapeHtml(x.label)}</option>`).join('')}</select><button class="ghost small" id="seatObsNew">＋ Neue UB (heute)</button>` : '';
+      hint = list.length ? 'Tippen auf einen Platz wechselt das Symbol (+ ○ − f, leer). Langer Druck öffnet Details und Notiz.' : 'Es gibt noch keine Beobachtungsspalte. Lege in der Tabelle zuerst eine Beobachtung an.';
+    } else if(m === 'tally'){
+      const host = tallyHostCat(sem), col = tallyCol();
+      extra = host ? tallyColsOf(cls).map(c => `<button class="ghost small${col && c.key === col.key ? ' active-toggle' : ''}" data-seat-key="${c.key}">${escapeHtml(c.label)}</button>`).join('') : '';
+      hint = host ? `Tippen auf einen Platz trägt einen Strich ein (${escapeHtml(host.name)}). Langer Druck zeigt die Einträge zum Löschen oder Datum ändern.` : 'Für Strichlisten wird ein SoMi-Quartal benötigt.';
+    } else if(m === 'flag'){
+      hint = 'Tippen auf einen Platz öffnet die Vermerke dieses Schülers.';
+    }
+    return `<div class="seat-modebar">${chip('view', 'Ansicht')}${chip('obs', 'Beobachtung')}${chip('tally', 'Strichliste')}${chip('flag', '⚑ Vermerk')}${extra}${hint ? `<div class="seat-hint">${hint}</div>` : ''}</div>`;
   }
   function draw(){
     const p = current();
@@ -3037,6 +3109,7 @@ function openSeatPlan(){
           <button class="ghost small" id="seatClose">Schließen</button>
         </span>
       </div>
+      ${p ? seatModeBarHtml() : ''}
       <div class="seat-stage">${p ? `<div class="seat-grid" style="width:10px;height:10px;">${p.tiles.map((t, i) => {
         const left = (t.x * 100).toFixed(3), top = (t.y * 100).toFixed(3);
         const wpct = ((t.type === 'pult' ? t.widthUnits : 1) / p.cols * 100).toFixed(3), hpct = (100 / p.rows).toFixed(3);
@@ -3045,7 +3118,7 @@ function openSeatPlan(){
         const base = `left:${left}%;top:${top}%;width:${wpct}%;height:${hpct}%;${rot}`;
         if(t.type === 'pult') return `<div class="seat-tile pult" style="${base}"><div class="seat-in"><div class="seat-txt" style="transform:rotate(${-(t.rotation || 0)}deg);">${escapeHtml(t.label)}</div></div></div>`;
         const inner = (t.vorname || t.nachname) ? `<span class="sn">${escapeHtml(t.vorname)}</span><span class="sv">${escapeHtml(t.nachname)}</span>` : '';
-        return `<div class="seat-tile${st ? '' : ' open'}" data-seat-tile="${i}" style="${base}"><div class="seat-in"><div class="seat-txt" style="transform:rotate(${-(t.rotation || 0)}deg);">${inner}${st ? seatMarksHtml(cls, sem, st.id) : '<span class="seat-marks"><span class="seat-mark">nicht zugeordnet</span></span>'}</div></div></div>`;
+        return `<div class="seat-tile${st ? (seatUi.mode !== 'view' ? ' tappable' : '') : ' open'}" data-seat-tile="${i}" style="${base}"><div class="seat-in"><div class="seat-txt" style="transform:rotate(${-(t.rotation || 0)}deg);">${inner}${st ? seatValHtml(st.id) + seatMarksHtml(cls, sem, st.id) : '<span class="seat-marks"><span class="seat-mark">nicht zugeordnet</span></span>'}</div></div></div>`;
       }).join('')}</div>` : `<div style="text-align:center;max-width:420px;"><p>Für „${escapeHtml(cls.name)}“ ist noch kein Sitzplan importiert.</p><p class="hint">Im Sitzplanmodul den Plan anzeigen und „Für Notenbuch exportieren“ wählen. Die Datei hier importieren.</p><button id="seatImport2">⬆ Sitzplan-Datei importieren</button></div>`}</div>`;
     ov.querySelectorAll('[data-seat-plan]').forEach(b => b.onclick = () => { cls.activeSeatPlanId = b.dataset.seatPlan; saveState(); draw(); fit(); });
     const goImport = () => pickSeatFile(cls, () => { draw(); fit(); });
@@ -3057,13 +3130,46 @@ function openSeatPlan(){
       if(ok){ cls.seatPlans = plans().filter(x => x.id !== p.id); cls.activeSeatPlanId = cls.seatPlans[0] ? cls.seatPlans[0].id : null; saveState(); }
       draw(); fit();
     };
-    ov.querySelectorAll('[data-seat-tile]').forEach(el => el.onclick = async () => {
-      const t = p.tiles[+el.dataset.seatTile]; if(!t || t.sid) return;
-      const used = new Set(p.tiles.filter(x => x.sid).map(x => x.sid));
-      const free = cls.students.filter(x => !used.has(x.id));
-      const pick = await showChoice('Platz zuordnen', `${t.vorname} ${t.nachname}`.trim(), free.map(x => ({label: x.name, value: x.id})));
-      if(pick){ t.sid = pick; saveState(); }
-      draw(); fit();
+    ov.querySelectorAll('[data-seat-mode]').forEach(b => b.onclick = () => { seatUi.mode = b.dataset.seatMode; draw(); fit(); });
+    ov.querySelectorAll('[data-seat-key]').forEach(b => b.onclick = () => { seatUi.key = b.dataset.seatKey; draw(); fit(); });
+    const selEl = ov.querySelector('#seatObsSel'); if(selEl) selEl.onchange = () => { seatUi.catId = selEl.value; draw(); fit(); };
+    const newEl = ov.querySelector('#seatObsNew');
+    if(newEl) newEl.onclick = () => {
+      const sel = seatPickObs(obsList()); if(!sel) return;
+      const nc = {id: uid(), name: sel.cat.name, weight: sel.cat.weight, mode: 'observation', ungraded: !!sel.cat.ungraded, date: localTodayIso(), entries: {}};
+      sel.parent.children.push(nc); seatUi.catId = nc.id; saveState(); draw(); fit();
+    };
+    ov.querySelectorAll('[data-seat-tile]').forEach(el => {
+      let timer = null, fired = false;
+      const t = p.tiles[+el.dataset.seatTile];
+      const act = (long) => {
+        if(!t) return;
+        const m = seatUi.mode;
+        if(m === 'obs'){
+          const sel = seatPickObs(obsList()); if(!sel) return;
+          if(long) openEntriesModal(cls, sem, sel.g.id, sel.cat.id, t.sid);
+          else { seatCycleObs(sel.cat, t.sid); draw(); fit(); }
+        } else if(m === 'tally'){
+          const host = tallyHostCat(sem), col = tallyCol(); if(!host || !col) return;
+          if(long) openTallyList(cls, sem, host, col.key, t.sid);
+          else { tallySet(host, col.key, t.sid, [...tallyList(host, col.key, t.sid), localTodayIso()]); saveState(); draw(); fit(); }
+        } else if(m === 'flag'){
+          openStudentFlagsDialog(cls, t.sid);
+        }
+      };
+      el.addEventListener('pointerdown', () => { fired = false; if(t && t.sid && seatUi.mode !== 'view') timer = setTimeout(() => { fired = true; act(true); }, 550); });
+      ['pointerup', 'pointerleave', 'pointercancel'].forEach(ev => el.addEventListener(ev, () => clearTimeout(timer)));
+      el.addEventListener('contextmenu', (e) => e.preventDefault());
+      el.addEventListener('click', async () => {
+        if(fired){ fired = false; return; }
+        if(!t) return;
+        if(t.sid){ act(false); return; }
+        const used = new Set(p.tiles.filter(x => x.sid).map(x => x.sid));
+        const free = cls.students.filter(x => !used.has(x.id));
+        const pick = await showChoice('Platz zuordnen', `${t.vorname} ${t.nachname}`.trim(), free.map(x => ({label: x.name, value: x.id})));
+        if(pick){ t.sid = pick; saveState(); }
+        draw(); fit();
+      });
     });
     fit();
   }
