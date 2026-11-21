@@ -2,6 +2,10 @@
 <html lang="de">
 <head>
 <meta charset="UTF-8">
+<!-- Notenbuch · © 2026 G. Schulte · Alle Rechte vorbehalten · Kopie NBWM-GITHUB-PUBLIC -->
+<meta name="notenbuch-copy" content="NBWM-GITHUB-PUBLIC">
+<meta name="author" content="G. Schulte">
+<meta name="copyright" content="© 2026 G. Schulte. Alle Rechte vorbehalten.">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1, user-scalable=no">
 <title>Notenbuch</title>
 <script src="https://cdn.jsdelivr.net/npm/exceljs@4.4.0/dist/exceljs.min.js"></script>
@@ -476,11 +480,22 @@ function colorForGroupName(name){
 }
 
 function uid(){ return Math.random().toString(36).slice(2,10); }
-const APP_VERSION_INFO = 'v22.61 · Entwickler: G. Schulte';
+const APP_COPYRIGHT = '© 2026 G. Schulte. Alle Rechte vorbehalten.';
+const APP_COPY_ID = 'NBWM-GITHUB-PUBLIC';
+const APP_COPY_ZW = '\u200b\u200c\u200b\u200b\u200c\u200c\u200c\u200b\u200b\u200c\u200b\u200b\u200b\u200b\u200c\u200b\u200b\u200c\u200b\u200c\u200b\u200c\u200c\u200c\u200b\u200c\u200b\u200b\u200c\u200c\u200b\u200c\u200b\u200b\u200c\u200b\u200c\u200c\u200b\u200c\u200b\u200c\u200b\u200b\u200b\u200c\u200c\u200c\u200b\u200c\u200b\u200b\u200c\u200b\u200b\u200c\u200b\u200c\u200b\u200c\u200b\u200c\u200b\u200b\u200b\u200c\u200b\u200b\u200c\u200b\u200b\u200b\u200b\u200c\u200b\u200c\u200b\u200c\u200b\u200c\u200b\u200c\u200b\u200b\u200b\u200b\u200c\u200b\u200b\u200b\u200c\u200b\u200c\u200c\u200b\u200c\u200b\u200c\u200b\u200c\u200b\u200b\u200b\u200b\u200b\u200c\u200b\u200c\u200b\u200c\u200b\u200c\u200b\u200c\u200b\u200b\u200b\u200b\u200c\u200b\u200b\u200c\u200b\u200b\u200c\u200c\u200b\u200b\u200b\u200c\u200b\u200b\u200c\u200b\u200b\u200c\u200b\u200c\u200b\u200b\u200b\u200b\u200c\u200c';
+function appLicenseText(){
+  return APP_COPYRIGHT + '\n\n' +
+    'Diese Software (Programmcode, Aufbau, Gestaltung, Texte und Anleitung) ist urheberrechtlich geschützt.\n\n' +
+    'Erlaubt: die Nutzung dieser Kopie für den eigenen dienstlichen Gebrauch durch die Person, der sie vom Urheber überlassen wurde.\n\n' +
+    'Nicht erlaubt ohne schriftliche Zustimmung des Urhebers: Weitergabe, Veröffentlichung, Verkauf, Vervielfältigung über den Eigengebrauch hinaus, Bearbeitung und Weiterentwicklung, Entfernen von Urhebervermerken und Kennzeichnungen.\n\n' +
+    'Die Software wird ohne Gewähr bereitgestellt. Die Haftung ist, soweit gesetzlich zulässig, auf Vorsatz und grobe Fahrlässigkeit beschränkt. Die Verantwortung für Notenfeststellung und Datenschutz bleibt bei der Lehrkraft.\n\n' +
+    'Diese Kopie ist gekennzeichnet (Kopie-ID: ' + APP_COPY_ID + ').' + APP_COPY_ZW;
+}
+const APP_VERSION_INFO = 'v22.62 · Entwickler: G. Schulte';
 function setStatus(msg, isError){
   const el = document.getElementById('status');
   const hasData = typeof state !== 'undefined' && state && state.classes && state.classes.length;
-  el.textContent = msg + ' · ' + APP_VERSION_INFO + (hasData ? ' · Backup ' + backupAgeText() : '');
+  el.textContent = msg + ' · ' + APP_VERSION_INFO + ' · © G. Schulte' + (hasData ? ' · Backup ' + backupAgeText() : '');
   el.style.color = isError ? 'var(--pen)' : ((hasData && backupOverdue()) ? 'var(--warn)' : 'var(--ink-soft)');
 }
 const BACKUP_LAST_KEY = 'notenbuch-last-backup';
@@ -1097,7 +1112,7 @@ function exportBackup(){
     const pw = await showPrompt('Backup erstellen', 'Passwort eingeben für verschlüsseltes Backup. Optional frei lassen (NICHT empfohlen!!!)', '', {inputType:'password', confirmLabel:'Backup erstellen'});
     if(pw === null) return;
     try{
-      const data = JSON.stringify({classes: state.classes, templates: getTemplates(), exportedAt: new Date().toISOString()}, null, 2);
+      const data = JSON.stringify({classes: state.classes, templates: getTemplates(), exportedAt: new Date().toISOString(), _app: {name: 'Notenbuch', copy: APP_COPY_ID, version: currentAppVersion(), author: 'G. Schulte'}}, null, 2);
       const now = new Date();
       const stamp = now.toISOString().slice(0,10) + '_' + String(now.getHours()).padStart(2,'0') + '-' + String(now.getMinutes()).padStart(2,'0');
       if(pw && pw.trim()){
@@ -1903,6 +1918,7 @@ function applyTableScale(){ document.documentElement.style.setProperty('--tscale
 // ---------- Neuerungen nach einem Update ----------
 const WHATS_NEW_KEY = 'notenbuch-last-seen-version';
 const CHANGELOG = [
+  {v:'22.62', items:['Urheberrechtsvermerk, Lizenztext (Verwaltung → System → Urheberrecht und Lizenz) und eine Kennzeichnung jeder Kopie.']},
   {v:'22.61', items:['Sitzplan: Eintragen per Tipp auf den Platz. Modi Beobachtung (Symbol + ○ − f wechselt, langer Druck für Details/Notiz, „Neue UB heute“), Strichliste (Strich eintragen, langer Druck für die Einträge) und Vermerk.']},
   {v:'22.60', items:['Fehlzeiten: f bleibt immer neutral (keine rote Umrandung), die Warnung zeigt nur „FP?“ vor dem Namen. Die Fehlzeiten-Warnung hat einen Schiebeschalter.']},
   {v:'22.59', items:['Fehlzeiten: f ohne Umrandung; erreicht ein Schüler die Schwelle, werden die zählenden f rot umrandet. Tipp auf FP? bietet „Zurücksetzen“ (die bisherigen f zählen dann nicht mehr mit, neue f zählen ab null).']},
@@ -6308,6 +6324,7 @@ document.getElementById('dataManagementBtn').onclick = async () => {
     {label: `🔠 Tabellengröße (${(TSCALES.find(t=>t.v===getTableScale())||TSCALES[1]).l})`, value: 'tscale'},
     {heading: 'Über die App'},
     {label: '🆕 Neuerungen', value: 'whatsnew'},
+    {label: '© Urheberrecht und Lizenz', value: 'license'},
     {label: '🔄 Update prüfen', value: 'update'},
     {label: '🎲 Demomodus', value: 'demo'},
     {label: '❓ Begriffe erklärt', value: 'help'},
@@ -6317,6 +6334,7 @@ document.getElementById('dataManagementBtn').onclick = async () => {
   const choice = await showChoice('Verwaltung', '', options);
   if(choice === null) return;
   if(choice === 'update'){ await checkForAppUpdate(); }
+  else if(choice === 'license'){ await showAlert('Urheberrecht und Lizenz', appLicenseText()); }
   else if(choice === 'whatsnew'){ await showAlert('Neuerungen', whatsNewText(null)); }
   else if(choice === 'tplsave'){
     if(!cls){ await showAlert('Keine Lerngruppe', 'Bitte zuerst eine Lerngruppe auswählen, deren Struktur als Vorlage dienen soll.'); return; }
