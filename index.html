@@ -495,7 +495,7 @@ function appLicenseText(){
     'Die Software wird ohne Gewähr bereitgestellt. Die Haftung ist, soweit gesetzlich zulässig, auf Vorsatz und grobe Fahrlässigkeit beschränkt. Die Verantwortung für Notenfeststellung und Datenschutz bleibt bei der Lehrkraft.\n\n' +
     'Diese Kopie ist gekennzeichnet (Kopie-ID: ' + APP_COPY_ID + ').' + APP_COPY_ZW;
 }
-const APP_VERSION_INFO = 'v22.75 · Entwicklung und © G. Schulte';
+const APP_VERSION_INFO = 'v22.77 · Entwicklung und © G. Schulte';
 function setStatus(msg, isError){
   const el = document.getElementById('status');
   const hasData = typeof state !== 'undefined' && state && state.classes && state.classes.length;
@@ -1933,6 +1933,8 @@ function applyTableScale(){ document.documentElement.style.setProperty('--tscale
 // ---------- Neuerungen nach einem Update ----------
 const WHATS_NEW_KEY = 'notenbuch-last-seen-version';
 const CHANGELOG = [
+  {v:'22.77', items:['Im ganzen Bereich Mündlich (nicht nur in SoMi) wird „Klausurpunkte“ beim Anlegen und beim Ändern der Eingabeart nicht mehr angeboten.']},
+  {v:'22.76', items:['Menüs: Bei Beobachtungsspalten lässt sich „mit/ohne Wertung“ jetzt nachträglich umstellen. Ohne Wertung entfällt die Gewichtung im Menü. Wechselt eine Beobachtung ohne Wertung zu Note oder Klausurpunkten, zählt sie wieder (bisher blieb sie unbemerkt „ohne Wertung“). In der Verwaltung stehen Symbol → Note und Fehlzeiten-Warnung unter einer eigenen Überschrift „Beobachtungen“. „Datum hinzufügen“ heißt „Datum ändern“, wenn schon eines gesetzt ist.']},
   {v:'22.75', items:['Unterkategorien von SoMi: „Klausurpunkte“ wird beim Anlegen und beim Ändern der Eingabeart nicht mehr angeboten.']},
   {v:'22.74', items:['Sitzplan, Modus Beobachtung: Neue Spalten für heute lassen sich jetzt ausdrücklich mit oder ohne Wertung anlegen (Auswahl oben in der Spaltenliste).']},
   {v:'22.73', items:['Update: Das Update-Fenster erscheint nach „Update ausführen“ nicht mehr mehrfach hintereinander. Die neue Version wird jetzt direkt geladen, bevor die App neu startet.']},
@@ -2040,6 +2042,7 @@ const TALLY_MAX_COLS = 6;
 function tallyColsOf(cls){ return (cls && cls.tallyCols && cls.tallyCols.length) ? cls.tallyCols : DEFAULT_TALLY_COLS; }
 function tallyVisible(){ try{ return localStorage.getItem(TALLY_KEY) === '1'; }catch(e){ return false; } }
 function setTallyVisible(on){ try{ localStorage.setItem(TALLY_KEY, on ? '1' : '0'); }catch(e){} }
+function isOralGroup(g){ return /^mündlich/i.test(((g && g.name) || '').trim()); }
 function isSomiCat(c){ return /^SoMi\s*\d+$/i.test((c.name || '').trim()); }
 // Die Strichlisten stehen rechts neben dem SoMi-Quartal, das gerade aktiv ist (sonst zuletzt begonnenes, sonst erstes)
 function tallyHostCat(sem){
@@ -4889,7 +4892,7 @@ async function addCategory(cls, sem, groupId){
 async function addFirstCategoryToGroup(cls, sem, groupId){
   const g = sem.groups.find(x=>x.id===groupId);
   const defaultWeight = (g.name||'').trim().toLowerCase()==='schriftlich' ? '50' : '10';
-  const result = await promptNewFromTemplate(defaultWeight);
+  const result = await promptNewFromTemplate(defaultWeight, null, isOralGroup(g));
   if(!result) return;
   g.children.push(result);
   saveState(); render();
@@ -4909,7 +4912,7 @@ async function addCategoryNear(cls, sem, groupId, catId){
   if(choice === 'unter'){
     if(!clickedCat.children) clickedCat.children = [];
     const suggested = String(Math.round(100/(clickedCat.children.length+1)));
-    const newChild = await promptNewFromTemplate(suggested, null, isSomiCat(clickedCat) || !!(parentCat && isSomiCat(parentCat)));
+    const newChild = await promptNewFromTemplate(suggested, null, isOralGroup(g) || isSomiCat(clickedCat));
     if(!newChild) return;
     clickedCat.children.push(newChild);
     rebalanceEqualWeights(clickedCat.children);
@@ -4919,7 +4922,7 @@ async function addCategoryNear(cls, sem, groupId, catId){
 
   // 'neben' – sibling within the same list (top-level children, or the same set of sub-children)
   if(!list.length){
-    const newCat = await promptNewFromTemplate(defaultWeight, null, !!(parentCat && isSomiCat(parentCat)));
+    const newCat = await promptNewFromTemplate(defaultWeight, null, isOralGroup(g));
     if(!newCat) return;
     list.push(newCat);
     rebalanceEqualWeights(list);
@@ -4930,7 +4933,7 @@ async function addCategoryNear(cls, sem, groupId, catId){
     list.map((c,i) => ({label: c.name, value: i}))
   );
   if(idx === null) return;
-  const newCat = await promptNewFromTemplate(defaultWeight, null, !!(parentCat && isSomiCat(parentCat)));
+  const newCat = await promptNewFromTemplate(defaultWeight, null, isOralGroup(g));
   if(!newCat) return;
   list.splice(idx+1, 0, newCat);
   rebalanceEqualWeights(list);
@@ -5132,24 +5135,33 @@ async function editCategory(cls, sem, groupId, catId){
     const ctx2 = findCategoryContext(sem, groupId, catId);
     if(!ctx2) return;
     const { group: g, cat } = ctx2;
-    const inSomi = !!(ctx2.parentCat && isSomiCat(ctx2.parentCat));
+    const inSomi = isOralGroup(g) || !!(ctx2.parentCat && isSomiCat(ctx2.parentCat));
     const isContainer = isContainerCat(cat);
     const modeLabel = cat.mode==='points' ? 'Klausurpunkte' : cat.mode==='observation' ? 'Beobachtung' : 'Note';
     const scaleLabel = cat.displayScale === 'noten' ? 'Noten' : cat.displayScale === 'punkte' ? 'Punkte' : 'wie Lerngruppe';
     const options = [
       {label: 'Name ändern', value: 'name'},
-      ...(isContainer ? [] : [{label: `📅 Datum hinzufügen${cat.date ? ` (${formatDate(cat.date)})` : ''}`, value: 'date'}]),
+      ...(isContainer ? [] : [{label: cat.date ? `📅 Datum ändern (${formatDate(cat.date)})` : '📅 Datum hinzufügen', value: 'date'}]),
       ...(isContainer ? [] : [
         {label: `Eingabeart ändern (Leistungsdaten)`, value: 'mode'},
+        ...(cat.mode==='observation' ? [{label: cat.ungraded ? 'Wertung: ohne → mit Wertung ändern' : 'Wertung: mit → ohne Wertung ändern', value: 'wertung'}] : []),
         ...(cat.mode==='points' ? [{label: `Maximalpunktzahl (${cat.maxPoints ?? 100})`, value: 'maxpoints'}] : []),
       ]),
-      {label: `Gewichtung ändern${cat.manualWeight?' 🔒':''}`, value: 'weight'},
+      ...((cat.mode === 'observation' && cat.ungraded && !isContainer) ? [] : [{label: `Gewichtung ändern${cat.manualWeight?' 🔒':''}`, value: 'weight'}]),
       ...(!isContainer && cat.mode!=='observation' ? [{label: `Darstellung ändern (Leistungsdaten)`, value: 'scale'}] : []),
       {label: `Farbe ändern${cat.bgColor?' (eigene Farbe)':''}`, value: 'color'},
     ];
     const choice = await showChoice(isContainer ? 'Sammelkategorie bearbeiten' : 'Leistungsdaten bearbeiten', cat.name, options, {cancelLabel: 'Fertig'});
     if(choice === null || choice === 'done') return;
 
+    if(choice === 'wertung'){
+      if(cat.ungraded){ delete cat.ungraded; cat.weight = 0; delete cat.manualWeight; }
+      else { cat.ungraded = true; cat.weight = 0; delete cat.manualWeight; }
+      rebalanceEqualWeights(ctx2.list);
+      saveState(); render();
+      showToast(cat.ungraded ? 'Jetzt ohne Wertung: zählt nicht in die Note.' : 'Jetzt mit Wertung: zählt über die zugrunde liegende Note.');
+      continue;
+    }
     if(choice === 'date'){
       const dateStr = await showPrompt('Datum', 'Datum dieser Kategorie, leer lassen zum Entfernen', cat.date || '', {inputType:'date', confirmLabel:'Speichern'});
       if(dateStr !== null){ cat.date = dateStr; saveState(); render(); }
@@ -5201,13 +5213,13 @@ async function editCategory(cls, sem, groupId, catId){
         if(likeChoice !== null){ cat.bgColor = likeChoice; delete cat.autoColored; saveState(); render(); }
       }
     } else if(choice === 'mode'){
-      const currentModeLabel = cat.mode==='points' ? 'Klausurpunkte (automatisch berechnet)' : cat.mode==='observation' ? 'Unterrichtsbeobachtung (− ○ +)' : 'Note direkt eintragen';
+      const currentModeLabel = cat.mode==='points' ? 'Klausurpunkte (automatisch berechnet)' : cat.mode==='observation' ? 'Unterrichtsbeobachtung (− ○ +, ' + (cat.ungraded ? 'ohne' : 'mit') + ' Wertung)' : 'Note direkt eintragen';
       const modeChoice = await showChoice('Eingabeart', `Aktuell: ${currentModeLabel}`, [
         {label: 'Note direkt eintragen (mit Tendenz)', value: 'grade'},
         ...(inSomi && cat.mode !== 'points' ? [] : [{label: 'Klausurpunkte (Note wird automatisch berechnet)', value: 'points'}]),
         {label: 'Unterrichtsbeobachtung (− ○ +)', value: 'observation'},
       ]);
-      if(modeChoice !== null){ await convertCategoryMode(cls, cat, modeChoice); saveState(); render(); }
+      if(modeChoice !== null){ await convertCategoryMode(cls, cat, modeChoice); if(cat.mode !== 'observation' && cat.ungraded){ delete cat.ungraded; } rebalanceEqualWeights(ctx2.list); saveState(); render(); }
     } else if(choice === 'maxpoints'){
       const maxStr = await showPrompt('Maximalpunktzahl', 'Übliche maximale Punktzahl einer Klausur in dieser Kategorie', cat.maxPoints ?? 100, {inputType:'number', confirmLabel:'Speichern'});
       if(maxStr !== null){ cat.maxPoints = parseFloat(maxStr) || cat.maxPoints; saveState(); render(); }
@@ -6501,10 +6513,11 @@ document.getElementById('dataManagementBtn').onclick = async () => {
   const options = [
     {heading: 'Schüler'},
     {label: `⚑ Markierte Schüler (${state.classes.filter(c => !c.archived).reduce((n, c) => n + (c.students || []).reduce((m, st) => m + studentOpenFlags(c, st.id).length, 0), 0)})`, value: 'flagsov'},
+    {heading: 'Beobachtungen'},
+    {label: `✓ Symbol → Note (+ ${obsMap()['+']}, ○ ${obsMap()['○']}, − ${obsMap()['-']})`, value: 'obsmap'},
     ...(cls ? [{label: `🚩 Fehlzeiten-Warnung (${absenceRuleText(absenceCfg(cls))})`, value: 'absence', toggle: {
       caption: 'Ein', title: 'Warnung ein- oder ausschalten', checked: absenceCfg(cls).on,
       onChange: (on) => { cls.absenceWarn = cls.absenceWarn || {on: false, n: 3, weeks: 0}; cls.absenceWarn.on = on; saveState(); showToast('Fehlzeiten-Warnung ' + (on ? 'eingeschaltet' : 'ausgeschaltet')); }}}] : []),
-    {label: `＋ Beobachtung: Symbol → Note (${obsMap()['+']} / ${obsMap()['○']} / ${obsMap()['-']})`, value: 'obsmap'},
     {heading: 'Sichern'},
     {label: `⬇ Backup (zuletzt ${backupAgeText()})`, value: 'backup', toggle: {
       caption: 'Erinnerung', title: 'Erinnerung nach 7 Tagen ohne Backup', checked: backupReminderEnabled(),
