@@ -495,7 +495,7 @@ function appLicenseText(){
     'Die Software wird ohne Gewähr bereitgestellt. Die Haftung ist, soweit gesetzlich zulässig, auf Vorsatz und grobe Fahrlässigkeit beschränkt. Die Verantwortung für Notenfeststellung und Datenschutz bleibt bei der Lehrkraft.\n\n' +
     'Diese Kopie ist gekennzeichnet (Kopie-ID: ' + APP_COPY_ID + ').' + APP_COPY_ZW;
 }
-const APP_VERSION_INFO = 'v22.65 · Entwicklung und © G. Schulte';
+const APP_VERSION_INFO = 'v22.66 · Entwicklung und © G. Schulte';
 function setStatus(msg, isError){
   const el = document.getElementById('status');
   const hasData = typeof state !== 'undefined' && state && state.classes && state.classes.length;
@@ -1922,6 +1922,7 @@ function applyTableScale(){ document.documentElement.style.setProperty('--tscale
 // ---------- Neuerungen nach einem Update ----------
 const WHATS_NEW_KEY = 'notenbuch-last-seen-version';
 const CHANGELOG = [
+  {v:'22.66', items:['Sitzplan: „Neue Note (heute)“ und „Neue UB (heute)“ bestätigen das Anlegen mit einer Meldung. Ist die Spalte von heute noch leer, wird keine weitere angelegt.']},
   {v:'22.65', items:['Sitzplan: neuer Modus „Note“. Tipp auf einen Platz öffnet eine Notentafel (1+ bis 6, f, NT, NB) für eine Mündlich-Spalte mit direkter Noteneingabe. „Neue Note (heute)“ legt eine neue Spalte an, langer Druck öffnet das Eingabefenster.']},
   {v:'22.64', items:['Mündlich: Bei der direkten Noteneingabe gibt es jetzt auch f (fehlt an diesem Tag, ohne Wertung). Es zählt für die Fehlzeiten-Warnung mit.']},
   {v:'22.63', items:['Fußzeile: Entwicklung und Copyright in einem Eintrag, Name nur einmal.']},
@@ -3228,14 +3229,18 @@ function openSeatPlan(){
     const gNew = ov.querySelector('#seatGradeNew');
     if(gNew) gNew.onclick = () => {
       const sel = seatPickGrade(seatGradeCats(sem)); if(!sel) return;
+      if(sel.cat.date === localTodayIso() && !Object.keys(sel.cat.entries || {}).length){ showToast('Die Spalte von heute („' + sel.cat.name + '“) ist noch leer. Du kannst direkt eintragen.'); return; }
       const nc = {id: uid(), name: sel.cat.name, weight: sel.cat.weight, mode: 'grade', date: localTodayIso(), entries: {}};
       sel.parent.children.push(nc); seatUi.gradeCatId = nc.id; saveState(); draw(); fit();
+      showToast('✓ Neue Note „' + nc.name + '“ für heute angelegt und ausgewählt. Jetzt auf die Plätze tippen.');
     };
     const newEl = ov.querySelector('#seatObsNew');
     if(newEl) newEl.onclick = () => {
       const sel = seatPickObs(obsList()); if(!sel) return;
+      if(sel.cat.date === localTodayIso() && !Object.keys(sel.cat.entries || {}).length){ showToast('Die Spalte von heute („' + sel.cat.name + '“) ist noch leer. Du kannst direkt eintragen.'); return; }
       const nc = {id: uid(), name: sel.cat.name, weight: sel.cat.weight, mode: 'observation', ungraded: !!sel.cat.ungraded, date: localTodayIso(), entries: {}};
       sel.parent.children.push(nc); seatUi.catId = nc.id; saveState(); draw(); fit();
+      showToast('✓ Neue Beobachtung „' + nc.name + '“ für heute angelegt und ausgewählt. Jetzt auf die Plätze tippen.');
     };
     ov.querySelectorAll('[data-seat-tile]').forEach(el => {
       let timer = null, fired = false;
