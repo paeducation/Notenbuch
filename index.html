@@ -495,7 +495,7 @@ function appLicenseText(){
     'Die Software wird ohne Gewähr bereitgestellt. Die Haftung ist, soweit gesetzlich zulässig, auf Vorsatz und grobe Fahrlässigkeit beschränkt. Die Verantwortung für Notenfeststellung und Datenschutz bleibt bei der Lehrkraft.\n\n' +
     'Diese Kopie ist gekennzeichnet (Kopie-ID: ' + APP_COPY_ID + ').' + APP_COPY_ZW;
 }
-const APP_VERSION_INFO = 'v22.74 · Entwicklung und © G. Schulte';
+const APP_VERSION_INFO = 'v22.75 · Entwicklung und © G. Schulte';
 function setStatus(msg, isError){
   const el = document.getElementById('status');
   const hasData = typeof state !== 'undefined' && state && state.classes && state.classes.length;
@@ -1933,6 +1933,7 @@ function applyTableScale(){ document.documentElement.style.setProperty('--tscale
 // ---------- Neuerungen nach einem Update ----------
 const WHATS_NEW_KEY = 'notenbuch-last-seen-version';
 const CHANGELOG = [
+  {v:'22.75', items:['Unterkategorien von SoMi: „Klausurpunkte“ wird beim Anlegen und beim Ändern der Eingabeart nicht mehr angeboten.']},
   {v:'22.74', items:['Sitzplan, Modus Beobachtung: Neue Spalten für heute lassen sich jetzt ausdrücklich mit oder ohne Wertung anlegen (Auswahl oben in der Spaltenliste).']},
   {v:'22.73', items:['Update: Das Update-Fenster erscheint nach „Update ausführen“ nicht mehr mehrfach hintereinander. Die neue Version wird jetzt direkt geladen, bevor die App neu startet.']},
   {v:'22.72', items:['Sitzplan: Sind für SoMi keine Zeiträume eingetragen, wird das SoMi mit der jüngsten Spalte als aktuell gewertet (bisher immer SoMi 1).']},
@@ -4834,11 +4835,11 @@ function renderGrid(main, cls, sem){
   }
 }
 
-async function promptNewFromTemplate(defaultWeight, extraOptions){
+async function promptNewFromTemplate(defaultWeight, extraOptions, noPoints){
   const options = [
     {heading: 'Eintragsart'},
     {label: '📝 Note direkt eintragen', value: 'grade'},
-    {label: '🔢 Klausurpunkte', value: 'points'},
+    ...(noPoints ? [] : [{label: '🔢 Klausurpunkte', value: 'points'}]),
     {label: '✓ Beobachtung (mit Wertung)', value: 'obs_graded'},
     {label: '✓ Beobachtung (ohne Wertung)', value: 'obs_ungraded'},
     {heading: 'Struktur'},
@@ -4908,7 +4909,7 @@ async function addCategoryNear(cls, sem, groupId, catId){
   if(choice === 'unter'){
     if(!clickedCat.children) clickedCat.children = [];
     const suggested = String(Math.round(100/(clickedCat.children.length+1)));
-    const newChild = await promptNewFromTemplate(suggested);
+    const newChild = await promptNewFromTemplate(suggested, null, isSomiCat(clickedCat) || !!(parentCat && isSomiCat(parentCat)));
     if(!newChild) return;
     clickedCat.children.push(newChild);
     rebalanceEqualWeights(clickedCat.children);
@@ -4918,7 +4919,7 @@ async function addCategoryNear(cls, sem, groupId, catId){
 
   // 'neben' – sibling within the same list (top-level children, or the same set of sub-children)
   if(!list.length){
-    const newCat = await promptNewFromTemplate(defaultWeight);
+    const newCat = await promptNewFromTemplate(defaultWeight, null, !!(parentCat && isSomiCat(parentCat)));
     if(!newCat) return;
     list.push(newCat);
     rebalanceEqualWeights(list);
@@ -4929,7 +4930,7 @@ async function addCategoryNear(cls, sem, groupId, catId){
     list.map((c,i) => ({label: c.name, value: i}))
   );
   if(idx === null) return;
-  const newCat = await promptNewFromTemplate(defaultWeight);
+  const newCat = await promptNewFromTemplate(defaultWeight, null, !!(parentCat && isSomiCat(parentCat)));
   if(!newCat) return;
   list.splice(idx+1, 0, newCat);
   rebalanceEqualWeights(list);
@@ -5131,6 +5132,7 @@ async function editCategory(cls, sem, groupId, catId){
     const ctx2 = findCategoryContext(sem, groupId, catId);
     if(!ctx2) return;
     const { group: g, cat } = ctx2;
+    const inSomi = !!(ctx2.parentCat && isSomiCat(ctx2.parentCat));
     const isContainer = isContainerCat(cat);
     const modeLabel = cat.mode==='points' ? 'Klausurpunkte' : cat.mode==='observation' ? 'Beobachtung' : 'Note';
     const scaleLabel = cat.displayScale === 'noten' ? 'Noten' : cat.displayScale === 'punkte' ? 'Punkte' : 'wie Lerngruppe';
@@ -5202,7 +5204,7 @@ async function editCategory(cls, sem, groupId, catId){
       const currentModeLabel = cat.mode==='points' ? 'Klausurpunkte (automatisch berechnet)' : cat.mode==='observation' ? 'Unterrichtsbeobachtung (− ○ +)' : 'Note direkt eintragen';
       const modeChoice = await showChoice('Eingabeart', `Aktuell: ${currentModeLabel}`, [
         {label: 'Note direkt eintragen (mit Tendenz)', value: 'grade'},
-        {label: 'Klausurpunkte (Note wird automatisch berechnet)', value: 'points'},
+        ...(inSomi && cat.mode !== 'points' ? [] : [{label: 'Klausurpunkte (Note wird automatisch berechnet)', value: 'points'}]),
         {label: 'Unterrichtsbeobachtung (− ○ +)', value: 'observation'},
       ]);
       if(modeChoice !== null){ await convertCategoryMode(cls, cat, modeChoice); saveState(); render(); }
