@@ -412,7 +412,7 @@
 
 <script>
 const STORAGE_KEY = 'classes';
-let state = { classes: [], activeClassId: null, scaleOpen: false, searchTerm: '', compareView: false, positionMode: false, selectedStudentId: null, incognito: false, colorizeMode: false, colorizeSelection: [] };
+let state = { obsMap: null, classes: [], activeClassId: null, scaleOpen: false, searchTerm: '', compareView: false, positionMode: false, selectedStudentId: null, incognito: false, colorizeMode: false, colorizeSelection: [] };
 let pendingCsvStufe = 'SII';
 let pendingCsvTemplateId = '';
 // ---------- Vorlagen für neue Lerngruppen ----------
@@ -495,7 +495,7 @@ function appLicenseText(){
     'Die Software wird ohne Gewähr bereitgestellt. Die Haftung ist, soweit gesetzlich zulässig, auf Vorsatz und grobe Fahrlässigkeit beschränkt. Die Verantwortung für Notenfeststellung und Datenschutz bleibt bei der Lehrkraft.\n\n' +
     'Diese Kopie ist gekennzeichnet (Kopie-ID: ' + APP_COPY_ID + ').' + APP_COPY_ZW;
 }
-const APP_VERSION_INFO = 'v22.68 · Entwicklung und © G. Schulte';
+const APP_VERSION_INFO = 'v22.70 · Entwicklung und © G. Schulte';
 function setStatus(msg, isError){
   const el = document.getElementById('status');
   const hasData = typeof state !== 'undefined' && state && state.classes && state.classes.length;
@@ -619,6 +619,16 @@ function gradeForPercent(table, pct){
 }
 function activeGradeTable(cls){ return cls.gradingSystem === 'punkte' ? cls.gradeTablePunkte : cls.gradeTableNoten; }
 const OBSERVATION_SYMBOLS = ['+','○','-','f'];
+const OBS_MAP_DEFAULT = {'+':'2','○':'3','-':'4'};
+function obsMap(){ return Object.assign({}, OBS_MAP_DEFAULT, state.obsMap || {}); }
+// Setzt bei einem Symbol-Tipp die zugehörige Note (nur bei Spalten mit Wertung, nie über eine von Hand gesetzte Note)
+function obsApplyAuto(cat, e, sym){
+  if(sym === 'f' || !sym){ if(e.hiddenAuto){ delete e.hiddenGrade; delete e.hiddenAuto; } return; }
+  if(cat.ungraded) return;
+  if(e.hiddenGrade && !e.hiddenAuto) return;
+  const g = obsMap()[sym];
+  if(g){ e.hiddenGrade = g; e.hiddenAuto = true; }
+}
 function obsBucket(sym){ return sym === '+' ? 1 : sym === '-' ? 5 : sym === 'f' ? 'f' : 3; }
 // Markierungen ohne Wertung: NT = nicht teilgenommen, NB = nicht bewertbar (älteres Format {x:true} gilt als NT)
 function entryMark(entry){
@@ -890,11 +900,12 @@ async function loadState(){
         state.activeClassId = parsed.activeClassId;
       }
       if(parsed.schoolYear) state.schoolYear = parsed.schoolYear;
+      if(parsed.obsMap) state.obsMap = parsed.obsMap;
     }
   }catch(e){ state.classes = []; }
   if(state.schoolYear === undefined) state.schoolYear = '';
   if(state.classes.length && !state.activeClassId) state.activeClassId = state.classes[0].id;
-  lastSnapshot = JSON.stringify({classes: state.classes, activeClassId: state.activeClassId, schoolYear: state.schoolYear});
+  lastSnapshot = JSON.stringify({classes: state.classes, activeClassId: state.activeClassId, schoolYear: state.schoolYear, obsMap: state.obsMap});
   setStatus('Zuletzt gespeichert: ' + new Date().toLocaleTimeString('de-DE'));
 }
 let saveTimer = null;
@@ -905,7 +916,7 @@ function saveState(){
   clearTimeout(saveTimer);
   saveTimer = setTimeout(() => {
     try{
-      const newSnapshot = JSON.stringify({classes: state.classes, activeClassId: state.activeClassId, schoolYear: state.schoolYear});
+      const newSnapshot = JSON.stringify({classes: state.classes, activeClassId: state.activeClassId, schoolYear: state.schoolYear, obsMap: state.obsMap});
       if(lastSnapshot !== null && lastSnapshot !== newSnapshot){
         undoStack.push(lastSnapshot);
         if(undoStack.length > MAX_UNDO) undoStack.shift();
@@ -1922,6 +1933,8 @@ function applyTableScale(){ document.documentElement.style.setProperty('--tscale
 // ---------- Neuerungen nach einem Update ----------
 const WHATS_NEW_KEY = 'notenbuch-last-seen-version';
 const CHANGELOG = [
+  {v:'22.70', items:['Das rote „!“ bei Symbolen ohne Note in der Tabelle entfällt wieder.']},
+  {v:'22.69', items:['Beobachtungen mit Wertung: Ein Tipp auf + ○ − setzt jetzt automatisch die zugehörige Note (voreingestellt + = 2, ○ = 3, − = 4), in der Tabelle, im Sitzplan und im Eingabefenster. Die Zuordnung gilt für die ganze App und steht in der Verwaltung unter „Beobachtung: Symbol → Note“. Eine von Hand gesetzte Note im Eingabefenster wird nicht überschrieben. f bleibt ohne Note.']},
   {v:'22.68', items:['Sitzplan, Modus Note: Gibt es im Bereich Mündlich noch keine Spalte für direkte Noten, wird sie beim ersten Tipp automatisch angelegt. Neu angelegte Spalten verteilen die Gewichtung der Geschwister wieder gleichmäßig.']},
   {v:'22.67', items:['Sitzplan: Die Buttons „Neue Note/UB (heute)“ entfallen. Gibt es für heute noch keine Spalte, wird sie beim ersten Tipp auf einen Platz automatisch angelegt (mit Meldung). Eine weitere Spalte für heute wählt man in der Liste.']},
   {v:'22.66', items:['Sitzplan: „Neue Note (heute)“ und „Neue UB (heute)“ bestätigen das Anlegen mit einer Meldung. Ist die Spalte von heute noch leer, wird keine weitere angelegt.']},
@@ -3114,8 +3127,8 @@ function seatCycleObs(cat, sid){
   if(entryMark(e)){ delete e.mark; delete e.x; }
   const SEQ = ['', ...OBSERVATION_SYMBOLS];
   const next = SEQ[(SEQ.indexOf(e.observation || '') + 1) % SEQ.length];
-  if(next){ e.observation = next; if(next === 'f') delete e.hiddenGrade; delete e.absReset; cat.entries[sid] = e; }
-  else { delete e.observation; if(Object.keys(e).some(k => e[k])) cat.entries[sid] = e; else delete cat.entries[sid]; }
+  if(next){ e.observation = next; if(next === 'f') delete e.hiddenGrade; obsApplyAuto(cat, e, next); delete e.absReset; cat.entries[sid] = e; }
+  else { delete e.observation; obsApplyAuto(cat, e, ''); if(Object.keys(e).some(k => e[k])) cat.entries[sid] = e; else delete cat.entries[sid]; }
   saveState();
 }
 function seatMarksHtml(cls, sem, sid){
@@ -3398,6 +3411,22 @@ async function openAbsenceDialog(cls, sem, sid){
   const txt = hitTxt + (qs.length ? qs.map(q => `${q.label}: ${q.dates.length}× fehlt${!cfgA.weeks && q.dates.length >= n ? ' (Schwelle erreicht)' : ''}\n${q.dates.filter(Boolean).sort().map(d => formatDate(d)).join(', ')}`).join('\n\n') : 'Keine Fehltage eingetragen.');
   const pick = await showChoice(`FP? – ${st.name}`, txt, [{label: 'Zurücksetzen (bisherige f nicht mehr mitzählen)', value: 'reset', danger: true}], {cancelLabel: 'Schließen'});
   if(pick === 'reset'){ absenceResetStudent(sem, sid); saveState(); render(); showToast('Fehlzeiten zurückgesetzt'); }
+}
+async function openObsMapSettings(){
+  while(true){
+    const m = obsMap();
+    const pick = await showChoice('Beobachtung: Symbol → Note', 'Bei Beobachtungen mit Wertung setzt ein Tipp auf das Symbol diese Note. Gilt für die ganze App. Eine im Eingabefenster von Hand gesetzte Note bleibt unverändert; f hat keine Note.', [
+      {label: `+  =  ${m['+']}`, value: '+'}, {label: `○  =  ${m['○']}`, value: '○'}, {label: `−  =  ${m['-']}`, value: '-'},
+      {label: 'Auf Voreinstellung zurücksetzen (2 / 3 / 4)', value: 'reset'},
+    ], {cancelLabel: 'Fertig'});
+    if(!pick) return;
+    if(pick === 'reset'){ state.obsMap = null; saveState(); showToast('Zuordnung zurückgesetzt'); continue; }
+    const v = await showPrompt('Note für ' + (pick === '-' ? '−' : pick), 'Note eingeben, z. B. 2, 3+ oder 4-', m[pick], {confirmLabel: 'Speichern'});
+    if(v === null) continue;
+    const g = String(v).trim().replace('−','-');
+    if(gradeStrToValue(g) === null){ await showAlert('Ungültig', 'Bitte eine Note von 1 bis 6 eingeben, optional mit + oder -.'); continue; }
+    state.obsMap = Object.assign({}, state.obsMap || {}, {[pick]: g}); saveState();
+  }
 }
 async function openAbsenceSettings(cls){
   while(true){
@@ -5176,10 +5205,12 @@ function cycleObservation(cls, ctx, el){
   if(next){
     e.observation = next;
     if(next === 'f') delete e.hiddenGrade;
+    obsApplyAuto(cat, e, next);
     delete e.absReset;
     cat.entries[sid] = e;
   } else {
     delete e.observation;
+    obsApplyAuto(cat, e, '');
     if(Object.keys(e).some(k => e[k])) cat.entries[sid] = e; else delete cat.entries[sid];
   }
   saveState();
@@ -5920,6 +5951,7 @@ function renderModal(cls, cat, student){
         }
         cat.entries[student.id] = {...(cat.entries[student.id]||{}), observation: btn.dataset.obsValue, note: currentNote()};
         if(btn.dataset.obsValue === 'f') delete cat.entries[student.id].hiddenGrade;
+        obsApplyAuto(cat, cat.entries[student.id], btn.dataset.obsValue);
         delete cat.entries[student.id].absReset;
         saveState();
         if(nextStudentEnabled() && (cat.ungraded || btn.dataset.obsValue === 'f' || cat.entries[student.id].hiddenGrade)){ finishEntry(cls, cat, student); return; }
@@ -5930,11 +5962,12 @@ function renderModal(cls, cat, student){
       btn.onclick = () => {
         const prevH = cat.entries[student.id];
         if(prevH && prevH.hiddenGrade === btn.dataset.hiddenGradeValue){
-          const rest = {...prevH}; delete rest.hiddenGrade; rest.note = currentNote();
+          const rest = {...prevH}; delete rest.hiddenGrade; delete rest.hiddenAuto; rest.note = currentNote();
           if(rest.observation || rest.note) cat.entries[student.id] = rest; else delete cat.entries[student.id];
           saveState(); renderModal(cls, cat, student); return;
         }
         cat.entries[student.id] = {...(cat.entries[student.id]||{}), hiddenGrade: btn.dataset.hiddenGradeValue, note: currentNote()};
+        delete cat.entries[student.id].hiddenAuto;
         saveState();
         if(nextStudentEnabled() && cat.entries[student.id].observation){ finishEntry(cls, cat, student); return; }
         renderModal(cls, cat, student);
@@ -6422,6 +6455,7 @@ document.getElementById('dataManagementBtn').onclick = async () => {
     ...(cls ? [{label: `🚩 Fehlzeiten-Warnung (${absenceRuleText(absenceCfg(cls))})`, value: 'absence', toggle: {
       caption: 'Ein', title: 'Warnung ein- oder ausschalten', checked: absenceCfg(cls).on,
       onChange: (on) => { cls.absenceWarn = cls.absenceWarn || {on: false, n: 3, weeks: 0}; cls.absenceWarn.on = on; saveState(); showToast('Fehlzeiten-Warnung ' + (on ? 'eingeschaltet' : 'ausgeschaltet')); }}}] : []),
+    {label: `＋ Beobachtung: Symbol → Note (${obsMap()['+']} / ${obsMap()['○']} / ${obsMap()['-']})`, value: 'obsmap'},
     {heading: 'Sichern'},
     {label: `⬇ Backup (zuletzt ${backupAgeText()})`, value: 'backup', toggle: {
       caption: 'Erinnerung', title: 'Erinnerung nach 7 Tagen ohne Backup', checked: backupReminderEnabled(),
@@ -6481,6 +6515,7 @@ document.getElementById('dataManagementBtn').onclick = async () => {
   }
   else if(choice === 'help'){ await showHelpTerms(); }
   else if(choice === 'flagsov'){ openFlagsOverview(); }
+  else if(choice === 'obsmap'){ await openObsMapSettings(); render(); }
   else if(choice === 'absence'){ await openAbsenceSettings(cls); render(); }
   else if(choice === 'copystruct'){ await copyStructureFromFirstSemester(); }
   else if(choice === 'excel'){

@@ -1,4 +1,4 @@
-const CACHE_NAME = 'notenbuch-v401';
+const CACHE_NAME = 'notenbuch-v403';
 const ASSETS = ['./index.html', './manifest.json', './icon-192.png', './icon-512.png'];
 
 self.addEventListener('install', (event) => {
