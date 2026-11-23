@@ -495,7 +495,7 @@ function appLicenseText(){
     'Die Software wird ohne Gewähr bereitgestellt. Die Haftung ist, soweit gesetzlich zulässig, auf Vorsatz und grobe Fahrlässigkeit beschränkt. Die Verantwortung für Notenfeststellung und Datenschutz bleibt bei der Lehrkraft.\n\n' +
     'Diese Kopie ist gekennzeichnet (Kopie-ID: ' + APP_COPY_ID + ').' + APP_COPY_ZW;
 }
-const APP_VERSION_INFO = 'v22.70 · Entwicklung und © G. Schulte';
+const APP_VERSION_INFO = 'v22.71 · Entwicklung und © G. Schulte';
 function setStatus(msg, isError){
   const el = document.getElementById('status');
   const hasData = typeof state !== 'undefined' && state && state.classes && state.classes.length;
@@ -1933,6 +1933,7 @@ function applyTableScale(){ document.documentElement.style.setProperty('--tscale
 // ---------- Neuerungen nach einem Update ----------
 const WHATS_NEW_KEY = 'notenbuch-last-seen-version';
 const CHANGELOG = [
+  {v:'22.71', items:['Sitzplan: Neue Spalten für Beobachtung und Note werden immer im heutigen SoMi-Quartal angelegt (gibt es keines, wie bisher im Bereich Mündlich).']},
   {v:'22.70', items:['Das rote „!“ bei Symbolen ohne Note in der Tabelle entfällt wieder.']},
   {v:'22.69', items:['Beobachtungen mit Wertung: Ein Tipp auf + ○ − setzt jetzt automatisch die zugehörige Note (voreingestellt + = 2, ○ = 3, − = 4), in der Tabelle, im Sitzplan und im Eingabefenster. Die Zuordnung gilt für die ganze App und steht in der Verwaltung unter „Beobachtung: Symbol → Note“. Eine von Hand gesetzte Note im Eingabefenster wird nicht überschrieben. f bleibt ohne Note.']},
   {v:'22.68', items:['Sitzplan, Modus Note: Gibt es im Bereich Mündlich noch keine Spalte für direkte Noten, wird sie beim ersten Tipp automatisch angelegt. Neu angelegte Spalten verteilen die Gewichtung der Geschwister wieder gleichmäßig.']},
@@ -3080,6 +3081,19 @@ function seatPickGrade(list){ return seatResolve(list, 'gradeCatId').sel; }
 function seatPickObs(list){ return seatResolve(list, 'catId').sel; }
 // legt beim ersten Tipp die Spalte für heute an, wenn es noch keine gibt
 function seatMakeToday(kind, tmpl){
+  // Spalten aus dem Sitzplan kommen immer ins heutige SoMi-Quartal (falls es eines gibt)
+  try{
+    const sem = getActiveSemester(getActiveClass());
+    const host = sem && tallyHostCat(sem);
+    if(host && tmpl.parent !== host){
+      const hg = (sem.groups || []).find(g => (g.children || []).includes(host));
+      if(hg){
+        if(!host.children) host.children = [];
+        tmpl = {cat: {...tmpl.cat, weight: 0}, g: hg, parent: host, synthetic: true};
+        tmpl.cat.name = (tmpl.cat.name || (kind === 'obs' ? 'UB' : 'Beitrag')).replace(/\s+\d+$/, '') || (kind === 'obs' ? 'UB' : 'Beitrag');
+      }
+    }
+  }catch(e){}
   const base = {id: uid(), name: tmpl.cat.name, weight: tmpl.cat.weight, date: localTodayIso(), entries: {}};
   const nc = kind === 'obs' ? {...base, mode: 'observation', ungraded: !!tmpl.cat.ungraded} : {...base, mode: 'grade'};
   if(tmpl.synthetic) nc.name = tmpl.cat.name + ' ' + ((tmpl.parent.children || []).filter(c => (c.name || '').startsWith(tmpl.cat.name)).length + 1);
