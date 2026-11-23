@@ -183,6 +183,10 @@
   #seatOverlay .seat-modebar button{min-height:44px;font-size:0.95rem;}
   #seatOverlay .seat-hint{width:100%;font-size:0.8rem;color:var(--ink-soft);}
   .seat-tile.tappable > .seat-in{cursor:pointer;} .seat-tile.tappable > .seat-in:active{transform:scale(0.96);background:var(--surface-soft);}
+  .seat-pop-bd{position:fixed;inset:0;z-index:45;background:#0000;}
+  .seat-pop{position:fixed;z-index:46;width:min(94vw,400px);background:var(--surface,#fff);border:1px solid var(--line);border-radius:16px;box-shadow:0 8px 30px #0004;padding:12px;}
+  .seat-pop .seat-pop-title{font-weight:700;margin-bottom:8px;display:flex;justify-content:space-between;align-items:center;gap:8px;}
+  .seat-pop .row button{min-height:48px;min-width:64px;font-size:1rem;font-weight:700;}
   .seat-val{margin-top:2px;line-height:1;}
   .seat-marks{display:flex;gap:2px;flex-wrap:wrap;justify-content:center;margin-top:1px;}
   .seat-mark{font-size:0.62em;font-weight:700;border-radius:4px;padding:1px 3px;line-height:1.1;}
@@ -491,11 +495,11 @@ function appLicenseText(){
     'Die Software wird ohne Gewähr bereitgestellt. Die Haftung ist, soweit gesetzlich zulässig, auf Vorsatz und grobe Fahrlässigkeit beschränkt. Die Verantwortung für Notenfeststellung und Datenschutz bleibt bei der Lehrkraft.\n\n' +
     'Diese Kopie ist gekennzeichnet (Kopie-ID: ' + APP_COPY_ID + ').' + APP_COPY_ZW;
 }
-const APP_VERSION_INFO = 'v22.62 · Entwickler: G. Schulte';
+const APP_VERSION_INFO = 'v22.65 · Entwicklung und © G. Schulte';
 function setStatus(msg, isError){
   const el = document.getElementById('status');
   const hasData = typeof state !== 'undefined' && state && state.classes && state.classes.length;
-  el.textContent = msg + ' · ' + APP_VERSION_INFO + ' · © G. Schulte' + (hasData ? ' · Backup ' + backupAgeText() : '');
+  el.textContent = msg + ' · ' + APP_VERSION_INFO + (hasData ? ' · Backup ' + backupAgeText() : '');
   el.style.color = isError ? 'var(--pen)' : ((hasData && backupOverdue()) ? 'var(--warn)' : 'var(--ink-soft)');
 }
 const BACKUP_LAST_KEY = 'notenbuch-last-backup';
@@ -619,13 +623,13 @@ function obsBucket(sym){ return sym === '+' ? 1 : sym === '-' ? 5 : sym === 'f' 
 // Markierungen ohne Wertung: NT = nicht teilgenommen, NB = nicht bewertbar (älteres Format {x:true} gilt als NT)
 function entryMark(entry){
   if(!entry) return null;
-  if(entry.mark === 'NT' || entry.mark === 'NB') return entry.mark;
+  if(entry.mark === 'NT' || entry.mark === 'NB' || entry.mark === 'f') return entry.mark;
   return entry.x ? 'NT' : null;
 }
 function studentMark(cat, studentId){
   return entryMark(cat && cat.entries && cat.entries[studentId]);
 }
-const MARK_TITLES = {NT: 'nicht teilgenommen (ohne Wertung)', NB: 'nicht bewertbar (ohne Wertung)'};
+const MARK_TITLES = {NT: 'nicht teilgenommen (ohne Wertung)', NB: 'nicht bewertbar (ohne Wertung)', f: 'fehlt an diesem Tag (ohne Wertung)'};
 // FP = Note ist Ergebnis einer Feststellungsprüfung (nur mündliche Noten): Flag am Eintrag bzw. in fpMarks bei berechneten Feldern
 const FP_TAG_HTML = '<span class="fp-tag" title="Ergebnis einer Feststellungsprüfung">(FP)</span>';
 function hasFp(holder, sid){
@@ -666,7 +670,7 @@ function markOverrideRowHtml(isNb, fpOn, showFp, showNb){
   return `<div class="row" style="margin-top:14px;align-items:center;gap:8px;">${showNb ? `<button class="${isNb ? '' : 'ghost'} small entry-big" id="nbOverrideBtn" style="min-width:70px;font-weight:700;">NB</button>` : ''}${showFp ? `<button class="${fpOn ? '' : 'ghost'} small entry-big" id="fpOverrideBtn" style="min-width:70px;font-weight:700;">FP</button>` : ''}<span class="hint" style="margin:0;">${hint}</span></div>`;
 }
 function markPillHtml(mark){
-  return `<span class="note-pill note-x" title="${MARK_TITLES[mark] || ''}">${mark}</span>`;
+  return `<span class="note-pill ${mark === 'f' ? 'note-f' : 'note-x'}" title="${MARK_TITLES[mark] || ''}">${mark}</span>`;
 }
 function entryValue(cls, cat, entry){
   if(entryMark(entry)) return null;
@@ -1918,6 +1922,9 @@ function applyTableScale(){ document.documentElement.style.setProperty('--tscale
 // ---------- Neuerungen nach einem Update ----------
 const WHATS_NEW_KEY = 'notenbuch-last-seen-version';
 const CHANGELOG = [
+  {v:'22.65', items:['Sitzplan: neuer Modus „Note“. Tipp auf einen Platz öffnet eine Notentafel (1+ bis 6, f, NT, NB) für eine Mündlich-Spalte mit direkter Noteneingabe. „Neue Note (heute)“ legt eine neue Spalte an, langer Druck öffnet das Eingabefenster.']},
+  {v:'22.64', items:['Mündlich: Bei der direkten Noteneingabe gibt es jetzt auch f (fehlt an diesem Tag, ohne Wertung). Es zählt für die Fehlzeiten-Warnung mit.']},
+  {v:'22.63', items:['Fußzeile: Entwicklung und Copyright in einem Eintrag, Name nur einmal.']},
   {v:'22.62', items:['Urheberrechtsvermerk, Lizenztext (Verwaltung → System → Urheberrecht und Lizenz) und eine Kennzeichnung jeder Kopie.']},
   {v:'22.61', items:['Sitzplan: Eintragen per Tipp auf den Platz. Modi Beobachtung (Symbol + ○ − f wechselt, langer Druck für Details/Notiz, „Neue UB heute“), Strichliste (Strich eintragen, langer Druck für die Einträge) und Vermerk.']},
   {v:'22.60', items:['Fehlzeiten: f bleibt immer neutral (keine rote Umrandung), die Warnung zeigt nur „FP?“ vor dem Namen. Die Fehlzeiten-Warnung hat einen Schiebeschalter.']},
@@ -3019,7 +3026,7 @@ function pickSeatFile(cls, after){
   inp.onchange = async () => { if(inp.files && inp.files[0]){ const ok = await importSeatPlanFile(cls, inp.files[0]); if(ok) after(); else after(true); } };
   inp.click();
 }
-const seatUi = {mode: 'view', catId: null, key: null};
+const seatUi = {mode: 'view', catId: null, key: null, gradeCatId: null};
 function seatObsCats(sem){
   const out = [];
   (sem.groups || []).forEach(g => {
@@ -3030,6 +3037,27 @@ function seatObsCats(sem){
     (g.children || []).forEach(c => walk(c, g.name + ' → ' + c.name, g));
   });
   return out;
+}
+function seatGradeCats(sem){
+  const out = [];
+  (sem.groups || []).forEach(g => {
+    if((g.name || '').trim().toLowerCase() === 'schriftlich') return;
+    const walk = (cat, path, parent) => {
+      if(!isContainerCat(cat) && cat.mode === 'grade') out.push({cat, g, parent, label: path + (cat.date ? ' · ' + formatDate(cat.date) : '')});
+      (cat.children || []).forEach(ch => walk(ch, path + ' → ' + ch.name, cat));
+    };
+    (g.children || []).forEach(c => walk(c, g.name + ' → ' + c.name, g));
+  });
+  return out;
+}
+function seatPickGrade(list){
+  let hit = list.find(x => x.cat.id === seatUi.gradeCatId);
+  if(!hit){
+    const today = localTodayIso();
+    hit = list.find(x => x.cat.date === today) || list.filter(x => x.cat.date && x.cat.date <= today).sort((a, b) => a.cat.date < b.cat.date ? 1 : -1)[0] || list[list.length - 1] || null;
+    seatUi.gradeCatId = hit ? hit.cat.id : null;
+  }
+  return hit;
 }
 function seatPickObs(list){
   let hit = list.find(x => x.cat.id === seatUi.catId);
@@ -3090,6 +3118,14 @@ function openSeatPlan(){
       const e = sel.cat.entries[sid];
       return `<div class="seat-val">${e && e.observation ? observationPill(e) : '<span class="note-dash">–</span>'}</div>`;
     }
+    if(seatUi.mode === 'grade'){
+      const sel = seatPickGrade(seatGradeCats(sem));
+      if(!sel) return '';
+      const mk = entryMark(sel.cat.entries[sid]);
+      if(mk) return `<div class="seat-val">${markPillHtml(mk)}</div>`;
+      const a = categoryAvgForStudent(cls, sel.cat, sid);
+      return `<div class="seat-val">${(a === null || a === undefined || isNaN(a)) ? '<span class="note-dash">–</span>' : notePill(cls, a)}</div>`;
+    }
     if(seatUi.mode === 'tally'){
       const host = tallyHostCat(sem), col = tallyCol();
       return host && col ? `<div class="seat-val">${tallyPill(tallyList(host, col.key, sid).length)}</div>` : '';
@@ -3104,6 +3140,10 @@ function openSeatPlan(){
       const list = obsList(), sel = seatPickObs(list);
       extra = list.length ? `<select id="seatObsSel">${list.map(x => `<option value="${x.cat.id}"${sel && x.cat.id === sel.cat.id ? ' selected' : ''}>${escapeHtml(x.label)}</option>`).join('')}</select><button class="ghost small" id="seatObsNew">＋ Neue UB (heute)</button>` : '';
       hint = list.length ? 'Tippen auf einen Platz wechselt das Symbol (+ ○ − f, leer). Langer Druck öffnet Details und Notiz.' : 'Es gibt noch keine Beobachtungsspalte. Lege in der Tabelle zuerst eine Beobachtung an.';
+    } else if(m === 'grade'){
+      const list = seatGradeCats(sem), sel = seatPickGrade(list);
+      extra = list.length ? `<select id="seatGradeSel">${list.map(x => `<option value="${x.cat.id}"${sel && x.cat.id === sel.cat.id ? ' selected' : ''}>${escapeHtml(x.label)}</option>`).join('')}</select><button class="ghost small" id="seatGradeNew">＋ Neue Note (heute)</button>` : '';
+      hint = list.length ? 'Tippen auf einen Platz öffnet die Notentafel (Note, f, NT, NB). Langer Druck öffnet das Eingabefenster mit Notiz.' : 'Es gibt noch keine Note-direkt-Spalte im Bereich Mündlich. Lege in der Tabelle zuerst eine an.';
     } else if(m === 'tally'){
       const host = tallyHostCat(sem), col = tallyCol();
       extra = host ? tallyColsOf(cls).map(c => `<button class="ghost small${col && c.key === col.key ? ' active-toggle' : ''}" data-seat-key="${c.key}">${escapeHtml(c.label)}</button>`).join('') : '';
@@ -3111,7 +3151,42 @@ function openSeatPlan(){
     } else if(m === 'flag'){
       hint = 'Tippen auf einen Platz öffnet die Vermerke dieses Schülers.';
     }
-    return `<div class="seat-modebar">${chip('view', 'Ansicht')}${chip('obs', 'Beobachtung')}${chip('tally', 'Strichliste')}${chip('flag', '⚑ Vermerk')}${extra}${hint ? `<div class="seat-hint">${hint}</div>` : ''}</div>`;
+    return `<div class="seat-modebar">${chip('view', 'Ansicht')}${chip('obs', 'Beobachtung')}${chip('grade', 'Note')}${chip('tally', 'Strichliste')}${chip('flag', '⚑ Vermerk')}${extra}${hint ? `<div class="seat-hint">${hint}</div>` : ''}</div>`;
+  }
+  function closePop(){ ov.querySelectorAll('.seat-pop,.seat-pop-bd').forEach(e => e.remove()); }
+  function openGradePop(el, sel, sid){
+    closePop();
+    const st = cls.students.find(x => x.id === sid), cat = sel.cat, e0 = cat.entries[sid];
+    const mk = entryMark(e0);
+    const bd = document.createElement('div'); bd.className = 'seat-pop-bd';
+    const pop = document.createElement('div'); pop.className = 'seat-pop';
+    const mb = (k, on) => `<button class="${on ? '' : 'ghost'}" data-pm="${k}">${k}</button>`;
+    pop.innerHTML = `<div class="seat-pop-title"><span>${escapeHtml(st ? st.name : '')}<br><span class="hint" style="font-weight:400;">${escapeHtml(cat.name)}${cat.date ? ' · ' + formatDate(cat.date) : ''}</span></span><button class="ghost small" data-pclose style="min-height:40px;">✕</button></div>
+      ${gradeChipsHtml(cls, mk ? '' : e0 && e0.grade)}
+      <div class="row" style="margin-top:10px;gap:8px;">${mb('f', mk === 'f')}${mb('NT', mk === 'NT')}${mb('NB', mk === 'NB')}</div>`;
+    ov.appendChild(bd); ov.appendChild(pop);
+    const r = el.getBoundingClientRect(), ph = pop.offsetHeight, pw = pop.offsetWidth;
+    let top = r.bottom + 8; if(top + ph > window.innerHeight - 8) top = Math.max(8, r.top - ph - 8);
+    let left = r.left + r.width / 2 - pw / 2; left = Math.max(8, Math.min(left, window.innerWidth - pw - 8));
+    pop.style.top = top + 'px'; pop.style.left = left + 'px';
+    const done = () => { saveState(); closePop(); draw(); fit(); };
+    bd.onclick = closePop;
+    pop.querySelector('[data-pclose]').onclick = closePop;
+    pop.querySelectorAll('[data-chip-value]').forEach(b => b.onclick = () => {
+      const prev = cat.entries[sid], v = b.dataset.chipValue;
+      const keepFp = !!(prev && prev.fp && !entryMark(prev)), note = prev && prev.note ? prev.note : '';
+      if(prev && !entryMark(prev) && String(prev.grade) === v){
+        const rest = {...prev}; delete rest.grade;
+        if(rest.fp || rest.note) cat.entries[sid] = rest; else delete cat.entries[sid];
+      } else cat.entries[sid] = {grade: v, note, ...(keepFp ? {fp: true} : {})};
+      done();
+    });
+    pop.querySelectorAll('[data-pm]').forEach(b => b.onclick = () => {
+      const k = b.dataset.pm, prev = cat.entries[sid];
+      if(entryMark(prev) === k) delete cat.entries[sid];
+      else cat.entries[sid] = {mark: k, note: prev && prev.note ? prev.note : ''};
+      done();
+    });
   }
   function draw(){
     const p = current();
@@ -3146,9 +3221,16 @@ function openSeatPlan(){
       if(ok){ cls.seatPlans = plans().filter(x => x.id !== p.id); cls.activeSeatPlanId = cls.seatPlans[0] ? cls.seatPlans[0].id : null; saveState(); }
       draw(); fit();
     };
-    ov.querySelectorAll('[data-seat-mode]').forEach(b => b.onclick = () => { seatUi.mode = b.dataset.seatMode; draw(); fit(); });
+    ov.querySelectorAll('[data-seat-mode]').forEach(b => b.onclick = () => { closePop(); seatUi.mode = b.dataset.seatMode; draw(); fit(); });
     ov.querySelectorAll('[data-seat-key]').forEach(b => b.onclick = () => { seatUi.key = b.dataset.seatKey; draw(); fit(); });
     const selEl = ov.querySelector('#seatObsSel'); if(selEl) selEl.onchange = () => { seatUi.catId = selEl.value; draw(); fit(); };
+    const gSel = ov.querySelector('#seatGradeSel'); if(gSel) gSel.onchange = () => { seatUi.gradeCatId = gSel.value; draw(); fit(); };
+    const gNew = ov.querySelector('#seatGradeNew');
+    if(gNew) gNew.onclick = () => {
+      const sel = seatPickGrade(seatGradeCats(sem)); if(!sel) return;
+      const nc = {id: uid(), name: sel.cat.name, weight: sel.cat.weight, mode: 'grade', date: localTodayIso(), entries: {}};
+      sel.parent.children.push(nc); seatUi.gradeCatId = nc.id; saveState(); draw(); fit();
+    };
     const newEl = ov.querySelector('#seatObsNew');
     if(newEl) newEl.onclick = () => {
       const sel = seatPickObs(obsList()); if(!sel) return;
@@ -3165,6 +3247,10 @@ function openSeatPlan(){
           const sel = seatPickObs(obsList()); if(!sel) return;
           if(long) openEntriesModal(cls, sem, sel.g.id, sel.cat.id, t.sid);
           else { seatCycleObs(sel.cat, t.sid); draw(); fit(); }
+        } else if(m === 'grade'){
+          const sel = seatPickGrade(seatGradeCats(sem)); if(!sel) return;
+          if(long) openEntriesModal(cls, sem, sel.g.id, sel.cat.id, t.sid);
+          else openGradePop(el, sel, t.sid);
         } else if(m === 'tally'){
           const host = tallyHostCat(sem), col = tallyCol(); if(!host || !col) return;
           if(long) openTallyList(cls, sem, host, col.key, t.sid);
@@ -3215,9 +3301,9 @@ function absenceQuarters(sem, sid){
   const map = new Map();
   function walk(cat, q){
     const quarter = q || (isSomiCat(cat) ? cat : null);
-    if(!isContainerCat(cat) && cat.mode === 'observation'){
+    if(!isContainerCat(cat)){
       const e = cat.entries && cat.entries[sid];
-      if(e && e.observation === 'f' && !e.absReset){
+      if(e && !e.absReset && ((cat.mode === 'observation' && e.observation === 'f') || (cat.mode !== 'observation' && entryMark(e) === 'f'))){
         const key = quarter ? quarter.id : 'sem';
         if(!map.has(key)) map.set(key, {label: quarter ? quarter.name : sem.name, dates: [], ids: []});
         map.get(key).dates.push(cat.date || ''); map.get(key).ids.push(cat.id);
@@ -3253,7 +3339,7 @@ function absenceHitIds(cls, sem, sid){
 }
 function absenceResetStudent(sem, sid){
   function walk(cat){
-    if(!isContainerCat(cat) && cat.mode === 'observation'){ const e = cat.entries && cat.entries[sid]; if(e && e.observation === 'f') e.absReset = true; }
+    if(!isContainerCat(cat)){ const e = cat.entries && cat.entries[sid]; if(e && ((cat.mode === 'observation' && e.observation === 'f') || (cat.mode !== 'observation' && entryMark(e) === 'f'))) e.absReset = true; }
     (cat.children || []).forEach(walk);
   }
   (sem.groups || []).forEach(g => (g.children || []).forEach(walk));
@@ -5753,6 +5839,7 @@ function renderModal(cls, cat, student){
         ${(cat.mode !== 'observation' || showNb) ? `<div class="row" style="margin-top:14px;align-items:center;gap:8px;">
           ${cat.mode !== 'observation' ? `<button class="${entryMark(entry) === 'NT' ? '' : 'ghost'} small entry-big" data-mark-btn="NT" style="min-width:70px;font-weight:700;">NT</button>` : ''}
           ${showNb ? `<button class="${entryMark(entry) === 'NB' ? '' : 'ghost'} small entry-big" data-mark-btn="NB" style="min-width:70px;font-weight:700;">NB</button>` : ''}
+          ${(cat.mode !== 'observation' && !inSchriftlich) ? `<button class="${entryMark(entry) === 'f' ? '' : 'ghost'} small entry-big" data-mark-btn="f" style="min-width:70px;font-weight:700;">f</button>` : ''}
           ${showFp ? `<button class="${fpOn ? '' : 'ghost'} small entry-big" data-fp-btn style="min-width:70px;font-weight:700;">FP</button>` : ''}
           <span class="hint" style="margin:0;">${entryMark(entry) ? `${MARK_TITLES[entryMark(entry)]}. Antippen zum Entfernen.` : (fpOn ? 'FP: Note ist Ergebnis einer Feststellungsprüfung (ohne Note: Prüfung steht noch aus). Antippen zum Entfernen.' : (cat.mode === 'observation' ? 'NB = nicht bewertbar (ohne Wertung)' : (showNb ? 'NT = nicht teilgenommen, NB = nicht bewertbar (ohne Wertung), FP = Feststellungsprüfung' : 'NT = nicht teilgenommen (ohne Wertung), FP = Feststellungsprüfung')))}</span>
         </div>` : ''}
