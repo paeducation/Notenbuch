@@ -495,7 +495,7 @@ function appLicenseText(){
     'Die Software wird ohne Gewähr bereitgestellt. Die Haftung ist, soweit gesetzlich zulässig, auf Vorsatz und grobe Fahrlässigkeit beschränkt. Die Verantwortung für Notenfeststellung und Datenschutz bleibt bei der Lehrkraft.\n\n' +
     'Diese Kopie ist gekennzeichnet (Kopie-ID: ' + APP_COPY_ID + ').' + APP_COPY_ZW;
 }
-const APP_VERSION_INFO = 'v22.72 · Entwicklung und © G. Schulte';
+const APP_VERSION_INFO = 'v22.74 · Entwicklung und © G. Schulte';
 function setStatus(msg, isError){
   const el = document.getElementById('status');
   const hasData = typeof state !== 'undefined' && state && state.classes && state.classes.length;
@@ -1933,6 +1933,8 @@ function applyTableScale(){ document.documentElement.style.setProperty('--tscale
 // ---------- Neuerungen nach einem Update ----------
 const WHATS_NEW_KEY = 'notenbuch-last-seen-version';
 const CHANGELOG = [
+  {v:'22.74', items:['Sitzplan, Modus Beobachtung: Neue Spalten für heute lassen sich jetzt ausdrücklich mit oder ohne Wertung anlegen (Auswahl oben in der Spaltenliste).']},
+  {v:'22.73', items:['Update: Das Update-Fenster erscheint nach „Update ausführen“ nicht mehr mehrfach hintereinander. Die neue Version wird jetzt direkt geladen, bevor die App neu startet.']},
   {v:'22.72', items:['Sitzplan: Sind für SoMi keine Zeiträume eingetragen, wird das SoMi mit der jüngsten Spalte als aktuell gewertet (bisher immer SoMi 1).']},
   {v:'22.71', items:['Sitzplan: Neue Spalten für Beobachtung und Note werden immer im heutigen SoMi-Quartal angelegt (gibt es keines, wie bisher im Bereich Mündlich).']},
   {v:'22.70', items:['Das rote „!“ bei Symbolen ohne Note in der Tabelle entfällt wieder.']},
@@ -3075,7 +3077,7 @@ function seatGradeCats(sem){
 function seatResolve(list, key){
   const today = localTodayIso();
   const id = seatUi[key];
-  const hit = (id && id !== '__today') ? list.find(x => x.cat.id === id) : null;
+  const hit = (id && !String(id).startsWith('__today')) ? list.find(x => x.cat.id === id) : null;
   if(hit) return {sel: hit, virtual: null};
   const tcols = list.filter(x => x.cat.date === today);
   if(tcols.length) return {sel: tcols[tcols.length - 1], virtual: null};
@@ -3085,7 +3087,7 @@ function seatResolve(list, key){
 function seatPickGrade(list){ return seatResolve(list, 'gradeCatId').sel; }
 function seatPickObs(list){ return seatResolve(list, 'catId').sel; }
 // legt beim ersten Tipp die Spalte für heute an, wenn es noch keine gibt
-function seatMakeToday(kind, tmpl){
+function seatMakeToday(kind, tmpl, wert){
   // Spalten aus dem Sitzplan kommen immer ins heutige SoMi-Quartal (falls es eines gibt)
   try{
     const sem = getActiveSemester(getActiveClass());
@@ -3100,11 +3102,12 @@ function seatMakeToday(kind, tmpl){
     }
   }catch(e){}
   const base = {id: uid(), name: tmpl.cat.name, weight: tmpl.cat.weight, date: localTodayIso(), entries: {}};
-  const nc = kind === 'obs' ? {...base, mode: 'observation', ungraded: !!tmpl.cat.ungraded} : {...base, mode: 'grade'};
+  const nc = kind === 'obs' ? {...base, mode: 'observation', ungraded: wert === 'W' ? false : wert === 'U' ? true : !!tmpl.cat.ungraded} : {...base, mode: 'grade'};
   if(tmpl.synthetic) nc.name = tmpl.cat.name + ' ' + ((tmpl.parent.children || []).filter(c => (c.name || '').startsWith(tmpl.cat.name)).length + 1);
   tmpl.parent.children.push(nc);
   if(!nc.ungraded) rebalanceEqualWeights(tmpl.parent.children);
   seatUi[kind === 'obs' ? 'catId' : 'gradeCatId'] = nc.id;
+  if(kind === 'obs') seatUi.obsWert = undefined;
   saveState();
   showToast('✓ Neue Spalte „' + nc.name + '“ für heute angelegt.');
   return {cat: nc, g: tmpl.g, parent: tmpl.parent};
@@ -3130,16 +3133,26 @@ function seatObsFallback(sem){
 function seatTarget(kind, list, sem){
   const r = seatResolve(list, kind === 'obs' ? 'catId' : 'gradeCatId');
   if(r.sel) return r.sel;
-  if(r.virtual) return seatMakeToday(kind, r.virtual);
+  if(r.virtual) return seatMakeToday(kind, r.virtual, kind === 'obs' ? seatUi.obsWert : undefined);
   const fb = kind === 'grade' ? seatGradeFallback(sem) : seatObsFallback(sem);
-  if(fb) return seatMakeToday(kind, fb);
+  if(fb) return seatMakeToday(kind, fb, kind === 'obs' ? seatUi.obsWert : undefined);
   return null;
 }
 function seatColSelectHtml(kind, list){
   const key = kind === 'obs' ? 'catId' : 'gradeCatId', today = localTodayIso();
   const r = seatResolve(list, key), hasToday = list.some(x => x.cat.date === today);
   const id = kind === 'obs' ? 'seatObsSel' : 'seatGradeSel';
-  return `<select id="${id}">${hasToday ? '' : `<option value="__today"${r.sel ? '' : ' selected'}>＋ Neue Spalte für heute (beim ersten Tipp)</option>`}${list.map(x => `<option value="${x.cat.id}"${r.sel && x.cat.id === r.sel.cat.id ? ' selected' : ''}>${escapeHtml(x.label)}</option>`).join('')}${hasToday ? '<option value="__new">＋ Weitere Spalte für heute</option>' : ''}</select>`;
+  let newOpts = '', moreOpts = '';
+  if(kind === 'obs'){
+    const tmplU = r.virtual ? !!r.virtual.cat.ungraded : false;
+    const w = seatUi.obsWert || (r.virtual ? (tmplU ? 'U' : 'W') : 'U');
+    newOpts = hasToday ? '' : `<option value="__todayW"${!r.sel && w === 'W' ? ' selected' : ''}>＋ Neue Spalte für heute, mit Wertung (beim ersten Tipp)</option><option value="__todayU"${!r.sel && w === 'U' ? ' selected' : ''}>＋ Neue Spalte für heute, ohne Wertung (beim ersten Tipp)</option>`;
+    moreOpts = hasToday ? '<option value="__newW">＋ Weitere Spalte für heute, mit Wertung</option><option value="__newU">＋ Weitere Spalte für heute, ohne Wertung</option>' : '';
+  } else {
+    newOpts = hasToday ? '' : `<option value="__today"${r.sel ? '' : ' selected'}>＋ Neue Spalte für heute (beim ersten Tipp)</option>`;
+    moreOpts = hasToday ? '<option value="__new">＋ Weitere Spalte für heute</option>' : '';
+  }
+  return `<select id="${id}">${newOpts}${list.map(x => `<option value="${x.cat.id}"${r.sel && x.cat.id === r.sel.cat.id ? ' selected' : ''}>${escapeHtml(x.label)}</option>`).join('')}${moreOpts}</select>`;
 }
 function seatCycleObs(cat, sid){
   const e = {...(cat.entries[sid] || {})};
@@ -3300,9 +3313,11 @@ function openSeatPlan(){
     ov.querySelectorAll('[data-seat-key]').forEach(b => b.onclick = () => { seatUi.key = b.dataset.seatKey; draw(); fit(); });
     const onSel = (kind, el2) => () => {
       const key = kind === 'obs' ? 'catId' : 'gradeCatId', list = kind === 'obs' ? obsList() : seatGradeCats(sem), v = el2.value;
-      if(v === '__new'){
+      if(v === '__new' || v === '__newW' || v === '__newU'){
         const base = seatResolve(list, key).sel || list[list.length - 1];
-        if(base) seatMakeToday(kind, base);
+        if(base) seatMakeToday(kind, base, v === '__newW' ? 'W' : v === '__newU' ? 'U' : undefined);
+      } else if(v === '__todayW' || v === '__todayU'){
+        seatUi.obsWert = v === '__todayW' ? 'W' : 'U'; seatUi[key] = '__today';
       } else seatUi[key] = v;
       draw(); fit();
     };
@@ -6271,6 +6286,19 @@ document.getElementById('positionModeBtn').onclick = () => {
   state.positionMode = !state.positionMode; render();
 };
 async function performAppUpdate(){
+  // Neue Datei am Browser-Cache vorbei holen und in den Offline-Speicher legen, sonst lädt der Neustart noch die alte Version (und das Update-Fenster käme erneut)
+  try{
+    const base = window.location.origin + window.location.pathname;
+    const res = await fetch(base + '?cachebust=' + Date.now(), {cache: 'no-store'});
+    if(res.ok && 'caches' in window){
+      const keys = await caches.keys();
+      const urls = [base, new URL('index.html', base).href];
+      for(const k of keys){
+        const c = await caches.open(k);
+        for(const u of urls) await c.put(u, res.clone());
+      }
+    }
+  }catch(e){}
   try{
     if('serviceWorker' in navigator){
       const reg = await navigator.serviceWorker.getRegistration();

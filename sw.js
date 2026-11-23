@@ -1,4 +1,4 @@
-const CACHE_NAME = 'notenbuch-v405';
+const CACHE_NAME = 'notenbuch-v407';
 const ASSETS = ['./index.html', './manifest.json', './icon-192.png', './icon-512.png'];
 
 self.addEventListener('install', (event) => {
@@ -18,7 +18,7 @@ self.addEventListener('activate', (event) => {
 self.addEventListener('fetch', (event) => {
   event.respondWith(
     caches.match(event.request).then((cached) => {
-      const fetchPromise = fetch(event.request).then((networkResponse) => {
+      const fetchPromise = fetch(event.request, {cache: 'no-cache'}).then((networkResponse) => {
         if(networkResponse && networkResponse.status === 200){
           const clone = networkResponse.clone();
           caches.open(CACHE_NAME).then((cache) => cache.put(event.request, clone));
